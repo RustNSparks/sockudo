@@ -5,7 +5,7 @@
 # -----------------------------------------------------------------------------
 # Build Stage: Compile the Rust application
 # -----------------------------------------------------------------------------
-FROM rust:latest as builder
+FROM rust:latest AS builder
 
 # Install nightly toolchain
 RUN rustup toolchain install nightly
