@@ -128,9 +128,9 @@ fn normalize_request_uri<B>(mut req: Request<B>) -> Request<B> {
         if let Some(path_and_query) = &parts.path_and_query {
             let query = path_and_query
                 .query()
-                .map(|q| format!("?{}", q))
+                .map(|q| format!("?{q}"))
                 .unwrap_or_default();
-            let new_path_and_query = format!("{}{}", normalized_path, query);
+            let new_path_and_query = format!("{normalized_path}{query}");
             if let Ok(new_pq) = new_path_and_query.parse() {
                 parts.path_and_query = Some(new_pq);
                 if let Ok(new_uri) = Uri::from_parts(parts) {
@@ -730,8 +730,8 @@ impl SockudoServer {
                 )),
             )
             .route("/usage", get(usage))
-            .route("/up", get(up.clone())) // General health check
-            .route("/up/{appId}", get(up.clone())) // App-specific health check
+            .route("/up", get(up)) // General health check
+            .route("/up/{appId}", get(up)) // App-specific health check
             .layer(cors); // Apply CORS layer
 
         // Apply rate limiter middleware if it was created
