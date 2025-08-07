@@ -33,8 +33,6 @@ on:
         required: false
         type: boolean
         default: true
-  pull_request:
-    types: [opened, synchronize, reopened]
 
 env:
   CARGO_TERM_COLOR: always
@@ -42,72 +40,11 @@ env:
 
 jobs:
   # =============================================================================
-  # Show Manual Build Button in PR (only runs on PR events)
-  # =============================================================================
-  pr-status:
-    name: Manual Build Available
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Post build instructions
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const runUrl = context.serverUrl + '/' + context.repo.owner + '/' + context.repo.repo + '/actions/workflows/manual-build.yml';
-            const branchName = context.payload.pull_request.head.ref;
-            
-            // Check if we've already posted instructions
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-            });
-            
-            const existingComment = comments.data.find(comment => 
-              comment.user.login === 'github-actions[bot]' && 
-              comment.body.includes('Manual Build Available')
-            );
-            
-            if (!existingComment) {
-              const body = `## 🔨 Manual Build Available
-
-**To build artifacts for this PR:**
-
-1. **Click here:** [🚀 Trigger Manual Build](${runUrl})
-2. Click **"Run workflow"** (green button)
-3. Select branch: \`${branchName}\`
-4. Choose platforms to build:
-   - ☑️ Linux x64 (GNU)
-   - ☑️ macOS x64 (Intel) 
-   - ☑️ macOS ARM64 (Apple Silicon)
-   - ☑️ Windows x64
-   - ☑️ Docker image
-5. Click **"Run workflow"**
-
-**Artifacts will be posted here when build completes** ⬇️
-
----
-*This comment will be updated with download links once builds are triggered*`;
-              
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.payload.pull_request.number,
-                body: body
-              });
-              
-              console.log('Posted manual build instructions to PR');
-            } else {
-              console.log('Manual build instructions already posted, skipping');
-            }
-
-  # =============================================================================
-  # Build Matrix Setup (only runs on workflow_dispatch)
+  # Build Matrix Setup
   # =============================================================================
   setup:
     name: Setup Build Matrix
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       has_builds: ${{ steps.set-matrix.outputs.has_builds }}
@@ -147,7 +84,7 @@ jobs:
   build:
     name: Build ${{ matrix.name }}
     needs: setup
-    if: github.event_name == 'workflow_dispatch' && needs.setup.outputs.has_builds == 'true'
+    if: needs.setup.outputs.has_builds == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -218,7 +155,7 @@ jobs:
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && inputs.build_docker
+    if: inputs.build_docker
     
     steps:
       - name: Checkout repository
@@ -282,7 +219,6 @@ jobs:
     needs: [setup, build, docker]
     if: |
       always() && 
-      github.event_name == 'workflow_dispatch' && 
       inputs.upload_to_pr &&
       (needs.build.result == 'success' || needs.docker.result == 'success')
     

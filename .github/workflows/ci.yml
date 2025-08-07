@@ -134,3 +134,63 @@ jobs:
 
       - name: Security audit
         run: cargo audit
+
+  # =============================================================================
+  # Manual Build Instructions (PR only)
+  # =============================================================================
+  manual-build-info:
+    name: Manual Build Available
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Post build instructions
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/workflows/manual-build.yml`;
+            const branchName = context.payload.pull_request.head.ref;
+            
+            // Check if we've already posted instructions
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+            });
+            
+            const existingComment = comments.data.find(comment => 
+              comment.user.login === 'github-actions[bot]' && 
+              comment.body.includes('Manual Build Available')
+            );
+            
+            if (!existingComment) {
+              const body = \`## 🔨 Manual Build Available
+
+**To build artifacts for this PR:**
+
+1. **Click here:** [🚀 Trigger Manual Build](\${runUrl})
+2. Click **"Run workflow"** (green button)  
+3. Select branch: \\\`\${branchName}\\\`
+4. Choose platforms to build:
+   - ☑️ Linux x64 (GNU)
+   - ☑️ macOS x64 (Intel) 
+   - ☑️ macOS ARM64 (Apple Silicon)
+   - ☑️ Windows x64
+   - ☑️ Docker image
+5. Click **"Run workflow"**
+
+**Artifacts will be posted here when build completes** ⬇️
+
+---
+*This comment will be updated with download links once builds are triggered*\`;
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: body
+              });
+              
+              console.log('Posted manual build instructions to PR');
+            } else {
+              console.log('Manual build instructions already posted, skipping');
+            }
