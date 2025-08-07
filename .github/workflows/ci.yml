@@ -163,25 +163,27 @@ jobs:
             );
             
             if (!existingComment) {
-              const body = `## 🔨 Manual Build Available
-
-**To build artifacts for this PR:**
-
-1. **Click here:** [🚀 Trigger Manual Build](${runUrl})
-2. Click **"Run workflow"** (green button)  
-3. Select branch: \`${branchName}\`
-4. Choose platforms to build:
-   - ☑️ Linux x64 (GNU)
-   - ☑️ macOS x64 (Intel) 
-   - ☑️ macOS ARM64 (Apple Silicon)
-   - ☑️ Windows x64
-   - ☑️ Docker image
-5. Click **"Run workflow"**
-
-**Artifacts will be posted here when build completes** ⬇️
-
----
-*This comment will be updated with download links once builds are triggered*`;
+              const body = [
+                '## 🔨 Manual Build Available',
+                '',
+                '**To build artifacts for this PR:**',
+                '',
+                `1. **Click here:** [🚀 Trigger Manual Build](${runUrl})`,
+                '2. Click **"Run workflow"** (green button)',
+                `3. Select branch: \`${branchName}\``,
+                '4. Choose platforms to build:',
+                '   - ☑️ Linux x64 (GNU)',
+                '   - ☑️ macOS x64 (Intel)',
+                '   - ☑️ macOS ARM64 (Apple Silicon)',
+                '   - ☑️ Windows x64',
+                '   - ☑️ Docker image',
+                '5. Click **"Run workflow"**',
+                '',
+                '**Artifacts will be posted here when build completes** ⬇️',
+                '',
+                '---',
+                '*This comment will be updated with download links once builds are triggered*'
+              ].join('\n');
               
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
