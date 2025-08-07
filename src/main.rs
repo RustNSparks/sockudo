@@ -28,13 +28,13 @@ use axum::http::uri::Authority;
 use axum::http::{HeaderValue, StatusCode, Uri};
 use axum::response::Redirect;
 use axum::routing::{get, post};
-use axum::{BoxError, Router, middleware as axum_middleware};
+use axum::{BoxError, Router, middleware as axum_middleware, ServiceExt, response::Response,middleware::Next};
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-
+use axum::extract::Request;
 use axum_extra::extract::Host;
 use axum_server::tls_rustls::RustlsConfig;
 use clap::Parser;
@@ -64,6 +64,7 @@ use crate::rate_limiter::middleware::IpKeyExtractor;
 use crate::webhook::integration::{BatchingConfig, WebhookConfig, WebhookIntegration};
 use crate::ws_handler::handle_ws_upgrade;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_layer::Layer;
 // Import tracing and tracing_subscriber parts
 use tracing::{debug, error, info, warn}; // Added LevelFilter
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, reload, util::SubscriberInitExt};
@@ -687,9 +688,7 @@ impl SockudoServer {
             )
             .route("/usage", get(usage))
             .route("/up", get(up.clone())) // General health check
-            .route("/up/", get(up.clone())) // General health check with trailing slash
             .route("/up/{appId}", get(up.clone())) // App-specific health check
-            .route("/up/{appId}/", get(up)) // App-specific health check with trailing slash
             .layer(cors); // Apply CORS layer
 
         // Apply rate limiter middleware if it was created
@@ -710,6 +709,19 @@ impl SockudoServer {
         info!("Starting Sockudo server services (after init)...");
 
         let http_router = self.configure_http_routes();
+        fn rewrite_request_uri_ssl<B>(req: Request<B>) -> Request<B> {
+            req
+        }
+        fn rewrite_request_uri<B>(req: Request<B>) -> Request<B> {
+            req
+        }
+
+        let middleware = tower::util::MapRequestLayer::new(rewrite_request_uri);
+        let router_with_middleware = middleware.layer(http_router.clone());
+
+        let middleware_ssl = tower::util::MapRequestLayer::new(rewrite_request_uri_ssl);
+        let router_with_middleware_ssl = middleware_ssl.layer(http_router);
+
         let metrics_router = self.configure_metrics_routes();
 
         let http_addr = self.get_http_addr().await;
@@ -796,7 +808,7 @@ impl SockudoServer {
             let running = &self.state.running;
             let server = axum_server::bind_rustls(http_addr, tls_config);
             tokio::select! {
-                result = server.serve(http_router.into_make_service_with_connect_info::<SocketAddr>()) => {
+                result = server.serve(router_with_middleware_ssl.into_make_service_with_connect_info::<SocketAddr>()) => {
                     if let Err(err) = result { error!("HTTPS server error: {}", err); }
                 }
                 _ = self.shutdown_signal() => {
@@ -847,7 +859,7 @@ impl SockudoServer {
             // Main HTTP server
             let http_server = axum::serve(
                 http_listener,
-                http_router.into_make_service_with_connect_info::<SocketAddr>(),
+                router_with_middleware.into_make_service_with_connect_info::<SocketAddr>(),
             ); // .with_graceful_shutdown(self.shutdown_signal()); // Add graceful shutdown
 
             tokio::select! {

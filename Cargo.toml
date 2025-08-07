@@ -59,6 +59,7 @@ serde_urlencoded = "0.7"
 http-body-util = "0.1.3"
 mockall = "0.13.1"
 rustls = { version = "0.23.29", features = ["ring"] }
+tower = "0.5.2"
 
 
 [dependencies.uuid]
