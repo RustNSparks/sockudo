@@ -1,0 +1,13 @@
+# Cargo audit configuration
+
+[advisories]
+# List of advisory IDs to ignore
+ignore = [
+    # RUSTSEC-2023-0071: RSA Marvin Attack - timing sidechannel vulnerability
+    # This is a transitive dependency via sqlx-mysql that has no fix available yet.
+    # The vulnerability requires network-observable timing attacks which are not 
+    # a high risk for our deployment scenario. We'll remove this ignore once a 
+    # fix is available in the rsa crate.
+    # Tracking issue: https://github.com/RustCrypto/RSA/issues/19
+    "RUSTSEC-2023-0071",
+]
