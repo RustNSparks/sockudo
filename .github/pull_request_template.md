@@ -25,19 +25,7 @@
 - [ ] Any dependent changes have been merged and published
 
 ## Build Artifacts
-<!-- After CI passes, you can trigger manual builds for specific platforms -->
-To build artifacts for this PR:
-1. Go to [Actions → Manual Build](../../actions/workflows/manual-build.yml)
-2. Click "Run workflow"
-3. Select this branch and choose platforms to build
-4. Artifacts will be posted as a comment in this PR
-
-Available platforms:
-- Linux x64 (GNU)
-- macOS x64 (Intel)
-- macOS ARM64 (Apple Silicon)
-- Windows x64
-- Docker image
+<!-- A bot comment will appear with build instructions once this PR is created -->
 
 ## Additional Notes
 <!-- Add any additional notes or context about the PR here -->
