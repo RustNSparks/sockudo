@@ -22,24 +22,24 @@ mod webhook;
 mod websocket;
 mod ws_handler;
 
+use axum::extract::Request;
 use axum::http::Method;
 use axum::http::header::HeaderName;
 use axum::http::uri::Authority;
 use axum::http::{HeaderValue, StatusCode, Uri};
 use axum::response::Redirect;
 use axum::routing::{get, post};
-use axum::{BoxError, Router, middleware as axum_middleware, ServiceExt};
-use std::net::SocketAddr;
-use std::str::FromStr;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
-use axum::extract::Request;
+use axum::{BoxError, Router, ServiceExt, middleware as axum_middleware};
 use axum_extra::extract::Host;
 use axum_server::tls_rustls::RustlsConfig;
 use clap::Parser;
 use error::Error;
 use futures_util::future::join_all;
+use std::net::SocketAddr;
+use std::str::FromStr;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tokio::sync::{Mutex, RwLock};
@@ -122,11 +122,14 @@ fn normalize_uri_path(path: &str) -> String {
 fn normalize_request_uri<B>(mut req: Request<B>) -> Request<B> {
     let uri = req.uri();
     let normalized_path = normalize_uri_path(uri.path());
-    
+
     if normalized_path != uri.path() {
         let mut parts = uri.clone().into_parts();
         if let Some(path_and_query) = &parts.path_and_query {
-            let query = path_and_query.query().map(|q| format!("?{}", q)).unwrap_or_default();
+            let query = path_and_query
+                .query()
+                .map(|q| format!("?{}", q))
+                .unwrap_or_default();
             let new_path_and_query = format!("{}{}", normalized_path, query);
             if let Ok(new_pq) = new_path_and_query.parse() {
                 parts.path_and_query = Some(new_pq);
