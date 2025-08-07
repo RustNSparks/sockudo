@@ -64,6 +64,7 @@ use crate::rate_limiter::middleware::IpKeyExtractor;
 use crate::webhook::integration::{BatchingConfig, WebhookConfig, WebhookIntegration};
 use crate::ws_handler::handle_ws_upgrade;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::normalize_path::NormalizePathLayer;
 // Import tracing and tracing_subscriber parts
 use tracing::{debug, error, info, warn}; // Added LevelFilter
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, reload, util::SubscriberInitExt};
@@ -686,8 +687,9 @@ impl SockudoServer {
                 )),
             )
             .route("/usage", get(usage))
-            .route("/up/{appId}", get(up.clone())) // App-specific health check
-            .route("/up", get(up)) // General health check
+            .route("/up", get(up.clone())) // General health check
+            .route("/up/{appId}", get(up)) // App-specific health check
+            .layer(NormalizePathLayer::trim_trailing_slash()) // Handle trailing slashes
             .layer(cors); // Apply CORS layer
 
         // Apply rate limiter middleware if it was created
@@ -701,6 +703,7 @@ impl SockudoServer {
     fn configure_metrics_routes(&self) -> Router {
         Router::new()
             .route("/metrics", get(metrics))
+            .layer(NormalizePathLayer::trim_trailing_slash()) // Handle trailing slashes
             .with_state(self.handler.clone()) // Metrics endpoint also needs the handler for state
     }
 
