@@ -2,7 +2,7 @@ name: CI - Lint and Test
 
 on:
   push:
-    branches: [ main, develop, 'feature/*', 'fix/*' ]
+    branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
 
@@ -141,24 +141,41 @@ jobs:
   manual-build-info:
     name: Manual Build Available
     runs-on: ubuntu-latest
+    needs: [lint, test, security]
     steps:
-      - name: Debug event info
-        run: |
-          echo "Event name: ${{ github.event_name }}"
-          echo "Event action: ${{ github.event.action }}"
-          echo "PR number: ${{ github.event.pull_request.number }}"
-      
       - name: Post build instructions
         uses: actions/github-script@v7
         with:
           script: |
             console.log('Starting manual build info job...');
             console.log('Event name:', context.eventName);
-            console.log('PR number:', context.payload.pull_request.number);
             
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/workflows/manual-build.yml`;
-            const branchName = context.payload.pull_request.head.ref;
+            let prNumber, branchName;
             
+            if (context.eventName === 'pull_request') {
+              prNumber = context.payload.pull_request.number;
+              branchName = context.payload.pull_request.head.ref;
+            } else if (context.eventName === 'push') {
+              // For push events, try to find the associated PR
+              branchName = context.ref.replace('refs/heads/', '');
+              const prs = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head: `${context.repo.owner}:${branchName}`,
+                state: 'open'
+              });
+              if (prs.data.length > 0) {
+                prNumber = prs.data[0].number;
+              }
+            }
+            
+            if (!prNumber) {
+              console.log('No PR found for this push, skipping');
+              return;
+            }
+            
+            console.log('PR number:', prNumber);
             console.log('Branch name:', branchName);
             console.log('Run URL:', runUrl);
             
@@ -166,7 +183,7 @@ jobs:
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
+              issue_number: prNumber,
             });
             
             console.log(`Found ${comments.data.length} existing comments`);
@@ -204,7 +221,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.payload.pull_request.number,
+                issue_number: prNumber,
                 body: body
               });
               
