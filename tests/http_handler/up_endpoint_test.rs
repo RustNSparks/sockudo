@@ -1,4 +1,6 @@
-use crate::mocks::connection_handler_mock::{create_test_connection_handler_with_app_manager, MockAppManager};
+use crate::mocks::connection_handler_mock::{
+    MockAppManager, create_test_connection_handler_with_app_manager,
+};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -59,21 +61,30 @@ impl sockudo::app::manager::AppManager for AppsAvailableMockAppManager {
 #[tokio::test]
 async fn test_up_general_health_check_with_apps() {
     let handler = sockudo::adapter::handler::ConnectionHandler::new(
-        Arc::new(AppsAvailableMockAppManager) as Arc<dyn sockudo::app::manager::AppManager + Send + Sync>,
-        Arc::new(tokio::sync::RwLock::new(sockudo::channel::ChannelManager::new(Arc::new(tokio::sync::Mutex::new(
+        Arc::new(AppsAvailableMockAppManager)
+            as Arc<dyn sockudo::app::manager::AppManager + Send + Sync>,
+        Arc::new(tokio::sync::RwLock::new(
+            sockudo::channel::ChannelManager::new(Arc::new(tokio::sync::Mutex::new(
+                crate::mocks::connection_handler_mock::MockAdapter::new(),
+            ))),
+        )),
+        Arc::new(tokio::sync::Mutex::new(
             crate::mocks::connection_handler_mock::MockAdapter::new(),
-        ))))),
-        Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockAdapter::new())),
-        Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockCacheManager::new())),
-        Some(Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockMetricsInterface::new()))),
+        )),
+        Arc::new(tokio::sync::Mutex::new(
+            crate::mocks::connection_handler_mock::MockCacheManager::new(),
+        )),
+        Some(Arc::new(tokio::sync::Mutex::new(
+            crate::mocks::connection_handler_mock::MockMetricsInterface::new(),
+        ))),
         None,
         sockudo::options::ServerOptions::default(),
     );
     let handler_arc = Arc::new(handler);
-    
+
     // Call the up endpoint without app_id
     let result = up(None, State(handler_arc)).await;
-    
+
     assert!(result.is_ok());
     let response = result.unwrap().into_response();
     assert_eq!(response.status(), StatusCode::OK);
@@ -86,10 +97,10 @@ async fn test_up_general_health_check_no_apps() {
     let app_manager = MockAppManager::new(); // Default returns empty Vec
     let handler = create_test_connection_handler_with_app_manager(app_manager);
     let handler_arc = Arc::new(handler);
-    
+
     // Call the up endpoint without app_id
     let result = up(None, State(handler_arc)).await;
-    
+
     assert!(result.is_ok());
     let response = result.unwrap().into_response();
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -101,16 +112,13 @@ async fn test_up_specific_app_exists_and_enabled() {
     let mut app_manager = MockAppManager::new();
     let test_app = create_test_app("test_app", true);
     app_manager.expect_find_by_id("test_app".to_string(), test_app);
-    
+
     let handler = create_test_connection_handler_with_app_manager(app_manager);
     let handler_arc = Arc::new(handler);
-    
+
     // Call the up endpoint with specific app_id
-    let result = up(
-        Some(Path("test_app".to_string())), 
-        State(handler_arc)
-    ).await;
-    
+    let result = up(Some(Path("test_app".to_string())), State(handler_arc)).await;
+
     assert!(result.is_ok());
     let response = result.unwrap().into_response();
     assert_eq!(response.status(), StatusCode::OK);
@@ -122,16 +130,13 @@ async fn test_up_specific_app_exists_but_disabled() {
     let mut app_manager = MockAppManager::new();
     let test_app = create_test_app("test_app", false); // disabled
     app_manager.expect_find_by_id("test_app".to_string(), test_app);
-    
+
     let handler = create_test_connection_handler_with_app_manager(app_manager);
     let handler_arc = Arc::new(handler);
-    
+
     // Call the up endpoint with specific app_id
-    let result = up(
-        Some(Path("test_app".to_string())), 
-        State(handler_arc)
-    ).await;
-    
+    let result = up(Some(Path("test_app".to_string())), State(handler_arc)).await;
+
     assert!(result.is_ok());
     let response = result.unwrap().into_response();
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -142,20 +147,24 @@ async fn test_up_specific_app_exists_but_disabled() {
 async fn test_up_specific_app_not_found() {
     let app_manager = MockAppManager::new();
     // Don't set up any expectations, so find_by_id will return None
-    
+
     let handler = create_test_connection_handler_with_app_manager(app_manager);
     let handler_arc = Arc::new(handler);
-    
+
     // Call the up endpoint with non-existent app_id
     let result = up(
-        Some(Path("nonexistent_app".to_string())), 
-        State(handler_arc)
-    ).await;
-    
+        Some(Path("nonexistent_app".to_string())),
+        State(handler_arc),
+    )
+    .await;
+
     assert!(result.is_ok());
     let response = result.unwrap().into_response();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert_eq!(response.headers().get("X-Health-Check").unwrap(), "NOT_FOUND");
+    assert_eq!(
+        response.headers().get("X-Health-Check").unwrap(),
+        "NOT_FOUND"
+    );
 }
 
 // Custom mock app manager that simulates errors
@@ -193,20 +202,28 @@ impl sockudo::app::manager::AppManager for ErrorMockAppManager {
 async fn test_up_general_health_check_app_manager_error() {
     let handler = sockudo::adapter::handler::ConnectionHandler::new(
         Arc::new(ErrorMockAppManager) as Arc<dyn sockudo::app::manager::AppManager + Send + Sync>,
-        Arc::new(tokio::sync::RwLock::new(sockudo::channel::ChannelManager::new(Arc::new(tokio::sync::Mutex::new(
+        Arc::new(tokio::sync::RwLock::new(
+            sockudo::channel::ChannelManager::new(Arc::new(tokio::sync::Mutex::new(
+                crate::mocks::connection_handler_mock::MockAdapter::new(),
+            ))),
+        )),
+        Arc::new(tokio::sync::Mutex::new(
             crate::mocks::connection_handler_mock::MockAdapter::new(),
-        ))))),
-        Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockAdapter::new())),
-        Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockCacheManager::new())),
-        Some(Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockMetricsInterface::new()))),
+        )),
+        Arc::new(tokio::sync::Mutex::new(
+            crate::mocks::connection_handler_mock::MockCacheManager::new(),
+        )),
+        Some(Arc::new(tokio::sync::Mutex::new(
+            crate::mocks::connection_handler_mock::MockMetricsInterface::new(),
+        ))),
         None,
         sockudo::options::ServerOptions::default(),
     );
     let handler_arc = Arc::new(handler);
-    
+
     // Call the up endpoint without app_id (should hit app manager error)
     let result = up(None, State(handler_arc)).await;
-    
+
     assert!(result.is_ok());
     let response = result.unwrap().into_response();
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -217,23 +234,28 @@ async fn test_up_general_health_check_app_manager_error() {
 async fn test_up_specific_app_manager_error() {
     let handler = sockudo::adapter::handler::ConnectionHandler::new(
         Arc::new(ErrorMockAppManager) as Arc<dyn sockudo::app::manager::AppManager + Send + Sync>,
-        Arc::new(tokio::sync::RwLock::new(sockudo::channel::ChannelManager::new(Arc::new(tokio::sync::Mutex::new(
+        Arc::new(tokio::sync::RwLock::new(
+            sockudo::channel::ChannelManager::new(Arc::new(tokio::sync::Mutex::new(
+                crate::mocks::connection_handler_mock::MockAdapter::new(),
+            ))),
+        )),
+        Arc::new(tokio::sync::Mutex::new(
             crate::mocks::connection_handler_mock::MockAdapter::new(),
-        ))))),
-        Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockAdapter::new())),
-        Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockCacheManager::new())),
-        Some(Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockMetricsInterface::new()))),
+        )),
+        Arc::new(tokio::sync::Mutex::new(
+            crate::mocks::connection_handler_mock::MockCacheManager::new(),
+        )),
+        Some(Arc::new(tokio::sync::Mutex::new(
+            crate::mocks::connection_handler_mock::MockMetricsInterface::new(),
+        ))),
         None,
         sockudo::options::ServerOptions::default(),
     );
     let handler_arc = Arc::new(handler);
-    
+
     // Call the up endpoint with app_id (should hit app manager error in find_by_id)
-    let result = up(
-        Some(Path("test_app".to_string())), 
-        State(handler_arc)
-    ).await;
-    
+    let result = up(Some(Path("test_app".to_string())), State(handler_arc)).await;
+
     assert!(result.is_ok());
     let response = result.unwrap().into_response();
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -279,20 +301,28 @@ impl sockudo::app::manager::AppManager for TimeoutMockAppManager {
 async fn test_up_general_health_check_timeout() {
     let handler = sockudo::adapter::handler::ConnectionHandler::new(
         Arc::new(TimeoutMockAppManager) as Arc<dyn sockudo::app::manager::AppManager + Send + Sync>,
-        Arc::new(tokio::sync::RwLock::new(sockudo::channel::ChannelManager::new(Arc::new(tokio::sync::Mutex::new(
+        Arc::new(tokio::sync::RwLock::new(
+            sockudo::channel::ChannelManager::new(Arc::new(tokio::sync::Mutex::new(
+                crate::mocks::connection_handler_mock::MockAdapter::new(),
+            ))),
+        )),
+        Arc::new(tokio::sync::Mutex::new(
             crate::mocks::connection_handler_mock::MockAdapter::new(),
-        ))))),
-        Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockAdapter::new())),
-        Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockCacheManager::new())),
-        Some(Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockMetricsInterface::new()))),
+        )),
+        Arc::new(tokio::sync::Mutex::new(
+            crate::mocks::connection_handler_mock::MockCacheManager::new(),
+        )),
+        Some(Arc::new(tokio::sync::Mutex::new(
+            crate::mocks::connection_handler_mock::MockMetricsInterface::new(),
+        ))),
         None,
         sockudo::options::ServerOptions::default(),
     );
     let handler_arc = Arc::new(handler);
-    
+
     // Call the up endpoint without app_id (should timeout on get_apps)
     let result = up(None, State(handler_arc)).await;
-    
+
     assert!(result.is_ok());
     let response = result.unwrap().into_response();
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -303,23 +333,28 @@ async fn test_up_general_health_check_timeout() {
 async fn test_up_specific_app_timeout() {
     let handler = sockudo::adapter::handler::ConnectionHandler::new(
         Arc::new(TimeoutMockAppManager) as Arc<dyn sockudo::app::manager::AppManager + Send + Sync>,
-        Arc::new(tokio::sync::RwLock::new(sockudo::channel::ChannelManager::new(Arc::new(tokio::sync::Mutex::new(
+        Arc::new(tokio::sync::RwLock::new(
+            sockudo::channel::ChannelManager::new(Arc::new(tokio::sync::Mutex::new(
+                crate::mocks::connection_handler_mock::MockAdapter::new(),
+            ))),
+        )),
+        Arc::new(tokio::sync::Mutex::new(
             crate::mocks::connection_handler_mock::MockAdapter::new(),
-        ))))),
-        Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockAdapter::new())),
-        Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockCacheManager::new())),
-        Some(Arc::new(tokio::sync::Mutex::new(crate::mocks::connection_handler_mock::MockMetricsInterface::new()))),
+        )),
+        Arc::new(tokio::sync::Mutex::new(
+            crate::mocks::connection_handler_mock::MockCacheManager::new(),
+        )),
+        Some(Arc::new(tokio::sync::Mutex::new(
+            crate::mocks::connection_handler_mock::MockMetricsInterface::new(),
+        ))),
         None,
         sockudo::options::ServerOptions::default(),
     );
     let handler_arc = Arc::new(handler);
-    
+
     // Call the up endpoint with app_id (should timeout on find_by_id)
-    let result = up(
-        Some(Path("test_app".to_string())), 
-        State(handler_arc)
-    ).await;
-    
+    let result = up(Some(Path("test_app".to_string())), State(handler_arc)).await;
+
     assert!(result.is_ok());
     let response = result.unwrap().into_response();
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -332,20 +367,17 @@ async fn test_up_records_metrics() {
     let mut app_manager = MockAppManager::new();
     let test_app = create_test_app("test_app", true);
     app_manager.expect_find_by_id("test_app".to_string(), test_app);
-    
+
     let handler = create_test_connection_handler_with_app_manager(app_manager);
     let handler_arc = Arc::new(handler);
-    
+
     // Call the up endpoint with specific app_id
-    let result = up(
-        Some(Path("test_app".to_string())), 
-        State(handler_arc)
-    ).await;
-    
+    let result = up(Some(Path("test_app".to_string())), State(handler_arc)).await;
+
     assert!(result.is_ok());
     let response = result.unwrap().into_response();
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // The test passes if metrics recording doesn't cause any issues
     // Actual metrics verification would require a more sophisticated mock
 }
