@@ -109,6 +109,46 @@ struct SockudoServer {
     handler: Arc<ConnectionHandler>,
 }
 
+/// Normalize URI path by removing trailing slashes (except for root "/")
+fn normalize_uri_path(path: &str) -> String {
+    if path.len() > 1 && path.ends_with('/') {
+        path[..path.len() - 1].to_string()
+    } else {
+        path.to_string()
+    }
+}
+
+/// Common logic for URI normalization
+fn normalize_request_uri<B>(mut req: Request<B>) -> Request<B> {
+    let uri = req.uri();
+    let normalized_path = normalize_uri_path(uri.path());
+    
+    if normalized_path != uri.path() {
+        let mut parts = uri.clone().into_parts();
+        if let Some(path_and_query) = &parts.path_and_query {
+            let query = path_and_query.query().map(|q| format!("?{}", q)).unwrap_or_default();
+            let new_path_and_query = format!("{}{}", normalized_path, query);
+            if let Ok(new_pq) = new_path_and_query.parse() {
+                parts.path_and_query = Some(new_pq);
+                if let Ok(new_uri) = Uri::from_parts(parts) {
+                    *req.uri_mut() = new_uri;
+                }
+            }
+        }
+    }
+    req
+}
+
+/// Request URI rewriter for SSL connections
+fn rewrite_request_uri_ssl<B>(req: Request<B>) -> Request<B> {
+    normalize_request_uri(req)
+}
+
+/// Request URI rewriter for non-SSL connections
+fn rewrite_request_uri<B>(req: Request<B>) -> Request<B> {
+    normalize_request_uri(req)
+}
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -709,53 +749,6 @@ impl SockudoServer {
         info!("Starting Sockudo server services (after init)...");
 
         let http_router = self.configure_http_routes();
-        fn normalize_uri_path(path: &str) -> String {
-            if path.len() > 1 && path.ends_with('/') {
-                path[..path.len() - 1].to_string()
-            } else {
-                path.to_string()
-            }
-        }
-
-        fn rewrite_request_uri_ssl<B>(mut req: Request<B>) -> Request<B> {
-            let uri = req.uri();
-            let normalized_path = normalize_uri_path(uri.path());
-            
-            if normalized_path != uri.path() {
-                let mut parts = uri.clone().into_parts();
-                if let Some(path_and_query) = &parts.path_and_query {
-                    let query = path_and_query.query().map(|q| format!("?{}", q)).unwrap_or_default();
-                    let new_path_and_query = format!("{}{}", normalized_path, query);
-                    if let Ok(new_pq) = new_path_and_query.parse() {
-                        parts.path_and_query = Some(new_pq);
-                        if let Ok(new_uri) = Uri::from_parts(parts) {
-                            *req.uri_mut() = new_uri;
-                        }
-                    }
-                }
-            }
-            req
-        }
-        
-        fn rewrite_request_uri<B>(mut req: Request<B>) -> Request<B> {
-            let uri = req.uri();
-            let normalized_path = normalize_uri_path(uri.path());
-            
-            if normalized_path != uri.path() {
-                let mut parts = uri.clone().into_parts();
-                if let Some(path_and_query) = &parts.path_and_query {
-                    let query = path_and_query.query().map(|q| format!("?{}", q)).unwrap_or_default();
-                    let new_path_and_query = format!("{}{}", normalized_path, query);
-                    if let Ok(new_pq) = new_path_and_query.parse() {
-                        parts.path_and_query = Some(new_pq);
-                        if let Ok(new_uri) = Uri::from_parts(parts) {
-                            *req.uri_mut() = new_uri;
-                        }
-                    }
-                }
-            }
-            req
-        }
 
         let middleware = tower::util::MapRequestLayer::new(rewrite_request_uri);
         let router_with_middleware = middleware.layer(http_router.clone());
