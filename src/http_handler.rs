@@ -966,7 +966,7 @@ pub async fn up(
         // Specific app health check
         tracing::Span::current().record("app_id", &app_id);
         debug!("Health check received for app_id: {}", app_id);
-        
+
         // Check if specific app exists and is enabled
         let app_check = timeout(
             Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS),
@@ -998,12 +998,12 @@ pub async fn up(
                 )])
             }
         };
-        
+
         (app_status, app_id)
     } else {
         // General system health check
         debug!("General health check received (no app_id)");
-        
+
         // Check if at least one app is configured
         let apps_check = timeout(
             Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS),
@@ -1032,7 +1032,7 @@ pub async fn up(
                 )])
             }
         };
-        
+
         (app_status, "system".to_string())
     };
 
@@ -1118,19 +1118,19 @@ pub async fn metrics(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::memory_app_manager::MemoryAppManager;
     use crate::app::config::App;
     use crate::app::manager::AppManager;
+    use crate::app::memory_app_manager::MemoryAppManager;
 
     #[tokio::test]
     async fn test_system_health_check_no_apps() {
         // Create a test handler with memory app manager
         let _app_manager = Arc::new(MemoryAppManager::new());
-        
+
         // Mock a minimal ConnectionHandler for testing
         // Note: In a real test, you'd use proper mocks or test utilities
         // This is a simplified test to demonstrate the behavior
-        
+
         // Test general health check with no apps configured
         // Should return Error status with "No apps configured" message
     }
@@ -1138,7 +1138,7 @@ mod tests {
     #[tokio::test]
     async fn test_system_health_check_with_apps() {
         let _app_manager = Arc::new(MemoryAppManager::new());
-        
+
         // Add a test app
         let test_app = App {
             id: "test-app".to_string(),
@@ -1148,7 +1148,7 @@ mod tests {
             ..Default::default()
         };
         _app_manager.create_app(test_app).await.unwrap();
-        
+
         // Test general health check with at least one app
         // Should proceed to system health checks
     }
@@ -1156,7 +1156,7 @@ mod tests {
     #[tokio::test]
     async fn test_app_specific_health_check_enabled() {
         let _app_manager = Arc::new(MemoryAppManager::new());
-        
+
         // Add an enabled test app
         let test_app = App {
             id: "enabled-app".to_string(),
@@ -1166,7 +1166,7 @@ mod tests {
             ..Default::default()
         };
         _app_manager.create_app(test_app).await.unwrap();
-        
+
         // Test specific app health check for enabled app
         // Should proceed to system health checks
     }
@@ -1174,7 +1174,7 @@ mod tests {
     #[tokio::test]
     async fn test_app_specific_health_check_disabled() {
         let _app_manager = Arc::new(MemoryAppManager::new());
-        
+
         // Add a disabled test app
         let test_app = App {
             id: "disabled-app".to_string(),
@@ -1184,7 +1184,7 @@ mod tests {
             ..Default::default()
         };
         _app_manager.create_app(test_app).await.unwrap();
-        
+
         // Test specific app health check for disabled app
         // Should return Error status with "App is disabled" message
     }
@@ -1192,7 +1192,7 @@ mod tests {
     #[tokio::test]
     async fn test_app_specific_health_check_nonexistent() {
         let _app_manager = Arc::new(MemoryAppManager::new());
-        
+
         // Test specific app health check for non-existent app
         // Should return NotFound status
     }
