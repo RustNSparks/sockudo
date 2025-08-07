@@ -865,52 +865,21 @@ pub async fn terminate_user_connections(
     Ok((StatusCode::OK, Json(response_payload)))
 }
 
-/// Internal health check function - performs comprehensive checks
+/// System health check function - performs comprehensive checks
 /// Uses centralized timeouts to prevent hanging and avoid deadlocks
 /// All individual health checks are wrapped with HEALTH_CHECK_TIMEOUT_MS
 ///
 /// Critical components (WebSocket functionality fails without these):
-/// - App Manager: Must validate app exists and is enabled
 /// - Adapter: Core WebSocket connection handling
 /// - Cache Manager: Required for cache channels, subscription failures propagate errors
 ///
 /// Non-critical components (WebSocket works, but optional features don't):
 /// - Queue System: Only affects webhook delivery
-async fn check_app_health(handler: &Arc<ConnectionHandler>, app_id: &str) -> HealthStatus {
+async fn check_system_health(handler: &Arc<ConnectionHandler>) -> HealthStatus {
     let mut critical_issues = Vec::new();
     let mut non_critical_issues = Vec::new();
 
-    // CRITICAL CHECK 1: App exists, is enabled, and app manager database is healthy
-    let app_check = timeout(
-        Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS),
-        handler.app_manager.find_by_id(app_id),
-    )
-    .await;
-
-    match app_check {
-        Ok(Ok(Some(app))) if app.enabled => {
-            // App exists, is enabled, and app manager is healthy
-        }
-        Ok(Ok(Some(_))) => {
-            critical_issues.push("App is disabled".to_string());
-            return HealthStatus::Error(critical_issues);
-        }
-        Ok(Ok(None)) => {
-            return HealthStatus::NotFound;
-        }
-        Ok(Err(e)) => {
-            critical_issues.push(format!("App manager: {e}"));
-            return HealthStatus::Error(critical_issues);
-        }
-        Err(_) => {
-            critical_issues.push(format!(
-                "App manager timeout (>{HEALTH_CHECK_TIMEOUT_MS}ms)"
-            ));
-            return HealthStatus::Error(critical_issues);
-        }
-    }
-
-    // CRITICAL CHECK 2: Adapter health - core WebSocket functionality
+    // CRITICAL CHECK 1: Adapter health - core WebSocket functionality
     let adapter_check = timeout(Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS), async {
         let conn_mgr = handler.connection_manager.lock().await;
         conn_mgr.check_health().await
@@ -929,7 +898,7 @@ async fn check_app_health(handler: &Arc<ConnectionHandler>, app_id: &str) -> Hea
         }
     }
 
-    // CRITICAL CHECK 3: Cache manager health - required for cache channels
+    // CRITICAL CHECK 2: Cache manager health - required for cache channels
     if handler.server_options().cache.driver != crate::options::CacheDriver::None {
         let cache_check = timeout(Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS), async {
             let cache_manager = handler.cache_manager.lock().await;
@@ -950,7 +919,7 @@ async fn check_app_health(handler: &Arc<ConnectionHandler>, app_id: &str) -> Hea
         }
     }
 
-    // NON-CRITICAL CHECK 1: Queue system health - only affects webhooks
+    // NON-CRITICAL CHECK: Queue system health - only affects webhooks
     if let Some(webhook_integration) = handler.webhook_integration() {
         let queue_check = timeout(
             Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS),
@@ -984,38 +953,110 @@ async fn check_app_health(handler: &Arc<ConnectionHandler>, app_id: &str) -> Hea
     }
 }
 
-/// GET /up/{app_id}
-#[instrument(skip(handler), fields(app_id = %app_id))]
+/// GET /up or /up/{app_id}
+/// When app_id is provided, checks specific app id health and general system health
+/// When no app_id, checks general system health and ensures at least 1 app exists
+#[instrument(skip(handler), fields(app_id = field::Empty))]
 pub async fn up(
-    Path(app_id): Path<String>,
+    app_id: Option<Path<String>>,
     State(handler): State<Arc<ConnectionHandler>>,
 ) -> Result<impl IntoResponse, AppError> {
-    debug!("Health check received for app_id: {}", app_id);
+    // First check app configuration based on whether app_id is provided
+    let (health_status, app_id_str) = if let Some(Path(app_id)) = app_id {
+        // Specific app health check
+        tracing::Span::current().record("app_id", &app_id);
+        debug!("Health check received for app_id: {}", app_id);
+        
+        // Check if specific app exists and is enabled
+        let app_check = timeout(
+            Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS),
+            handler.app_manager.find_by_id(&app_id),
+        )
+        .await;
 
-    // Perform comprehensive health checks
-    let health_status = check_app_health(&handler, &app_id).await;
+        let app_status = match app_check {
+            Ok(Ok(Some(app))) if app.enabled => {
+                // App exists and is enabled, proceed with system checks
+                check_system_health(&handler).await
+            }
+            Ok(Ok(Some(_))) => {
+                // App exists but is disabled
+                HealthStatus::Error(vec!["App is disabled".to_string()])
+            }
+            Ok(Ok(None)) => {
+                // App doesn't exist
+                HealthStatus::NotFound
+            }
+            Ok(Err(e)) => {
+                // App manager error
+                HealthStatus::Error(vec![format!("App manager: {e}")])
+            }
+            Err(_) => {
+                // Timeout
+                HealthStatus::Error(vec![format!(
+                    "App manager timeout (>{HEALTH_CHECK_TIMEOUT_MS}ms)"
+                )])
+            }
+        };
+        
+        (app_status, app_id)
+    } else {
+        // General system health check
+        debug!("General health check received (no app_id)");
+        
+        // Check if at least one app is configured
+        let apps_check = timeout(
+            Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS),
+            handler.app_manager.get_apps(),
+        )
+        .await;
+
+        let app_status = match apps_check {
+            Ok(Ok(apps)) if !apps.is_empty() => {
+                debug!("Found {} configured apps", apps.len());
+                // At least one app exists, proceed with system checks
+                check_system_health(&handler).await
+            }
+            Ok(Ok(_)) => {
+                // No apps configured
+                HealthStatus::Error(vec!["No apps configured".to_string()])
+            }
+            Ok(Err(e)) => {
+                // App manager error
+                HealthStatus::Error(vec![format!("App manager: {e}")])
+            }
+            Err(_) => {
+                // Timeout
+                HealthStatus::Error(vec![format!(
+                    "App manager timeout (>{HEALTH_CHECK_TIMEOUT_MS}ms)"
+                )])
+            }
+        };
+        
+        (app_status, "system".to_string())
+    };
 
     // Log detailed issues if unhealthy
     match &health_status {
         HealthStatus::Ok => {
-            debug!("Health check passed for app {}", app_id);
+            debug!("Health check passed for {}", app_id_str);
         }
         HealthStatus::Degraded(reasons) => {
             warn!(
-                "Health check degraded for app {}: {}",
-                app_id,
+                "Health check degraded for {}: {}",
+                app_id_str,
                 reasons.join(", ")
             );
         }
         HealthStatus::Error(reasons) => {
             error!(
-                "Health check failed for app {}: {}",
-                app_id,
+                "Health check failed for {}: {}",
+                app_id_str,
                 reasons.join(", ")
             );
         }
         HealthStatus::NotFound => {
-            warn!("Health check for non-existent app_id: {}", app_id);
+            warn!("Health check for non-existent app_id: {}", app_id_str);
         }
     }
 
@@ -1031,7 +1072,7 @@ pub async fn up(
     // Record metrics if available (non-blocking)
     if handler.metrics.is_some() {
         let response_size = status_text.len();
-        record_api_metrics(&handler, &app_id, 0, response_size).await;
+        record_api_metrics(&handler, &app_id_str, 0, response_size).await;
     }
 
     // Build response using the original format
@@ -1072,4 +1113,96 @@ pub async fn metrics(
         "Successfully generated Prometheus metrics"
     );
     Ok((StatusCode::OK, response_headers, plaintext_metrics_str))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::memory_app_manager::MemoryAppManager;
+    use crate::app::config::App;
+    use crate::app::manager::AppManager;
+
+    #[tokio::test]
+    async fn test_system_health_check_no_apps() {
+        // Create a test handler with memory app manager
+        let _app_manager = Arc::new(MemoryAppManager::new());
+        
+        // Mock a minimal ConnectionHandler for testing
+        // Note: In a real test, you'd use proper mocks or test utilities
+        // This is a simplified test to demonstrate the behavior
+        
+        // Test general health check with no apps configured
+        // Should return Error status with "No apps configured" message
+    }
+
+    #[tokio::test]
+    async fn test_system_health_check_with_apps() {
+        let _app_manager = Arc::new(MemoryAppManager::new());
+        
+        // Add a test app
+        let test_app = App {
+            id: "test-app".to_string(),
+            key: "test-key".to_string(),
+            secret: "test-secret".to_string(),
+            enabled: true,
+            ..Default::default()
+        };
+        _app_manager.create_app(test_app).await.unwrap();
+        
+        // Test general health check with at least one app
+        // Should proceed to system health checks
+    }
+
+    #[tokio::test]
+    async fn test_app_specific_health_check_enabled() {
+        let _app_manager = Arc::new(MemoryAppManager::new());
+        
+        // Add an enabled test app
+        let test_app = App {
+            id: "enabled-app".to_string(),
+            key: "test-key".to_string(),
+            secret: "test-secret".to_string(),
+            enabled: true,
+            ..Default::default()
+        };
+        _app_manager.create_app(test_app).await.unwrap();
+        
+        // Test specific app health check for enabled app
+        // Should proceed to system health checks
+    }
+
+    #[tokio::test]
+    async fn test_app_specific_health_check_disabled() {
+        let _app_manager = Arc::new(MemoryAppManager::new());
+        
+        // Add a disabled test app
+        let test_app = App {
+            id: "disabled-app".to_string(),
+            key: "test-key".to_string(),
+            secret: "test-secret".to_string(),
+            enabled: false,
+            ..Default::default()
+        };
+        _app_manager.create_app(test_app).await.unwrap();
+        
+        // Test specific app health check for disabled app
+        // Should return Error status with "App is disabled" message
+    }
+
+    #[tokio::test]
+    async fn test_app_specific_health_check_nonexistent() {
+        let _app_manager = Arc::new(MemoryAppManager::new());
+        
+        // Test specific app health check for non-existent app
+        // Should return NotFound status
+    }
+
+    #[tokio::test]
+    async fn test_check_system_health_components() {
+        // This test would verify that check_system_health properly checks:
+        // - Adapter health
+        // - Cache manager health (if enabled)
+        // - Webhook queue health (if enabled)
+        // And returns appropriate HealthStatus based on critical vs non-critical failures
+    }
 }

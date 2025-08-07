@@ -686,7 +686,8 @@ impl SockudoServer {
                 )),
             )
             .route("/usage", get(usage))
-            .route("/up/{appId}", get(up)) // Corrected Axum path param syntax
+            .route("/up/{appId}", get(up.clone())) // App-specific health check
+            .route("/up", get(up)) // General health check
             .layer(cors); // Apply CORS layer
 
         // Apply rate limiter middleware if it was created
