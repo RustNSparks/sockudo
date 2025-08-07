@@ -73,9 +73,9 @@ impl SqsQueueManager {
         // If custom prefix is provided, use that to construct queue URL
         if let Some(prefix) = &self.config.queue_url_prefix {
             let queue_url = if self.config.fifo {
-                format!("{}/{}.fifo", prefix, queue_name)
+                format!("{prefix}/{queue_name}.fifo")
             } else {
-                format!("{}/{}", prefix, queue_name)
+                format!("{prefix}/{queue_name}")
             };
 
             // Cache the URL
@@ -87,7 +87,7 @@ impl SqsQueueManager {
 
         // Try to get the queue URL from AWS
         let actual_queue_name = if self.config.fifo && !queue_name.ends_with(".fifo") {
-            format!("{}.fifo", queue_name)
+            format!("{queue_name}.fifo")
         } else {
             queue_name.to_string()
         };
@@ -108,8 +108,7 @@ impl SqsQueueManager {
                     Ok(url.to_string())
                 } else {
                     Err(Error::Queue(format!(
-                        "No URL returned for queue: {}",
-                        queue_name
+                        "No URL returned for queue: {queue_name}"
                     )))
                 }
             }
@@ -120,7 +119,7 @@ impl SqsQueueManager {
                 {
                     self.create_queue(queue_name).await
                 } else {
-                    Err(Error::Queue(format!("Failed to get queue URL: {}", e)))
+                    Err(Error::Queue(format!("Failed to get queue URL: {e}")))
                 }
             }
         }
@@ -131,7 +130,7 @@ impl SqsQueueManager {
         info!("{}", format!("Creating SQS queue: {}", queue_name));
 
         let actual_queue_name = if self.config.fifo && !queue_name.ends_with(".fifo") {
-            format!("{}.fifo", queue_name)
+            format!("{queue_name}.fifo")
         } else {
             queue_name.to_string()
         };
@@ -164,9 +163,7 @@ impl SqsQueueManager {
             .set_attributes(Some(attributes))
             .send()
             .await
-            .map_err(|e| {
-                Error::Queue(format!("Failed to create SQS queue {}: {}", queue_name, e))
-            })?;
+            .map_err(|e| Error::Queue(format!("Failed to create SQS queue {queue_name}: {e}")))?;
 
         if let Some(url) = result.queue_url() {
             // Cache the URL
@@ -176,8 +173,7 @@ impl SqsQueueManager {
             Ok(url.to_string())
         } else {
             Err(Error::Queue(format!(
-                "No URL returned after creating queue: {}",
-                queue_name
+                "No URL returned after creating queue: {queue_name}"
             )))
         }
     }
@@ -358,7 +354,7 @@ impl QueueInterface for SqsQueueManager {
 
         // Serialize the job data
         let data_json = serde_json::to_string(&data)
-            .map_err(|e| Error::Queue(format!("Failed to serialize job data: {}", e)))?;
+            .map_err(|e| Error::Queue(format!("Failed to serialize job data: {e}")))?;
 
         // Build send message request
         let mut send_message_request = self
@@ -382,8 +378,7 @@ impl QueueInterface for SqsQueueManager {
         // Send the message to SQS
         let result = send_message_request.send().await.map_err(|e| {
             Error::Queue(format!(
-                "Failed to send message to SQS queue {}: {}",
-                queue_name, e
+                "Failed to send message to SQS queue {queue_name}: {e}"
             ))
         })?;
 
@@ -462,9 +457,11 @@ impl QueueInterface for SqsQueueManager {
     }
 
     async fn check_health(&self) -> crate::error::Result<()> {
-        self.client.list_queues().send().await.map_err(|e| {
-            crate::error::Error::Queue(format!("Queue SQS connection failed: {}", e))
-        })?;
+        self.client
+            .list_queues()
+            .send()
+            .await
+            .map_err(|e| crate::error::Error::Queue(format!("Queue SQS connection failed: {e}")))?;
         Ok(())
     }
 }

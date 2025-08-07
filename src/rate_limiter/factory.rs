@@ -67,8 +67,7 @@ impl RateLimiterFactory {
 
         let client = redis::Client::open(redis_url.as_str()).map_err(|e| {
             crate::error::Error::Redis(format!(
-                "Failed to create Redis client for rate limiter: {}",
-                e
+                "Failed to create Redis client for rate limiter: {e}"
             ))
         })?;
 
@@ -110,8 +109,7 @@ impl RateLimiterFactory {
 
         let client = redis::cluster::ClusterClient::new(nodes).map_err(|e| {
             crate::error::Error::Redis(format!(
-                "Failed to create Redis cluster client for rate limiter: {}",
-                e
+                "Failed to create Redis cluster client for rate limiter: {e}"
             ))
         })?;
 

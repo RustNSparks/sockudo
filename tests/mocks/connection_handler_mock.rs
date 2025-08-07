@@ -32,6 +32,12 @@ pub struct MockAdapter {
     expected_auth: Option<String>,
 }
 
+impl Default for MockAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockAdapter {
     pub fn new() -> Self {
         Self {
@@ -199,6 +205,12 @@ pub struct MockAppManager {
     app_to_return: Option<App>,
 }
 
+impl Default for MockAppManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockAppManager {
     pub fn new() -> Self {
         Self {
@@ -269,6 +281,12 @@ impl Clone for MockChannelManager {
     }
 }
 
+impl Default for MockChannelManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockChannelManager {
     pub fn new() -> Self {
         Self {
@@ -317,6 +335,12 @@ impl MockChannelManager {
 }
 
 pub struct MockCacheManager;
+impl Default for MockCacheManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockCacheManager {
     pub fn new() -> Self {
         Self
@@ -349,6 +373,12 @@ impl CacheManager for MockCacheManager {
 }
 
 pub struct MockMetricsInterface;
+impl Default for MockMetricsInterface {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockMetricsInterface {
     pub fn new() -> Self {
         Self
@@ -406,6 +436,12 @@ impl MetricsInterface for MockMetricsInterface {
 }
 
 pub struct MockRateLimiter;
+impl Default for MockRateLimiter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockRateLimiter {
     pub fn new() -> Self {
         Self

@@ -98,7 +98,7 @@ impl ConnectionHandler {
             conn_locked
                 .close(code, reason.to_string())
                 .await
-                .map_err(|e| Error::Internal(format!("Failed to close connection: {}", e)))
+                .map_err(|e| Error::Internal(format!("Failed to close connection: {e}")))
         } else {
             warn!("Connection not found for close: {}", socket_id);
             Ok(())
@@ -129,8 +129,7 @@ impl ConnectionHandler {
 
         if !is_subscribed {
             return Err(Error::ClientEvent(format!(
-                "Socket {} is not subscribed to channel {}",
-                socket_id, channel
+                "Socket {socket_id} is not subscribed to channel {channel}"
             )));
         }
 

@@ -535,14 +535,14 @@ impl ConnectionHandler {
         channel: &str,
     ) -> Result<()> {
         let mut cache_manager = self.cache_manager.lock().await;
-        let cache_key = format!("app:{}:channel:{}:cache_miss", app_id, channel);
+        let cache_key = format!("app:{app_id}:channel:{channel}:cache_miss");
 
         match cache_manager.get(&cache_key).await {
             Ok(Some(cache_content)) => {
                 // Found cached content, send it to the socket
                 let cache_message: PusherMessage =
                     serde_json::from_str(&cache_content).map_err(|e| {
-                        Error::InvalidMessageFormat(format!("Invalid cached message format: {}", e))
+                        Error::InvalidMessageFormat(format!("Invalid cached message format: {e}"))
                     })?;
 
                 self.send_message_to_socket(app_id, socket_id, cache_message)
@@ -599,8 +599,7 @@ impl ConnectionHandler {
                     .await?;
 
                 return Err(Error::Internal(format!(
-                    "Cache retrieval failed for channel {}: {}",
-                    channel, e
+                    "Cache retrieval failed for channel {channel}: {e}"
                 )));
             }
         }
@@ -617,10 +616,10 @@ impl ConnectionHandler {
         ttl_seconds: Option<u64>,
     ) -> Result<()> {
         let mut cache_manager = self.cache_manager.lock().await;
-        let cache_key = format!("app:{}:channel:{}:cache_miss", app_id, channel);
+        let cache_key = format!("app:{app_id}:channel:{channel}:cache_miss");
 
         let message_json = serde_json::to_string(message).map_err(|e| {
-            Error::InvalidMessageFormat(format!("Failed to serialize message for cache: {}", e))
+            Error::InvalidMessageFormat(format!("Failed to serialize message for cache: {e}"))
         })?;
 
         match ttl_seconds {
@@ -628,15 +627,13 @@ impl ConnectionHandler {
                 cache_manager
                     .set(&cache_key, &message_json, ttl)
                     .await
-                    .map_err(|e| {
-                        Error::Internal(format!("Failed to store cache with TTL: {}", e))
-                    })?;
+                    .map_err(|e| Error::Internal(format!("Failed to store cache with TTL: {e}")))?;
             }
             None => {
                 cache_manager
                     .set(&cache_key, &message_json, 0)
                     .await
-                    .map_err(|e| Error::Internal(format!("Failed to store cache: {}", e)))?;
+                    .map_err(|e| Error::Internal(format!("Failed to store cache: {e}")))?;
             }
         }
 
@@ -647,13 +644,10 @@ impl ConnectionHandler {
     /// Clear cache for a specific channel
     pub async fn clear_cache_for_channel(&self, app_id: &str, channel: &str) -> Result<()> {
         let mut cache_manager = self.cache_manager.lock().await;
-        let cache_key = format!("app:{}:channel:{}:cache_miss", app_id, channel);
+        let cache_key = format!("app:{app_id}:channel:{channel}:cache_miss");
 
         cache_manager.remove(&cache_key).await.map_err(|e| {
-            Error::Internal(format!(
-                "Failed to clear cache for channel {}: {}",
-                channel, e
-            ))
+            Error::Internal(format!("Failed to clear cache for channel {channel}: {e}"))
         })?;
 
         debug!("Cleared cache for channel {} in app {}", channel, app_id);
@@ -663,7 +657,7 @@ impl ConnectionHandler {
     /// Check if a channel has cached content
     pub async fn has_cache_for_channel(&self, app_id: &str, channel: &str) -> Result<bool> {
         let mut cache_manager = self.cache_manager.lock().await;
-        let cache_key = format!("app:{}:channel:{}:cache_miss", app_id, channel);
+        let cache_key = format!("app:{app_id}:channel:{channel}:cache_miss");
 
         match cache_manager.get(&cache_key).await {
             Ok(Some(_)) => Ok(true),

@@ -252,7 +252,7 @@ impl ChannelManager {
                 if ChannelType::from_name(&channel) == ChannelType::Presence {
                     format!("{}:{}:{}", socket_id, channel, channel_data.unwrap())
                 } else {
-                    format!("{}:{}", socket_id, channel)
+                    format!("{socket_id}:{channel}")
                 }
             }
             MessageData::Json(data) => {
@@ -265,9 +265,9 @@ impl ChannelManager {
                     .and_then(|v| v.as_str())
                     .unwrap_or_default();
                 if ChannelType::from_name(channel) == ChannelType::Presence {
-                    format!("{}:{}:{}", socket_id, channel, channel_data)
+                    format!("{socket_id}:{channel}:{channel_data}")
                 } else {
-                    format!("{}:{}", socket_id, channel)
+                    format!("{socket_id}:{channel}")
                 }
             }
             MessageData::String(data) => {
@@ -281,9 +281,9 @@ impl ChannelManager {
                     .and_then(|v| v.as_str())
                     .unwrap_or_default();
                 if ChannelType::from_name(channel) == ChannelType::Presence {
-                    format!("{}:{}:{}", socket_id, channel, channel_data)
+                    format!("{socket_id}:{channel}:{channel_data}")
                 } else {
-                    format!("{}:{}", socket_id, channel)
+                    format!("{socket_id}:{channel}")
                 }
             }
         }

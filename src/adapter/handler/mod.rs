@@ -346,7 +346,7 @@ impl ConnectionHandler {
                 self.handle_signin_request(socket_id, &app_config, request)
                     .await
             }
-            "pusher:pong" => self.handle_pong(&*app_config.id, socket_id).await,
+            "pusher:pong" => self.handle_pong(&app_config.id, socket_id).await,
             _ if event_name.starts_with(CLIENT_EVENT_PREFIX) => {
                 let request = self.parse_client_event(&message)?;
                 self.handle_client_event_request(socket_id, &app_config, request)
@@ -361,10 +361,10 @@ impl ConnectionHandler {
 
     fn parse_message(&self, frame: &Frame<'static>) -> Result<PusherMessage> {
         let payload = String::from_utf8(frame.payload.to_vec())
-            .map_err(|e| Error::InvalidMessageFormat(format!("Invalid UTF-8: {}", e)))?;
+            .map_err(|e| Error::InvalidMessageFormat(format!("Invalid UTF-8: {e}")))?;
 
         serde_json::from_str(&payload)
-            .map_err(|e| Error::InvalidMessageFormat(format!("Invalid JSON: {}", e)))
+            .map_err(|e| Error::InvalidMessageFormat(format!("Invalid JSON: {e}")))
     }
 
     fn parse_client_event(&self, message: &PusherMessage) -> Result<ClientEventRequest> {

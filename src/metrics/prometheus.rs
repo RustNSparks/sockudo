@@ -52,7 +52,7 @@ impl PrometheusMetricsDriver {
         // Initialize all metrics
         let connected_sockets = register_gauge_vec!(
             Opts::new(
-                format!("{}connected", prefix),
+                format!("{prefix}connected"),
                 "The number of currently connected sockets"
             ),
             &["app_id", "port"]
@@ -61,7 +61,7 @@ impl PrometheusMetricsDriver {
 
         let new_connections_total = register_counter_vec!(
             Opts::new(
-                format!("{}new_connections_total", prefix),
+                format!("{prefix}new_connections_total"),
                 "Total amount of sockudo connection requests"
             ),
             &["app_id", "port"]
@@ -70,7 +70,7 @@ impl PrometheusMetricsDriver {
 
         let new_disconnections_total = register_counter_vec!(
             Opts::new(
-                format!("{}new_disconnections_total", prefix),
+                format!("{prefix}new_disconnections_total"),
                 "Total amount of sockudo disconnections"
             ),
             &["app_id", "port"]
@@ -79,7 +79,7 @@ impl PrometheusMetricsDriver {
 
         let connection_errors_total = register_counter_vec!(
             Opts::new(
-                format!("{}connection_errors_total", prefix),
+                format!("{prefix}connection_errors_total"),
                 "Total amount of connection errors by type"
             ),
             &["app_id", "port", "error_type"]
@@ -88,7 +88,7 @@ impl PrometheusMetricsDriver {
 
         let socket_bytes_received = register_counter_vec!(
             Opts::new(
-                format!("{}socket_received_bytes", prefix),
+                format!("{prefix}socket_received_bytes"),
                 "Total amount of bytes that sockudo received"
             ),
             &["app_id", "port"]
@@ -97,7 +97,7 @@ impl PrometheusMetricsDriver {
 
         let socket_bytes_transmitted = register_counter_vec!(
             Opts::new(
-                format!("{}socket_transmitted_bytes", prefix),
+                format!("{prefix}socket_transmitted_bytes"),
                 "Total amount of bytes that sockudo transmitted"
             ),
             &["app_id", "port"]
@@ -106,7 +106,7 @@ impl PrometheusMetricsDriver {
 
         let ws_messages_received = register_counter_vec!(
             Opts::new(
-                format!("{}ws_messages_received_total", prefix),
+                format!("{prefix}ws_messages_received_total"),
                 "The total amount of WS messages received from connections by the server"
             ),
             &["app_id", "port"]
@@ -115,7 +115,7 @@ impl PrometheusMetricsDriver {
 
         let ws_messages_sent = register_counter_vec!(
             Opts::new(
-                format!("{}ws_messages_sent_total", prefix),
+                format!("{prefix}ws_messages_sent_total"),
                 "The total amount of WS messages sent to the connections from the server"
             ),
             &["app_id", "port"]
@@ -124,7 +124,7 @@ impl PrometheusMetricsDriver {
 
         let http_bytes_received = register_counter_vec!(
             Opts::new(
-                format!("{}http_received_bytes", prefix),
+                format!("{prefix}http_received_bytes"),
                 "Total amount of bytes that sockudo's REST API received"
             ),
             &["app_id", "port"]
@@ -133,7 +133,7 @@ impl PrometheusMetricsDriver {
 
         let http_bytes_transmitted = register_counter_vec!(
             Opts::new(
-                format!("{}http_transmitted_bytes", prefix),
+                format!("{prefix}http_transmitted_bytes"),
                 "Total amount of bytes that sockudo's REST API sent back"
             ),
             &["app_id", "port"]
@@ -142,7 +142,7 @@ impl PrometheusMetricsDriver {
 
         let http_calls_received = register_counter_vec!(
             Opts::new(
-                format!("{}http_calls_received_total", prefix),
+                format!("{prefix}http_calls_received_total"),
                 "Total amount of received REST API calls"
             ),
             &["app_id", "port"]
@@ -158,7 +158,7 @@ impl PrometheusMetricsDriver {
 
         let horizontal_adapter_resolved_promises = register_counter_vec!(
             Opts::new(
-                format!("{}horizontal_adapter_resolved_promises", prefix),
+                format!("{prefix}horizontal_adapter_resolved_promises"),
                 "The total amount of promises that were fulfilled by other nodes"
             ),
             &["app_id", "port"]
@@ -167,7 +167,7 @@ impl PrometheusMetricsDriver {
 
         let horizontal_adapter_uncomplete_promises = register_counter_vec!(
             Opts::new(
-                format!("{}horizontal_adapter_uncomplete_promises", prefix),
+                format!("{prefix}horizontal_adapter_uncomplete_promises"),
                 "The total amount of promises that were not fulfilled entirely by other nodes"
             ),
             &["app_id", "port"]
@@ -176,7 +176,7 @@ impl PrometheusMetricsDriver {
 
         let horizontal_adapter_sent_requests = register_counter_vec!(
             Opts::new(
-                format!("{}horizontal_adapter_sent_requests", prefix),
+                format!("{prefix}horizontal_adapter_sent_requests"),
                 "The total amount of sent requests to other nodes"
             ),
             &["app_id", "port"]
@@ -185,7 +185,7 @@ impl PrometheusMetricsDriver {
 
         let horizontal_adapter_received_requests = register_counter_vec!(
             Opts::new(
-                format!("{}horizontal_adapter_received_requests", prefix),
+                format!("{prefix}horizontal_adapter_received_requests"),
                 "The total amount of received requests from other nodes"
             ),
             &["app_id", "port"]
@@ -194,7 +194,7 @@ impl PrometheusMetricsDriver {
 
         let horizontal_adapter_received_responses = register_counter_vec!(
             Opts::new(
-                format!("{}horizontal_adapter_received_responses", prefix),
+                format!("{prefix}horizontal_adapter_received_responses"),
                 "The total amount of received responses from other nodes"
             ),
             &["app_id", "port"]
@@ -203,7 +203,7 @@ impl PrometheusMetricsDriver {
 
         let rate_limit_checks_total = register_counter_vec!(
             Opts::new(
-                format!("{}rate_limit_checks_total", prefix),
+                format!("{prefix}rate_limit_checks_total"),
                 "Total number of rate limit checks performed"
             ),
             &["app_id", "port", "limiter_type", "request_context"]
@@ -212,7 +212,7 @@ impl PrometheusMetricsDriver {
 
         let rate_limit_triggered_total = register_counter_vec!(
             Opts::new(
-                format!("{}rate_limit_triggered_total", prefix),
+                format!("{prefix}rate_limit_triggered_total"),
                 "Total number of times rate limit was triggered"
             ),
             &["app_id", "port", "limiter_type", "request_context"]
@@ -221,7 +221,7 @@ impl PrometheusMetricsDriver {
 
         let channel_subscriptions_total = register_counter_vec!(
             Opts::new(
-                format!("{}channel_subscriptions_total", prefix),
+                format!("{prefix}channel_subscriptions_total"),
                 "Total number of channel subscriptions"
             ),
             &["app_id", "port", "channel_type"]
@@ -230,7 +230,7 @@ impl PrometheusMetricsDriver {
 
         let channel_unsubscriptions_total = register_counter_vec!(
             Opts::new(
-                format!("{}channel_unsubscriptions_total", prefix),
+                format!("{prefix}channel_unsubscriptions_total"),
                 "Total number of channel unsubscriptions"
             ),
             &["app_id", "port", "channel_type"]
@@ -239,7 +239,7 @@ impl PrometheusMetricsDriver {
 
         let active_channels = register_gauge_vec!(
             Opts::new(
-                format!("{}active_channels", prefix),
+                format!("{prefix}active_channels"),
                 "Number of currently active channels"
             ),
             &["app_id", "port", "channel_type"]

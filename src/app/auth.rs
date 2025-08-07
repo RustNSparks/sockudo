@@ -159,8 +159,7 @@ impl AuthValidator {
                     uppercased_http_method
                 );
                 return Err(Error::Auth(format!(
-                    "body_md5 must not be present in query parameters for {} requests",
-                    uppercased_http_method
+                    "body_md5 must not be present in query parameters for {uppercased_http_method} requests"
                 )));
             }
             // No body_md5 to include for GET
@@ -175,10 +174,8 @@ impl AuthValidator {
         }
         let query_string_for_sig = sorted_params_kv_pairs.join("&");
 
-        let string_to_sign = format!(
-            "{}\n{}\n{}",
-            uppercased_http_method, request_path, query_string_for_sig
-        );
+        let string_to_sign =
+            format!("{uppercased_http_method}\n{request_path}\n{query_string_for_sig}");
         debug!("String to sign: \n{}", string_to_sign); // Use \n for actual newline in log
 
         let token_signer = Token::new(app_config.key.clone(), app_config.secret.clone());
@@ -217,7 +214,7 @@ impl AuthValidator {
         user_data: &str,
         app_config: App,
     ) -> String {
-        let decoded_string = format!("{}::user::{}", socket_id, user_data);
+        let decoded_string = format!("{socket_id}::user::{user_data}");
         let signature = Token::new(app_config.key, app_config.secret);
         signature.sign(&decoded_string)
     }

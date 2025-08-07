@@ -77,7 +77,7 @@ impl RedisAdapter {
         horizontal.requests_timeout = config.request_timeout_ms;
 
         let client = redis::Client::open(&*config.url)
-            .map_err(|e| Error::Redis(format!("Failed to create Redis client: {}", e)))?;
+            .map_err(|e| Error::Redis(format!("Failed to create Redis client: {e}")))?;
 
         // Use ConnectionManager consistently for auto-reconnection
         let connection_manager_config = redis::aio::ConnectionManagerConfig::new()
@@ -89,7 +89,7 @@ impl RedisAdapter {
         let connection = client
             .get_connection_manager_with_config(connection_manager_config.clone())
             .await
-            .map_err(|e| Error::Redis(format!("Failed to connect to Redis: {}", e)))?;
+            .map_err(|e| Error::Redis(format!("Failed to connect to Redis: {e}")))?;
 
         // Create ConnectionManager for events API broadcasts (reuse same config)
         let events_connection = client
@@ -97,8 +97,7 @@ impl RedisAdapter {
             .await
             .map_err(|e| {
                 Error::Redis(format!(
-                    "Failed to create Redis connection manager for events: {}",
-                    e
+                    "Failed to create Redis connection manager for events: {e}"
                 ))
             })?;
 
@@ -192,12 +191,12 @@ impl RedisAdapter {
 
         // Broadcast the request via Redis
         let request_json = serde_json::to_string(&request)
-            .map_err(|e| Error::Other(format!("Failed to serialize request: {}", e)))?;
+            .map_err(|e| Error::Other(format!("Failed to serialize request: {e}")))?;
         let mut conn = connection.clone();
         let subscriber_count: i32 = conn
             .publish(&request_channel, &request_json)
             .await
-            .map_err(|e| Error::Redis(format!("Failed to publish request: {}", e)))?;
+            .map_err(|e| Error::Redis(format!("Failed to publish request: {e}")))?;
         debug!(
             "Broadcasted request {} to {} subscribers",
             request.request_id, subscriber_count
@@ -252,8 +251,7 @@ impl RedisAdapter {
                         }
                     } else {
                         return Err(Error::Other(format!(
-                            "Request {} was removed unexpectedly",
-                            request_id
+                            "Request {request_id} was removed unexpectedly"
                         )));
                     }
                 }
@@ -982,21 +980,18 @@ impl ConnectionManager for RedisAdapter {
             .client
             .get_multiplexed_async_connection()
             .await
-            .map_err(|e| {
-                Error::Redis(format!("Failed to acquire health check connection: {}", e))
-            })?;
+            .map_err(|e| Error::Redis(format!("Failed to acquire health check connection: {e}")))?;
 
         let response = redis::cmd("PING")
             .query_async::<String>(&mut conn)
             .await
-            .map_err(|e| Error::Redis(format!("Health check PING failed: {}", e)))?;
+            .map_err(|e| Error::Redis(format!("Health check PING failed: {e}")))?;
 
         if response == "PONG" {
             Ok(())
         } else {
             Err(Error::Redis(format!(
-                "PING returned unexpected response: {}",
-                response
+                "PING returned unexpected response: {response}"
             )))
         }
     }

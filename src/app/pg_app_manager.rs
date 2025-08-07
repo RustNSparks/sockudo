@@ -41,7 +41,7 @@ impl PgSQLAppManager {
             .idle_timeout(Duration::from_secs(180))
             .connect(&connection_string)
             .await
-            .map_err(|e| Error::Internal(format!("Failed to connect to PostgreSQL: {}", e)))?;
+            .map_err(|e| Error::Internal(format!("Failed to connect to PostgreSQL: {e}")))?;
 
         // Initialize cache
         let app_cache = Cache::builder()
@@ -94,7 +94,7 @@ impl PgSQLAppManager {
         sqlx::query(&create_table_query)
             .execute(&self.pool)
             .await
-            .map_err(|e| Error::Internal(format!("Failed to create PostgreSQL table: {}", e)))?;
+            .map_err(|e| Error::Internal(format!("Failed to create PostgreSQL table: {e}")))?;
 
         info!("Ensured table '{}' exists", self.config.table_name);
         Ok(())
@@ -137,7 +137,7 @@ impl PgSQLAppManager {
             .await
             .map_err(|e| {
                 error!("Database error fetching app {}: {}", app_id, e);
-                Error::Internal(format!("Failed to fetch app from PostgreSQL: {}", e))
+                Error::Internal(format!("Failed to fetch app from PostgreSQL: {e}"))
             })?;
 
         if let Some(app_row) = app_result {
@@ -184,7 +184,7 @@ impl PgSQLAppManager {
             .await
             .map_err(|e| {
                 error!("Database error fetching app by key {}: {}", key, e);
-                Error::Internal(format!("Failed to fetch app from PostgreSQL: {}", e))
+                Error::Internal(format!("Failed to fetch app from PostgreSQL: {e}"))
             })?;
 
         if let Some(app_row) = app_result {
@@ -240,7 +240,7 @@ impl PgSQLAppManager {
             .await
             .map_err(|e| {
                 error!("Database error registering app {}: {}", app.id, e);
-                Error::Internal(format!("Failed to insert app into PostgreSQL: {}", e))
+                Error::Internal(format!("Failed to insert app into PostgreSQL: {e}"))
             })?;
 
         // Update cache
@@ -291,7 +291,7 @@ impl PgSQLAppManager {
             .await
             .map_err(|e| {
                 error!("Database error updating app {}: {}", app.id, e);
-                Error::Internal(format!("Failed to update app in PostgreSQL: {}", e))
+                Error::Internal(format!("Failed to update app in PostgreSQL: {e}"))
             })?;
 
         if result.rows_affected() == 0 {
@@ -317,7 +317,7 @@ impl PgSQLAppManager {
             .await
             .map_err(|e| {
                 error!("Database error removing app {}: {}", app_id, e);
-                Error::Internal(format!("Failed to delete app from PostgreSQL: {}", e))
+                Error::Internal(format!("Failed to delete app from PostgreSQL: {e}"))
             })?;
 
         if result.rows_affected() == 0 {
@@ -360,7 +360,7 @@ impl PgSQLAppManager {
             .await
             .map_err(|e| {
                 error!("Database error fetching all apps: {}", e);
-                Error::Internal(format!("Failed to fetch apps from PostgreSQL: {}", e))
+                Error::Internal(format!("Failed to fetch apps from PostgreSQL: {e}"))
             })?;
 
         warn!("Fetched {} app rows from database.", app_rows.len());
@@ -415,8 +415,7 @@ impl PgSQLAppManager {
         let max_length = app.max_channel_name_length.unwrap_or(200);
         if channel.len() > max_length as usize {
             return Err(Error::InvalidChannelName(format!(
-                "Channel name too long. Max length is {}",
-                max_length
+                "Channel name too long. Max length is {max_length}"
             )));
         }
 
@@ -459,7 +458,7 @@ impl PgSQLAppManager {
             .ok_or_else(|| Error::InvalidAppKey)?;
 
         // Create string to sign: socket_id
-        let string_to_sign = format!("{}::user::{}", socket_id, signature);
+        let string_to_sign = format!("{socket_id}::user::{signature}");
 
         // Generate token
         let token = Token::new(app.key.clone(), app.secret.clone());
@@ -558,8 +557,7 @@ impl AppManager for PgSQLAppManager {
             .await
             .map_err(|e| {
                 crate::error::Error::Internal(format!(
-                    "App manager PostgreSQL connection failed: {}",
-                    e
+                    "App manager PostgreSQL connection failed: {e}"
                 ))
             })?;
         Ok(())
@@ -585,8 +583,8 @@ mod tests {
     fn create_test_app(id: &str) -> App {
         App {
             id: id.to_string(),
-            key: format!("{}_key", id),
-            secret: format!("{}_secret", id),
+            key: format!("{id}_key"),
+            secret: format!("{id}_secret"),
             max_connections: 100,
             enable_client_messages: true,
             enabled: true,

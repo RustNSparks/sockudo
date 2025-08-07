@@ -29,7 +29,7 @@ impl RedisQueueManager {
         concurrency: usize,
     ) -> crate::error::Result<Self> {
         let client = redis::Client::open(redis_url).map_err(|e| {
-            crate::error::Error::Config(format!("Failed to open Redis client: {}", e))
+            crate::error::Error::Config(format!("Failed to open Redis client: {e}"))
         })?; // Use custom error type
 
         // Create ConnectionManager with same config as RedisAdapter for consistency
@@ -43,7 +43,7 @@ impl RedisQueueManager {
             .get_connection_manager_with_config(connection_manager_config)
             .await
             .map_err(|e| {
-                crate::error::Error::Connection(format!("Failed to get Redis connection: {}", e))
+                crate::error::Error::Connection(format!("Failed to get Redis connection: {e}"))
             })?; // Use custom error type
 
         Ok(Self {
@@ -85,8 +85,7 @@ impl QueueInterface for RedisQueueManager {
             .await
             .map_err(|e| {
                 crate::error::Error::Queue(format!(
-                    "Redis RPUSH failed for queue {}: {}",
-                    queue_name, e
+                    "Redis RPUSH failed for queue {queue_name}: {e}"
                 ))
             })?; // Use custom error type
 
@@ -216,20 +215,19 @@ impl QueueInterface for RedisQueueManager {
             .get_multiplexed_async_connection()
             .await
             .map_err(|e| {
-                crate::error::Error::Redis(format!("Queue Redis connection failed: {}", e))
+                crate::error::Error::Redis(format!("Queue Redis connection failed: {e}"))
             })?;
 
         let response = redis::cmd("PING")
             .query_async::<String>(&mut conn)
             .await
-            .map_err(|e| crate::error::Error::Redis(format!("Queue Redis PING failed: {}", e)))?;
+            .map_err(|e| crate::error::Error::Redis(format!("Queue Redis PING failed: {e}")))?;
 
         if response == "PONG" {
             Ok(())
         } else {
             Err(crate::error::Error::Redis(format!(
-                "Queue Redis PING returned unexpected response: {}",
-                response
+                "Queue Redis PING returned unexpected response: {response}"
             )))
         }
     }

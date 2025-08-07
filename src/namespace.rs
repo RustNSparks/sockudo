@@ -60,8 +60,7 @@ impl Namespace {
                     self.app_id, socket_id, e
                 );
                 return Err(Error::Internal(format!(
-                    "Failed to retrieve app config: {}",
-                    e
+                    "Failed to retrieve app config: {e}"
                 )));
             }
         };

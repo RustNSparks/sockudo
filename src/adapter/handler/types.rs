@@ -94,7 +94,7 @@ impl SignInRequest {
                 .and_then(Value::as_str)
                 .map(String::from)
                 .ok_or_else(|| {
-                    crate::error::Error::Auth(format!("Missing '{}' field in signin data", field))
+                    crate::error::Error::Auth(format!("Missing '{field}' field in signin data"))
                 })
         };
 

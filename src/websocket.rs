@@ -77,6 +77,12 @@ pub struct ConnectionTimeouts {
     pub auth_timeout_handle: Option<JoinHandle<()>>,
 }
 
+impl Default for ConnectionTimeouts {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConnectionTimeouts {
     pub fn new() -> Self {
         Self {
@@ -129,6 +135,12 @@ pub struct ConnectionState {
     pub user: Option<Value>,
     pub timeouts: ConnectionTimeouts,
     pub status: ConnectionStatus,
+}
+
+impl Default for ConnectionState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ConnectionState {
@@ -276,12 +288,10 @@ impl MessageSender {
                 "Connection {} failed during operation (after {} frames): {}",
                 operation, frame_count, error
             );
+        } else if operation.is_close_operation() {
+            warn!("Failed to {}: {}", operation, error);
         } else {
-            if operation.is_close_operation() {
-                warn!("Failed to {}: {}", operation, error);
-            } else {
-                error!("Failed to {}: {}", operation, error);
-            }
+            error!("Failed to {}: {}", operation, error);
         }
     }
 
@@ -334,7 +344,7 @@ impl MessageSender {
 
     pub fn send_json<T: serde::Serialize>(&self, message: &T) -> Result<()> {
         let payload = serde_json::to_vec(message)
-            .map_err(|e| Error::InvalidMessageFormat(format!("Serialization failed: {}", e)))?;
+            .map_err(|e| Error::InvalidMessageFormat(format!("Serialization failed: {e}")))?;
 
         let frame = Frame::text(Payload::from(payload));
         self.send(frame)
@@ -610,7 +620,7 @@ mod tests {
     #[test]
     fn test_socket_id_display() {
         let id = SocketId("123.456".to_string());
-        assert_eq!(format!("{}", id), "123.456");
+        assert_eq!(format!("{id}"), "123.456");
         assert_eq!(id.as_ref(), "123.456");
     }
 }

@@ -82,61 +82,6 @@ pub async fn validate_channel_name(app: &App, channel: &str) -> crate::error::Re
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn test_data_to_bytes_flexible() {
-        let test_data = vec![
-            json!("simple string"),
-            json!(123),
-            json!({"key": "value"}),
-            json!([1, 2, 3]),
-        ];
-
-        let bytes = data_to_bytes_flexible(test_data);
-        assert!(bytes > 0);
-    }
-
-    #[tokio::test]
-    async fn test_validate_channel_name() {
-        let app: App = App {
-            id: "test-app".to_string(),
-            key: "test-key".to_string(),
-            secret: "test-secret".to_string(),
-            max_connections: 100,
-            enable_client_messages: true,
-            enabled: true,
-            max_client_events_per_second: 100,
-            max_channel_name_length: Some(50),
-            ..Default::default()
-        };
-
-        // Test valid channel names
-        assert!(validate_channel_name(&app, "test-123").await.is_ok());
-        assert!(validate_channel_name(&app, "user@domain").await.is_ok());
-        assert!(validate_channel_name(&app, "channel.name").await.is_ok());
-
-        // Test invalid channel names
-        assert!(
-            validate_channel_name(&app, "invalid#channel")
-                .await
-                .is_err()
-        );
-        assert!(
-            validate_channel_name(
-                &app,
-                "too_long_channel_name_that_exceeds_fifty_characters_and_should_fail"
-            )
-            .await
-            .is_err()
-        );
-        assert!(validate_channel_name(&app, "space in name").await.is_err());
-    }
-}
-
 /// Parse a boolean value from an environment variable with flexible format support.
 ///
 /// Supports the following formats (case-insensitive):
@@ -237,7 +182,7 @@ pub async fn resolve_socket_addr(host: &str, port: u16, context: &str) -> std::n
     use std::net::SocketAddr;
     use tokio::net::lookup_host;
 
-    let host_port = format!("{}:{}", host, port);
+    let host_port = format!("{host}:{port}");
 
     match lookup_host(&host_port).await {
         Ok(addrs) => {
@@ -278,5 +223,60 @@ pub async fn resolve_socket_addr(host: &str, port: u16, context: &str) -> std::n
             );
             fallback
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_data_to_bytes_flexible() {
+        let test_data = vec![
+            json!("simple string"),
+            json!(123),
+            json!({"key": "value"}),
+            json!([1, 2, 3]),
+        ];
+
+        let bytes = data_to_bytes_flexible(test_data);
+        assert!(bytes > 0);
+    }
+
+    #[tokio::test]
+    async fn test_validate_channel_name() {
+        let app: App = App {
+            id: "test-app".to_string(),
+            key: "test-key".to_string(),
+            secret: "test-secret".to_string(),
+            max_connections: 100,
+            enable_client_messages: true,
+            enabled: true,
+            max_client_events_per_second: 100,
+            max_channel_name_length: Some(50),
+            ..Default::default()
+        };
+
+        // Test valid channel names
+        assert!(validate_channel_name(&app, "test-123").await.is_ok());
+        assert!(validate_channel_name(&app, "user@domain").await.is_ok());
+        assert!(validate_channel_name(&app, "channel.name").await.is_ok());
+
+        // Test invalid channel names
+        assert!(
+            validate_channel_name(&app, "invalid#channel")
+                .await
+                .is_err()
+        );
+        assert!(
+            validate_channel_name(
+                &app,
+                "too_long_channel_name_that_exceeds_fifty_characters_and_should_fail"
+            )
+            .await
+            .is_err()
+        );
+        assert!(validate_channel_name(&app, "space in name").await.is_err());
     }
 }

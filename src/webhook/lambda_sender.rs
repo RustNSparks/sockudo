@@ -109,8 +109,7 @@ impl LambdaWebhookSender {
 
         let payload_bytes = serde_json::to_vec(&pusher_webhook_payload).map_err(|e| {
             Error::Other(format!(
-                "Failed to serialize Pusher Webhook payload for Lambda: {}",
-                e
+                "Failed to serialize Pusher Webhook payload for Lambda: {e}"
             ))
         })?;
 
@@ -144,8 +143,7 @@ impl LambdaWebhookSender {
                     lambda_config_ref.function_name, e
                 );
                 Err(Error::Other(format!(
-                    "Failed to invoke Lambda function: {}",
-                    e
+                    "Failed to invoke Lambda function: {e}"
                 )))
             }
         }
@@ -180,8 +178,7 @@ impl LambdaWebhookSender {
 
         let payload_bytes = serde_json::to_vec(&pusher_webhook_payload).map_err(|e| {
             Error::Other(format!(
-                "Failed to serialize Pusher Webhook payload for Lambda sync: {}",
-                e
+                "Failed to serialize Pusher Webhook payload for Lambda sync: {e}"
             ))
         })?;
 
@@ -236,8 +233,7 @@ impl LambdaWebhookSender {
                     )
                 );
                 Err(Error::Other(format!(
-                    "Failed to invoke Lambda function synchronously: {}",
-                    e
+                    "Failed to invoke Lambda function synchronously: {e}"
                 )))
             }
         }

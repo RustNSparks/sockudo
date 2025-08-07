@@ -51,12 +51,12 @@ impl RedisClusterAdapter {
         horizontal.requests_timeout = config.request_timeout_ms;
 
         let client = ClusterClient::new(config.nodes.clone())
-            .map_err(|e| Error::Redis(format!("Failed to create Redis client: {}", e)))?;
+            .map_err(|e| Error::Redis(format!("Failed to create Redis client: {e}")))?;
 
         let connection = client
             .get_async_connection()
             .await
-            .map_err(|e| Error::Redis(format!("Failed to connect to Redis: {}", e)))?;
+            .map_err(|e| Error::Redis(format!("Failed to connect to Redis: {e}")))?;
 
         let broadcast_channel = format!("{}:{}", config.prefix, BROADCAST_SUFFIX);
         let request_channel = format!("{}:{}", config.prefix, REQUESTS_SUFFIX);
@@ -175,8 +175,7 @@ impl RedisClusterAdapter {
                 .map(|req| req.notify.clone())
                 .ok_or_else(|| {
                     Error::Other(format!(
-                        "Request {} not found in pending requests",
-                        request_id
+                        "Request {request_id} not found in pending requests"
                     ))
                 })?
         };
@@ -204,8 +203,7 @@ impl RedisClusterAdapter {
                         }
                     } else {
                         return Err(Error::Other(format!(
-                            "Request {} was removed unexpectedly",
-                            request_id
+                            "Request {request_id} was removed unexpectedly"
                         )));
                     }
                 }
@@ -274,13 +272,13 @@ impl RedisClusterAdapter {
 
     async fn broadcast_request(&self, request: &RequestBody) -> Result<()> {
         let request_json = serde_json::to_string(request)
-            .map_err(|e| Error::Other(format!("Failed to serialize request: {}", e)))?;
+            .map_err(|e| Error::Other(format!("Failed to serialize request: {e}")))?;
 
         let mut conn = self.connection.clone();
         let subscriber_count: i32 = conn
             .publish(&self.request_channel, &request_json)
             .await
-            .map_err(|e| Error::Redis(format!("Failed to publish request: {}", e)))?;
+            .map_err(|e| Error::Redis(format!("Failed to publish request: {e}")))?;
 
         debug!(
             "Broadcasted request {} to {} subscribers",
@@ -323,7 +321,7 @@ impl RedisClusterAdapter {
             .use_protocol(redis::ProtocolVersion::RESP3)
             .push_sender(tx)
             .build()
-            .map_err(|e| Error::Redis(format!("Failed to create PubSub client: {}", e)))?;
+            .map_err(|e| Error::Redis(format!("Failed to create PubSub client: {e}")))?;
 
         // Spawn the main listener task
         tokio::spawn(async move {
@@ -592,7 +590,7 @@ impl ConnectionManager for RedisClusterAdapter {
         let mut conn = self.connection.clone();
         conn.publish::<_, _, ()>(&self.broadcast_channel, broadcast_json)
             .await
-            .map_err(|e| Error::Redis(format!("Failed to publish broadcast: {}", e)))?;
+            .map_err(|e| Error::Redis(format!("Failed to publish broadcast: {e}")))?;
 
         Ok(())
     }
@@ -907,21 +905,21 @@ impl ConnectionManager for RedisClusterAdapter {
 
     async fn check_health(&self) -> Result<()> {
         // Use a dedicated connection for health check to avoid impacting main operations
-        let mut conn = self.client.get_async_connection().await.map_err(|e| {
-            Error::Redis(format!("Failed to acquire health check connection: {}", e))
-        })?;
+        let mut conn =
+            self.client.get_async_connection().await.map_err(|e| {
+                Error::Redis(format!("Failed to acquire health check connection: {e}"))
+            })?;
 
         let response = redis::cmd("PING")
             .query_async::<String>(&mut conn)
             .await
-            .map_err(|e| Error::Redis(format!("Cluster health check PING failed: {}", e)))?;
+            .map_err(|e| Error::Redis(format!("Cluster health check PING failed: {e}")))?;
 
         if response == "PONG" {
             Ok(())
         } else {
             Err(Error::Redis(format!(
-                "Cluster PING returned unexpected response: {}",
-                response
+                "Cluster PING returned unexpected response: {response}"
             )))
         }
     }

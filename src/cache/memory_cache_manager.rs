@@ -25,7 +25,7 @@ impl MemoryCacheManager {
         let cache_builder = Cache::builder()
             .max_capacity(options.max_capacity)
             // Moka's cleanup is internal and efficient, so options.cleanup_interval is not directly used here.
-            .name(format!("sockudo-memory-cache-{}", prefix).as_str()); // Optional: name the cache for monitoring
+            .name(format!("sockudo-memory-cache-{prefix}").as_str()); // Optional: name the cache for monitoring
 
         // Set default time_to_live if options.ttl > 0
         let cache = if options.ttl > 0 {

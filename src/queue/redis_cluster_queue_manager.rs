@@ -30,14 +30,11 @@ impl RedisClusterQueueManager {
         concurrency: usize,
     ) -> crate::error::Result<Self> {
         let client = ClusterClient::new(cluster_nodes.clone()).map_err(|e| {
-            crate::error::Error::Config(format!("Failed to create Redis cluster client: {}", e))
+            crate::error::Error::Config(format!("Failed to create Redis cluster client: {e}"))
         })?;
 
         let connection = client.get_async_connection().await.map_err(|e| {
-            crate::error::Error::Connection(format!(
-                "Failed to get Redis cluster connection: {}",
-                e
-            ))
+            crate::error::Error::Connection(format!("Failed to get Redis cluster connection: {e}"))
         })?;
 
         info!(
@@ -86,8 +83,7 @@ impl QueueInterface for RedisClusterQueueManager {
             .await
             .map_err(|e| {
                 crate::error::Error::Queue(format!(
-                    "Redis Cluster RPUSH failed for queue {}: {}",
-                    queue_name, e
+                    "Redis Cluster RPUSH failed for queue {queue_name}: {e}"
                 ))
             })?; // Use custom error type
 
@@ -205,8 +201,7 @@ impl QueueInterface for RedisClusterQueueManager {
             .await
             .map_err(|e| {
                 crate::error::Error::Queue(format!(
-                    "Redis cluster disconnect error fetching keys: {}",
-                    e
+                    "Redis cluster disconnect error fetching keys: {e}"
                 ))
             })?;
 
@@ -225,22 +220,21 @@ impl QueueInterface for RedisClusterQueueManager {
             .get_async_connection()
             .await
             .map_err(|e| {
-                crate::error::Error::Redis(format!("Queue Redis Cluster connection failed: {}", e))
+                crate::error::Error::Redis(format!("Queue Redis Cluster connection failed: {e}"))
             })?;
 
         let response = redis::cmd("PING")
             .query_async::<String>(&mut conn)
             .await
             .map_err(|e| {
-                crate::error::Error::Redis(format!("Queue Redis Cluster PING failed: {}", e))
+                crate::error::Error::Redis(format!("Queue Redis Cluster PING failed: {e}"))
             })?;
 
         if response == "PONG" {
             Ok(())
         } else {
             Err(crate::error::Error::Redis(format!(
-                "Queue Redis Cluster PING returned unexpected response: {}",
-                response
+                "Queue Redis Cluster PING returned unexpected response: {response}"
             )))
         }
     }

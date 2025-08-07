@@ -22,6 +22,12 @@ pub struct WatchlistManager {
     online_users: Arc<DashMap<String, DashMap<String, HashSet<SocketId>>>>,
 }
 
+impl Default for WatchlistManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WatchlistManager {
     pub fn new() -> Self {
         Self {

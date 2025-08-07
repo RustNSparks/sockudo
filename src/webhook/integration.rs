@@ -427,8 +427,10 @@ mod tests {
         assert!(result.is_ok());
 
         // Test with webhook enabled
-        let mut config = WebhookConfig::default();
-        config.enabled = true;
+        let config = WebhookConfig {
+            enabled: true,
+            ..Default::default()
+        };
         let integration = WebhookIntegration::new(config, app_manager).await.unwrap();
 
         let result = integration

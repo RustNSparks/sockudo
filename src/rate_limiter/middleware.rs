@@ -29,10 +29,10 @@ impl fmt::Display for RateLimitMiddlewareError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RateLimitMiddlewareError::InvalidHeaderName(e) => {
-                write!(f, "Invalid header name for key extraction: {}", e)
+                write!(f, "Invalid header name for key extraction: {e}")
             }
             RateLimitMiddlewareError::ExtractionFailed(e) => {
-                write!(f, "Key extraction failed: {}", e)
+                write!(f, "Key extraction failed: {e}")
             }
         }
     }
@@ -178,7 +178,7 @@ where
             debug!(key = %key, "Extracted rate limit key");
 
             let final_key = if let Some(prefix) = &options.key_prefix {
-                format!("{}:{}", prefix, key)
+                format!("{prefix}:{key}")
             } else {
                 key
             };

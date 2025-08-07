@@ -25,6 +25,16 @@ pub type JobProcessorFnAsync = Box<
 
 const MAX_CONCURRENT_WEBHOOKS: usize = 20;
 
+/// Parameters for creating an HTTP webhook task
+struct HttpWebhookTaskParams {
+    url: url::Url,
+    webhook_config: Webhook,
+    permit: tokio::sync::OwnedSemaphorePermit,
+    app_key: String,
+    signature: String,
+    body_to_send: String,
+}
+
 pub struct WebhookSender {
     client: Client,
     app_manager: Arc<dyn AppManager + Send + Sync>, // Still needed to fetch App if JobData doesn't have full App
@@ -154,7 +164,7 @@ impl WebhookSender {
                 .acquire_owned()
                 .await
                 .map_err(|e| {
-                    Error::Other(format!("Failed to acquire webhook semaphore permit: {}", e))
+                    Error::Other(format!("Failed to acquire webhook semaphore permit: {e}"))
                 })?;
 
             let task = self.create_webhook_task(
@@ -188,15 +198,15 @@ impl WebhookSender {
         body_to_send: String,
     ) -> tokio::task::JoinHandle<()> {
         if let Some(url) = &webhook_config.url {
-            self.create_http_webhook_task(
-                url,
-                webhook_config,
+            let params = HttpWebhookTaskParams {
+                url: url.clone(),
+                webhook_config: webhook_config.clone(),
                 permit,
-                app_id,
                 app_key,
                 signature,
                 body_to_send,
-            )
+            };
+            self.create_http_webhook_task(params)
         } else if webhook_config.lambda.is_some() || webhook_config.lambda_function.is_some() {
             self.create_lambda_webhook_task(webhook_config, permit, app_id, body_to_send)
         } else {
@@ -211,30 +221,25 @@ impl WebhookSender {
 
     fn create_http_webhook_task(
         &self,
-        url: &url::Url,
-        webhook_config: &Webhook,
-        permit: tokio::sync::OwnedSemaphorePermit,
-        _app_id: String,
-        app_key: String,
-        signature: String,
-        body_to_send: String,
+        params: HttpWebhookTaskParams,
     ) -> tokio::task::JoinHandle<()> {
         let client = self.client.clone();
-        let url_str = url.to_string();
-        let custom_headers = webhook_config
+        let url_str = params.url.to_string();
+        let custom_headers = params
+            .webhook_config
             .headers
             .as_ref()
             .map(|h| h.headers.clone())
             .unwrap_or_default();
 
         tokio::spawn(async move {
-            let _permit = permit;
+            let _permit = params.permit;
             if let Err(e) = send_pusher_webhook(
                 &client,
                 &url_str,
-                &app_key,
-                &signature,
-                body_to_send,
+                &params.app_key,
+                &params.signature,
+                params.body_to_send,
                 custom_headers,
             )
             .await
@@ -323,8 +328,7 @@ async fn send_pusher_webhook(
                     )
                 );
                 Err(Error::Other(format!(
-                    "Webhook to {} failed with status {}",
-                    url, status
+                    "Webhook to {url} failed with status {status}"
                 )))
             }
         }
@@ -334,8 +338,7 @@ async fn send_pusher_webhook(
                 format!("Failed to send Pusher webhook to {}: {}", url, e)
             );
             Err(Error::Other(format!(
-                "HTTP request failed for webhook to {}: {}",
-                url, e
+                "HTTP request failed for webhook to {url}: {e}"
             )))
         }
     }
@@ -480,7 +483,7 @@ mod tests {
                         "channel": format!("test-channel-{}", i)
                     })],
                 },
-                original_signature: format!("test_signature_{}", i),
+                original_signature: format!("test_signature_{i}"),
             };
 
             handles.push(tokio::spawn(async move {

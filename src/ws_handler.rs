@@ -27,7 +27,7 @@ pub async fn handle_ws_upgrade(
     let (response, fut) = match ws.upgrade() {
         Ok((response, fut)) => (response, fut),
         Err(e) => {
-            error!("WebSocket upgrade failed: {}", e);
+            error!("WebSocket upgrade failed: {e}");
             // Track WebSocket upgrade failure
             if let Some(ref metrics) = handler.metrics {
                 let metrics_locked = metrics.lock().await;

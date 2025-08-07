@@ -57,8 +57,7 @@ impl ConnectionHandler {
         if let Some(max_size) = app_config.max_presence_member_size_in_kb {
             if user_info_size_kb > max_size as usize {
                 return Err(Error::Channel(format!(
-                    "Presence member data size ({}KB) exceeds limit ({}KB)",
-                    user_info_size_kb, max_size
+                    "Presence member data size ({user_info_size_kb}KB) exceeds limit ({max_size}KB)"
                 )));
             }
         }
@@ -101,8 +100,7 @@ impl ConnectionHandler {
             .unwrap_or(DEFAULT_EVENT_NAME_MAX_LENGTH as u32);
         if request.event.len() > max_event_len as usize {
             return Err(Error::InvalidEventName(format!(
-                "Event name exceeds maximum length of {}",
-                max_event_len
+                "Event name exceeds maximum length of {max_event_len}"
             )));
         }
 
@@ -112,8 +110,7 @@ impl ConnectionHandler {
             .unwrap_or(DEFAULT_CHANNEL_NAME_MAX_LENGTH as u32);
         if request.channel.len() > max_channel_len as usize {
             return Err(Error::InvalidChannelName(format!(
-                "Channel name exceeds maximum length of {}",
-                max_channel_len
+                "Channel name exceeds maximum length of {max_channel_len}"
             )));
         }
 
@@ -130,8 +127,7 @@ impl ConnectionHandler {
             let payload_size = utils::data_to_bytes_flexible(vec![request.data.clone()]);
             if payload_size > (max_payload_kb as usize * 1024) {
                 return Err(Error::ClientEvent(format!(
-                    "Event payload size ({} bytes) exceeds limit ({}KB)",
-                    payload_size, max_payload_kb
+                    "Event payload size ({payload_size} bytes) exceeds limit ({max_payload_kb}KB)"
                 )));
             }
         }

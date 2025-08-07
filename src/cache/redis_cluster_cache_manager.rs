@@ -59,13 +59,13 @@ impl RedisClusterCacheManager {
         // Build the cluster client
         let client = builder
             .build()
-            .map_err(|e| Error::Cache(format!("Failed to create Redis Cluster client: {}", e)))?;
+            .map_err(|e| Error::Cache(format!("Failed to create Redis Cluster client: {e}")))?;
 
         // Get cluster connection
         let connection = client
             .get_async_connection()
             .await
-            .map_err(|e| Error::Cache(format!("Failed to connect to Redis Cluster: {}", e)))?;
+            .map_err(|e| Error::Cache(format!("Failed to connect to Redis Cluster: {e}")))?;
 
         Ok(Self {
             client,
@@ -99,7 +99,7 @@ impl CacheManager for RedisClusterCacheManager {
             .connection
             .exists(self.prefixed_key(key))
             .await
-            .map_err(|e| Error::Cache(format!("Redis Cluster exists error: {}", e)))?;
+            .map_err(|e| Error::Cache(format!("Redis Cluster exists error: {e}")))?;
         Ok(exists)
     }
 
@@ -110,7 +110,7 @@ impl CacheManager for RedisClusterCacheManager {
             .connection
             .get(self.prefixed_key(key))
             .await
-            .map_err(|e| Error::Cache(format!("Redis Cluster get error: {}", e)))?;
+            .map_err(|e| Error::Cache(format!("Redis Cluster get error: {e}")))?;
         Ok(value)
     }
 
@@ -123,13 +123,13 @@ impl CacheManager for RedisClusterCacheManager {
             self.connection
                 .set_ex::<_, _, ()>(prefixed_key, value, ttl_seconds)
                 .await
-                .map_err(|e| Error::Cache(format!("Redis Cluster set error: {}", e)))?;
+                .map_err(|e| Error::Cache(format!("Redis Cluster set error: {e}")))?;
         } else {
             // Set without expiration
             self.connection
                 .set::<_, _, ()>(prefixed_key, value)
                 .await
-                .map_err(|e| Error::Cache(format!("Redis Cluster set error: {}", e)))?;
+                .map_err(|e| Error::Cache(format!("Redis Cluster set error: {e}")))?;
         }
 
         Ok(())
@@ -140,9 +140,9 @@ impl CacheManager for RedisClusterCacheManager {
             .connection
             .del(self.prefixed_key(key))
             .await
-            .map_err(|e| Error::Cache(format!("Redis Cluster delete error: {}", e)))?;
+            .map_err(|e| Error::Cache(format!("Redis Cluster delete error: {e}")))?;
         if deleted == 0 {
-            return Err(Error::Cache(format!("Key '{}' not found", key)));
+            return Err(Error::Cache(format!("Key '{key}' not found")));
         }
         Ok(())
     }
@@ -156,26 +156,23 @@ impl CacheManager for RedisClusterCacheManager {
 
     async fn check_health(&self) -> Result<()> {
         // Use a dedicated connection for health check to avoid impacting main operations
-        let mut connection = self.client.get_async_connection().await.map_err(|e| {
-            Error::Cache(format!("Failed to acquire health check connection: {}", e))
-        })?;
+        let mut connection =
+            self.client.get_async_connection().await.map_err(|e| {
+                Error::Cache(format!("Failed to acquire health check connection: {e}"))
+            })?;
 
         let response = redis::cmd("PING")
             .query_async::<String>(&mut connection)
             .await
             .map_err(|e| {
-                Error::Cache(format!(
-                    "Cache Redis Cluster health check PING failed: {}",
-                    e
-                ))
+                Error::Cache(format!("Cache Redis Cluster health check PING failed: {e}"))
             })?;
 
         if response == "PONG" {
             Ok(())
         } else {
             Err(Error::Cache(format!(
-                "Cache Redis Cluster PING returned unexpected response: {}",
-                response
+                "Cache Redis Cluster PING returned unexpected response: {response}"
             )))
         }
     }
@@ -185,7 +182,7 @@ impl CacheManager for RedisClusterCacheManager {
             .connection
             .ttl(self.prefixed_key(key))
             .await
-            .map_err(|e| Error::Cache(format!("Redis Cluster TTL error: {}", e)))?;
+            .map_err(|e| Error::Cache(format!("Redis Cluster TTL error: {e}")))?;
         if ttl < 0 {
             return Ok(None);
         }
@@ -201,7 +198,7 @@ impl RedisClusterCacheManager {
             .connection
             .del(self.prefixed_key(key))
             .await
-            .map_err(|e| Error::Cache(format!("Redis Cluster delete error: {}", e)))?;
+            .map_err(|e| Error::Cache(format!("Redis Cluster delete error: {e}")))?;
         Ok(deleted > 0)
     }
 
@@ -217,7 +214,7 @@ impl RedisClusterCacheManager {
             .arg(&pattern)
             .query_async(&mut self.connection)
             .await
-            .map_err(|e| Error::Cache(format!("Redis Cluster keys error: {}", e)))?;
+            .map_err(|e| Error::Cache(format!("Redis Cluster keys error: {e}")))?;
 
         if keys.is_empty() {
             return Ok(0);
@@ -230,7 +227,7 @@ impl RedisClusterCacheManager {
                 .connection
                 .del(&key)
                 .await
-                .map_err(|e| Error::Cache(format!("Redis Cluster delete error: {}", e)))?;
+                .map_err(|e| Error::Cache(format!("Redis Cluster delete error: {e}")))?;
             deleted_count += deleted as usize;
         }
 
@@ -255,12 +252,12 @@ impl RedisClusterCacheManager {
                 self.connection
                     .set_ex::<_, _, ()>(key, *value, ttl_seconds)
                     .await
-                    .map_err(|e| Error::Cache(format!("Redis Cluster set_ex error: {}", e)))?;
+                    .map_err(|e| Error::Cache(format!("Redis Cluster set_ex error: {e}")))?;
             } else {
                 self.connection
                     .set::<_, _, ()>(key, *value)
                     .await
-                    .map_err(|e| Error::Cache(format!("Redis Cluster set error: {}", e)))?;
+                    .map_err(|e| Error::Cache(format!("Redis Cluster set error: {e}")))?;
             }
         }
 
@@ -273,7 +270,7 @@ impl RedisClusterCacheManager {
             .connection
             .incr(self.prefixed_key(key), by)
             .await
-            .map_err(|e| Error::Cache(format!("Redis Cluster increment error: {}", e)))?;
+            .map_err(|e| Error::Cache(format!("Redis Cluster increment error: {e}")))?;
         Ok(value)
     }
 
@@ -295,7 +292,7 @@ impl RedisClusterCacheManager {
                 .connection
                 .get(self.prefixed_key(key))
                 .await
-                .map_err(|e| Error::Cache(format!("Redis Cluster get error: {}", e)))?;
+                .map_err(|e| Error::Cache(format!("Redis Cluster get error: {e}")))?;
             results.push(value);
         }
 
@@ -312,7 +309,7 @@ impl RedisClusterCacheManager {
         self.client
             .get_async_connection()
             .await
-            .map_err(|e| Error::Cache(format!("Failed to get Redis Cluster connection: {}", e)))
+            .map_err(|e| Error::Cache(format!("Failed to get Redis Cluster connection: {e}")))
     }
 
     /// Get cluster info
@@ -321,7 +318,7 @@ impl RedisClusterCacheManager {
             .arg("INFO")
             .query_async(&mut self.connection)
             .await
-            .map_err(|e| Error::Cache(format!("Redis Cluster info error: {}", e)))?;
+            .map_err(|e| Error::Cache(format!("Redis Cluster info error: {e}")))?;
 
         Ok(info)
     }
@@ -332,7 +329,7 @@ impl RedisClusterCacheManager {
             .arg("NODES")
             .query_async(&mut self.connection)
             .await
-            .map_err(|e| Error::Cache(format!("Redis Cluster nodes error: {}", e)))?;
+            .map_err(|e| Error::Cache(format!("Redis Cluster nodes error: {e}")))?;
 
         Ok(nodes)
     }

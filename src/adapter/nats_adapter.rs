@@ -80,7 +80,7 @@ impl NatsAdapter {
         let client = nats_options
             .connect(&config.servers)
             .await
-            .map_err(|e| Error::Internal(format!("Failed to connect to NATS: {}", e)))?;
+            .map_err(|e| Error::Internal(format!("Failed to connect to NATS: {e}")))?;
 
         // Build subject names
         let broadcast_subject = format!("{}{}", config.prefix, BROADCAST_SUFFIX);
@@ -199,8 +199,7 @@ impl NatsAdapter {
                 .map(|req| req.notify.clone())
                 .ok_or_else(|| {
                     Error::Other(format!(
-                        "Request {} not found in pending requests",
-                        request_id
+                        "Request {request_id} not found in pending requests"
                     ))
                 })?
         };
@@ -228,8 +227,7 @@ impl NatsAdapter {
                         }
                     } else {
                         return Err(Error::Other(format!(
-                            "Request {} was removed unexpectedly",
-                            request_id
+                            "Request {request_id} was removed unexpectedly"
                         )));
                     }
                 }
@@ -298,7 +296,7 @@ impl NatsAdapter {
 
     async fn broadcast_request(&self, request: &RequestBody) -> Result<()> {
         let request_data = serde_json::to_vec(request)
-            .map_err(|e| Error::Other(format!("Failed to serialize request: {}", e)))?;
+            .map_err(|e| Error::Other(format!("Failed to serialize request: {e}")))?;
 
         self.client
             .publish(
@@ -306,7 +304,7 @@ impl NatsAdapter {
                 request_data.into(),
             )
             .await
-            .map_err(|e| Error::Internal(format!("Failed to publish request: {}", e)))?;
+            .map_err(|e| Error::Internal(format!("Failed to publish request: {e}")))?;
 
         debug!("Broadcasted request {} via NATS", request.request_id);
         Ok(())
@@ -339,23 +337,21 @@ impl NatsAdapter {
             .subscribe(Subject::from(broadcast_subject.clone()))
             .await
             .map_err(|e| {
-                Error::Internal(format!("Failed to subscribe to broadcast subject: {}", e))
+                Error::Internal(format!("Failed to subscribe to broadcast subject: {e}"))
             })?;
 
         // Subscribe to requests channel
         let mut request_subscription = nats_client
             .subscribe(Subject::from(request_subject.clone()))
             .await
-            .map_err(|e| {
-                Error::Internal(format!("Failed to subscribe to request subject: {}", e))
-            })?;
+            .map_err(|e| Error::Internal(format!("Failed to subscribe to request subject: {e}")))?;
 
         // Subscribe to responses channel
         let mut response_subscription = nats_client
             .subscribe(Subject::from(response_subject.clone()))
             .await
             .map_err(|e| {
-                Error::Internal(format!("Failed to subscribe to response subject: {}", e))
+                Error::Internal(format!("Failed to subscribe to response subject: {e}"))
             })?;
 
         info!(
@@ -555,7 +551,7 @@ impl ConnectionManager for NatsAdapter {
                 broadcast_data.into(),
             )
             .await
-            .map_err(|e| Error::Internal(format!("Failed to publish broadcast: {}", e)))?;
+            .map_err(|e| Error::Internal(format!("Failed to publish broadcast: {e}")))?;
 
         Ok(())
     }
@@ -878,8 +874,7 @@ impl ConnectionManager for NatsAdapter {
                 "NATS client is disconnected".to_string(),
             )),
             other_state => Err(crate::error::Error::Connection(format!(
-                "NATS client in transitional state: {:?}",
-                other_state
+                "NATS client in transitional state: {other_state:?}"
             ))),
         }
     }

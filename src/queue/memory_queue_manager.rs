@@ -19,6 +19,12 @@ pub struct MemoryQueueManager {
     processors: Arc<DashMap<String, ArcJobProcessorFn, ahash::RandomState>>,
 }
 
+impl Default for MemoryQueueManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MemoryQueueManager {
     pub fn new() -> Self {
         let queues = Arc::new(DashMap::with_hasher(ahash::RandomState::new()));

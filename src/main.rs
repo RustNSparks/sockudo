@@ -866,19 +866,17 @@ impl SockudoServer {
         let key_path = std::path::PathBuf::from(&self.config.ssl.key_path);
         if !cert_path.exists() {
             return Err(Error::ConfigFile(format!(
-                "SSL cert_path not found: {:?}",
-                cert_path
+                "SSL cert_path not found: {cert_path:?}"
             )));
         }
         if !key_path.exists() {
             return Err(Error::ConfigFile(format!(
-                "SSL key_path not found: {:?}",
-                key_path
+                "SSL key_path not found: {key_path:?}"
             )));
         }
         RustlsConfig::from_pem_file(cert_path, key_path)
             .await
-            .map_err(|e| Error::Internal(format!("Failed to load TLS configuration: {}", e)))
+            .map_err(|e| Error::Internal(format!("Failed to load TLS configuration: {e}")))
     }
 
     async fn shutdown_signal(&self) {
@@ -1013,10 +1011,7 @@ async fn main() -> Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .map_err(|e| {
-            Error::Internal(format!(
-                "Failed to install default crypto provider: {:?}",
-                e
-            ))
+            Error::Internal(format!("Failed to install default crypto provider: {e:?}"))
         })?;
 
     // --- Early Logging Initialization with Reload Support ---

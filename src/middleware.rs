@@ -20,8 +20,7 @@ fn get_params_for_signature(
         let parsed_pairs =
             serde_urlencoded::from_str::<Vec<(String, String)>>(query_str).map_err(|e| {
                 AppError::InvalidInput(format!(
-                    "Failed to parse query string for signature map: {}",
-                    e
+                    "Failed to parse query string for signature map: {e}"
                 ))
             })?;
 
@@ -65,7 +64,7 @@ pub async fn pusher_api_auth_middleware(
                 query_str,
                 e
             );
-            AppError::InvalidInput(format!("Invalid authentication query parameters: {}", e))
+            AppError::InvalidInput(format!("Invalid authentication query parameters: {e}"))
         })?
     } else {
         // Pusher auth requires these parameters. If they are missing, it's an error.
@@ -87,8 +86,7 @@ pub async fn pusher_api_auth_middleware(
         Err(err) => {
             tracing::error!("Failed to buffer request body for auth: {}", err);
             return Err(AppError::InternalError(format!(
-                "Failed to read request body: {}",
-                err
+                "Failed to read request body: {err}"
             )));
         }
     };
@@ -179,8 +177,7 @@ mod tests {
             let result = get_params_for_signature(Some(query));
             assert!(
                 result.is_err(),
-                "Expected error for invalid query: {:?}",
-                query
+                "Expected error for invalid query: {query:?}"
             );
         }
     }

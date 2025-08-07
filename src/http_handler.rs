@@ -92,11 +92,11 @@ impl From<crate::error::Error> for AppError {
         warn!(original_error = ?err, "Converting internal error to AppError for HTTP response");
         match err {
             crate::error::Error::InvalidAppKey => {
-                AppError::AppNotFound(format!("Application key not found or invalid: {}", err))
+                AppError::AppNotFound(format!("Application key not found or invalid: {err}"))
             }
             crate::error::Error::ApplicationNotFound => AppError::AppNotFound(err.to_string()),
             crate::error::Error::InvalidChannelName(s) => {
-                AppError::InvalidInput(format!("Invalid channel name: {}", s))
+                AppError::InvalidInput(format!("Invalid channel name: {s}"))
             }
             crate::error::Error::Channel(s) => AppError::InvalidInput(s),
             crate::error::Error::Auth(s) => AppError::ApiAuthFailed(s),
@@ -260,8 +260,7 @@ async fn process_single_event_parallel(
         .unwrap_or(DEFAULT_EVENT_NAME_MAX_LENGTH as u32);
     if event_name_str.len() > max_event_name_len as usize {
         return Err(AppError::LimitExceeded(format!(
-            "Event name '{}' exceeds maximum length of {}",
-            event_name_str, max_event_name_len
+            "Event name '{event_name_str}' exceeds maximum length of {max_event_name_len}"
         )));
     }
 
@@ -275,8 +274,7 @@ async fn process_single_event_parallel(
         let payload_size_bytes = utils::data_to_bytes_flexible(vec![value_for_size_calc]);
         if payload_size_bytes > (max_payload_kb as usize * 1024) {
             return Err(AppError::LimitExceeded(format!(
-                "Event payload size ({} bytes) for event '{}' exceeds limit ({}KB)",
-                payload_size_bytes, event_name_str, max_payload_kb
+                "Event payload size ({payload_size_bytes} bytes) for event '{event_name_str}' exceeds limit ({max_payload_kb}KB)"
             )));
         }
     }
@@ -408,7 +406,7 @@ async fn process_single_event_parallel(
                 //     None => json!(null),
                 // };
                 let message_data = serde_json::to_value(&message_data)
-                    .map_err(|e| AppError::SerializationError(e))?;
+                    .map_err(AppError::SerializationError)?;
                 // Attempt to build the cache payload string.
                 match build_cache_payload(&event_name_for_task, &message_data) {
                     Ok(cache_payload_str) => {
@@ -540,8 +538,7 @@ pub async fn batch_events(
     if let Some(max_batch) = app_config.max_event_batch_size {
         if batch_len > max_batch as usize {
             return Err(AppError::LimitExceeded(format!(
-                "Batch size ({}) exceeds limit ({})",
-                batch_len, max_batch
+                "Batch size ({batch_len}) exceeds limit ({max_batch})"
             )));
         }
     }
@@ -689,7 +686,7 @@ pub async fn channel(
 
     let cache_data_tuple = if wants_cache_data && utils::is_cache_channel(&channel_name) {
         let mut cache_manager_locked = handler.cache_manager.lock().await;
-        let cache_key_str = format!("app:{}:channel:{}:cache_miss", app_id, channel_name);
+        let cache_key_str = format!("app:{app_id}:channel:{channel_name}:cache_miss");
 
         match cache_manager_locked.get(&cache_key_str).await? {
             Some(cache_content_str) => {
@@ -902,13 +899,12 @@ async fn check_app_health(handler: &Arc<ConnectionHandler>, app_id: &str) -> Hea
             return HealthStatus::NotFound;
         }
         Ok(Err(e)) => {
-            critical_issues.push(format!("App manager: {}", e));
+            critical_issues.push(format!("App manager: {e}"));
             return HealthStatus::Error(critical_issues);
         }
         Err(_) => {
             critical_issues.push(format!(
-                "App manager timeout (>{}ms)",
-                HEALTH_CHECK_TIMEOUT_MS
+                "App manager timeout (>{HEALTH_CHECK_TIMEOUT_MS}ms)"
             ));
             return HealthStatus::Error(critical_issues);
         }
@@ -926,7 +922,7 @@ async fn check_app_health(handler: &Arc<ConnectionHandler>, app_id: &str) -> Hea
             // Adapter is healthy
         }
         Ok(Err(e)) => {
-            critical_issues.push(format!("Adapter: {}", e));
+            critical_issues.push(format!("Adapter: {e}"));
         }
         Err(_) => {
             critical_issues.push("Adapter health check timeout".to_string());
@@ -946,7 +942,7 @@ async fn check_app_health(handler: &Arc<ConnectionHandler>, app_id: &str) -> Hea
                 // Cache manager is healthy
             }
             Ok(Err(e)) => {
-                critical_issues.push(format!("Cache: {}", e));
+                critical_issues.push(format!("Cache: {e}"));
             }
             Err(_) => {
                 critical_issues.push("Cache health check timeout".to_string());
@@ -967,7 +963,7 @@ async fn check_app_health(handler: &Arc<ConnectionHandler>, app_id: &str) -> Hea
                 // Queue is healthy
             }
             Ok(Err(e)) => {
-                non_critical_issues.push(format!("Webhooks: {}", e));
+                non_critical_issues.push(format!("Webhooks: {e}"));
             }
             Err(_) => {
                 non_critical_issues.push("Webhook queue health check timeout".to_string());
