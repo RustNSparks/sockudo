@@ -89,7 +89,7 @@ jobs:
       - name: Wait for MySQL to be ready
         run: |
           for i in {1..30}; do
-            if mysql -h 127.0.0.1 -u sockudo -psockudo123 -e "SELECT 1" &> /dev/null; then
+            if mysql -h 127.0.0.1 -u root -proot123 -e "SELECT 1" &> /dev/null; then
               echo "MySQL is ready!"
               break
             fi
@@ -99,7 +99,7 @@ jobs:
       
       - name: Initialize MySQL database
         run: |
-          mysql -h 127.0.0.1 -u sockudo -psockudo123 sockudo < ./sql/init-sql.sql
+          mysql -h 127.0.0.1 -u root -proot123 sockudo < ./sql/init-sql.sql
 
       - name: Cache cargo registry
         uses: actions/cache@v4
