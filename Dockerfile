@@ -89,10 +89,13 @@ ENV CONFIG_FILE=/app/config/config.json
 ENV HOST=0.0.0.0
 ENV PORT=6001
 ENV METRICS_PORT=9601
+# Path for health check, you can change this to match your app's health endpoint e.g. "up/my-app-id"
+# Defaults to "up" which is a common health check endpoint
+ENV HEALTHCHECK_PATH=up
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/up/health-check || exit 1
+    CMD curl -f http://localhost:${PORT}/${HEALTHCHECK_PATH} || exit 1
 
 # Expose ports
 EXPOSE 6001 9601
