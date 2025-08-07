@@ -33,6 +33,9 @@ services:
       - QUEUE_DRIVER=redis
       - RATE_LIMITER_DRIVER=redis
       - SHUTDOWN_GRACE_PERIOD=1
+      - SSL_ENABLED=true
+      - SSL_CERT_PATH="/etc/ssl/certs/sockudo.crt"
+      - SSL_KEY_PATH="/etc/ssl/private/sockudo.key"
     ports:
       - "6002:6002"
       - "9602:9602"
@@ -93,8 +96,6 @@ services:
       - sockudo-node2
     volumes:
       - ./test/multinode/nginx-multinode.conf:/etc/nginx/nginx.conf:ro
-      - ./test/multinode/certs/nginx.crt:/etc/nginx/certs/nginx.crt
-      - ./test/multinode/certs/nginx.key:/etc/nginx/certs/nginx.key
       - ./test/multinode/client/index.html:/usr/share/nginx/html/client/index.html:ro
 
 networks:

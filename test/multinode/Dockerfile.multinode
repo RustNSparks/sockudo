@@ -1,6 +1,19 @@
 # Simple minimal runtime image for sockudo with rustls
 FROM ubuntu:22.04
 
+# Install openssl to generate certificates
+RUN apt update && apt install openssl -y
+
+# Generate self-signed certificate for sockudo
+RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout /etc/ssl/private/sockudo.key \
+    -out /etc/ssl/certs/sockudo.crt \
+    -subj "/C=US/ST=State/L=City/O=Sockudo/CN=localhost"
+
+# Set proper permissions
+RUN chmod 644 /etc/ssl/certs/sockudo.crt && \
+    chmod 600 /etc/ssl/private/sockudo.key
+
 # The actual sockudo binary will be mounted as a volume
 WORKDIR /app
 
