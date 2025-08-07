@@ -141,14 +141,26 @@ jobs:
   manual-build-info:
     name: Manual Build Available
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     steps:
+      - name: Debug event info
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Event action: ${{ github.event.action }}"
+          echo "PR number: ${{ github.event.pull_request.number }}"
+      
       - name: Post build instructions
         uses: actions/github-script@v7
         with:
           script: |
+            console.log('Starting manual build info job...');
+            console.log('Event name:', context.eventName);
+            console.log('PR number:', context.payload.pull_request.number);
+            
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/workflows/manual-build.yml`;
             const branchName = context.payload.pull_request.head.ref;
+            
+            console.log('Branch name:', branchName);
+            console.log('Run URL:', runUrl);
             
             // Check if we've already posted instructions
             const comments = await github.rest.issues.listComments({
@@ -157,10 +169,14 @@ jobs:
               issue_number: context.payload.pull_request.number,
             });
             
+            console.log(`Found ${comments.data.length} existing comments`);
+            
             const existingComment = comments.data.find(comment => 
               comment.user.login === 'github-actions[bot]' && 
               comment.body.includes('Manual Build Available')
             );
+            
+            console.log('Existing comment found:', !!existingComment);
             
             if (!existingComment) {
               const body = [
