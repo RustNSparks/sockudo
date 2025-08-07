@@ -141,6 +141,7 @@ jobs:
   manual-build-info:
     name: Manual Build Available
     runs-on: ubuntu-latest
+    needs: [lint, test, security]
     if: github.event_name == 'pull_request'
     steps:
       - name: Post build instructions
