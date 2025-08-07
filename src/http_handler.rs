@@ -185,7 +185,7 @@ async fn record_api_metrics(
             "Recorded API message metrics"
         );
     } else {
-        info!(
+        debug!(
             "{}",
             "Metrics system not available, skipping metrics recording."
         );
