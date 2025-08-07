@@ -24,10 +24,8 @@ impl ConnectionHandler {
 
         // Send the message
         let mut conn_manager = self.connection_manager.lock().await;
-        let result = conn_manager
-            .send_message(app_id, socket_id, message)
-            .await;
-        
+        let result = conn_manager.send_message(app_id, socket_id, message).await;
+
         // Release the lock before metrics
         drop(conn_manager);
 

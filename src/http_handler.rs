@@ -1,6 +1,6 @@
 use crate::adapter::ConnectionHandler;
 use crate::app::config::App; // To access app limits
-use crate::error::{HealthStatus, HEALTH_CHECK_TIMEOUT_MS};
+use crate::error::{HEALTH_CHECK_TIMEOUT_MS, HealthStatus};
 use crate::protocol::constants::EVENT_NAME_MAX_LENGTH as DEFAULT_EVENT_NAME_MAX_LENGTH;
 use crate::protocol::messages::{
     ApiMessageData, BatchPusherApiMessage, InfoQueryParser, MessageData, PusherApiMessage,
@@ -871,30 +871,29 @@ pub async fn terminate_user_connections(
 /// Internal health check function - performs comprehensive checks
 /// Uses centralized timeouts to prevent hanging and avoid deadlocks
 /// All individual health checks are wrapped with HEALTH_CHECK_TIMEOUT_MS
-/// 
+///
 /// Critical components (WebSocket functionality fails without these):
 /// - App Manager: Must validate app exists and is enabled
-/// - Adapter: Core WebSocket connection handling 
+/// - Adapter: Core WebSocket connection handling
 /// - Cache Manager: Required for cache channels, subscription failures propagate errors
 ///
 /// Non-critical components (WebSocket works, but optional features don't):
 /// - Queue System: Only affects webhook delivery
-async fn check_app_health(
-    handler: &Arc<ConnectionHandler>,
-    app_id: &str
-) -> HealthStatus {
+async fn check_app_health(handler: &Arc<ConnectionHandler>, app_id: &str) -> HealthStatus {
     let mut critical_issues = Vec::new();
     let mut non_critical_issues = Vec::new();
-    
+
     // CRITICAL CHECK 1: App exists, is enabled, and app manager database is healthy
-    let app_check = timeout(Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS), 
-        handler.app_manager.find_by_id(app_id)
-    ).await;
-    
+    let app_check = timeout(
+        Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS),
+        handler.app_manager.find_by_id(app_id),
+    )
+    .await;
+
     match app_check {
         Ok(Ok(Some(app))) if app.enabled => {
             // App exists, is enabled, and app manager is healthy
-        },
+        }
         Ok(Ok(Some(_))) => {
             critical_issues.push("App is disabled".to_string());
             return HealthStatus::Error(critical_issues);
@@ -907,21 +906,25 @@ async fn check_app_health(
             return HealthStatus::Error(critical_issues);
         }
         Err(_) => {
-            critical_issues.push(format!("App manager timeout (>{}ms)", HEALTH_CHECK_TIMEOUT_MS));
+            critical_issues.push(format!(
+                "App manager timeout (>{}ms)",
+                HEALTH_CHECK_TIMEOUT_MS
+            ));
             return HealthStatus::Error(critical_issues);
         }
     }
-    
+
     // CRITICAL CHECK 2: Adapter health - core WebSocket functionality
     let adapter_check = timeout(Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS), async {
         let conn_mgr = handler.connection_manager.lock().await;
         conn_mgr.check_health().await
-    }).await;
-    
+    })
+    .await;
+
     match adapter_check {
         Ok(Ok(())) => {
             // Adapter is healthy
-        },
+        }
         Ok(Err(e)) => {
             critical_issues.push(format!("Adapter: {}", e));
         }
@@ -929,18 +932,19 @@ async fn check_app_health(
             critical_issues.push("Adapter health check timeout".to_string());
         }
     }
-    
+
     // CRITICAL CHECK 3: Cache manager health - required for cache channels
     if handler.server_options().cache.driver != crate::options::CacheDriver::None {
         let cache_check = timeout(Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS), async {
             let cache_manager = handler.cache_manager.lock().await;
             cache_manager.check_health().await
-        }).await;
-        
+        })
+        .await;
+
         match cache_check {
             Ok(Ok(())) => {
                 // Cache manager is healthy
-            },
+            }
             Ok(Err(e)) => {
                 critical_issues.push(format!("Cache: {}", e));
             }
@@ -949,17 +953,19 @@ async fn check_app_health(
             }
         }
     }
-    
+
     // NON-CRITICAL CHECK 1: Queue system health - only affects webhooks
     if let Some(webhook_integration) = handler.webhook_integration() {
-        let queue_check = timeout(Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS), 
-            webhook_integration.check_queue_health()
-        ).await;
-        
+        let queue_check = timeout(
+            Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS),
+            webhook_integration.check_queue_health(),
+        )
+        .await;
+
         match queue_check {
             Ok(Ok(())) => {
                 // Queue is healthy
-            },
+            }
             Ok(Err(e)) => {
                 non_critical_issues.push(format!("Webhooks: {}", e));
             }
@@ -968,7 +974,7 @@ async fn check_app_health(
             }
         }
     }
-    
+
     // Return appropriate status based on critical vs non-critical failures
     if !critical_issues.is_empty() {
         // Critical component failure = Error (service unavailable)
@@ -989,10 +995,10 @@ pub async fn up(
     State(handler): State<Arc<ConnectionHandler>>,
 ) -> Result<impl IntoResponse, AppError> {
     debug!("Health check received for app_id: {}", app_id);
-    
+
     // Perform comprehensive health checks
     let health_status = check_app_health(&handler, &app_id).await;
-    
+
     // Log detailed issues if unhealthy
     match &health_status {
         HealthStatus::Ok => {
@@ -1016,28 +1022,28 @@ pub async fn up(
             warn!("Health check for non-existent app_id: {}", app_id);
         }
     }
-    
+
     // Return response maintaining backward compatibility
-    // Critical component failures return 503, non-critical failures return 200 
+    // Critical component failures return 503, non-critical failures return 200
     let (status_code, status_text, header_value) = match health_status {
         HealthStatus::Ok => (StatusCode::OK, "OK", "OK"),
         HealthStatus::Degraded(_) => (StatusCode::OK, "DEGRADED", "DEGRADED"), // Non-critical issues - WebSocket still works
         HealthStatus::Error(_) => (StatusCode::SERVICE_UNAVAILABLE, "ERROR", "ERROR"), // Critical issues - WebSocket won't work
         HealthStatus::NotFound => (StatusCode::NOT_FOUND, "NOT_FOUND", "NOT_FOUND"),
     };
-    
+
     // Record metrics if available (non-blocking)
     if handler.metrics.is_some() {
         let response_size = status_text.len();
         record_api_metrics(&handler, &app_id, 0, response_size).await;
     }
-    
+
     // Build response using the original format
     let response_val = axum::http::Response::builder()
         .status(status_code)
         .header("X-Health-Check", header_value)
         .body(status_text.to_string())?;
-    
+
     Ok(response_val)
 }
 

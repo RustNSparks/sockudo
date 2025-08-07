@@ -553,10 +553,15 @@ impl AppManager for PgSQLAppManager {
     }
 
     async fn check_health(&self) -> Result<()> {
-        sqlx::query("SELECT 1").fetch_one(&self.pool).await
-            .map_err(|e| crate::error::Error::Internal(format!(
-                "App manager PostgreSQL connection failed: {}", e
-            )))?;
+        sqlx::query("SELECT 1")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| {
+                crate::error::Error::Internal(format!(
+                    "App manager PostgreSQL connection failed: {}",
+                    e
+                ))
+            })?;
         Ok(())
     }
 }

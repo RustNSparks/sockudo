@@ -35,7 +35,7 @@ impl RedisRateLimiter {
             .set_exponent_base(2)
             .set_factor(500)
             .set_max_delay(5000);
-            
+
         let connection = client
             .get_connection_manager_with_config(connection_manager_config)
             .await
@@ -67,7 +67,7 @@ impl RedisRateLimiter {
             .set_exponent_base(2)
             .set_factor(500)
             .set_max_delay(5000);
-            
+
         let connection = client
             .get_connection_manager_with_config(connection_manager_config)
             .await

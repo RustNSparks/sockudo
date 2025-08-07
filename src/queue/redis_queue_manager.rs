@@ -38,7 +38,7 @@ impl RedisQueueManager {
             .set_exponent_base(2)
             .set_factor(500)
             .set_max_delay(5000);
-            
+
         let connection = client
             .get_connection_manager_with_config(connection_manager_config)
             .await
@@ -211,21 +211,25 @@ impl QueueInterface for RedisQueueManager {
 
     async fn check_health(&self) -> crate::error::Result<()> {
         // Create a separate connection for health check to avoid lock contention
-        let mut conn = self.redis_client.get_multiplexed_async_connection().await
-            .map_err(|e| crate::error::Error::Redis(format!(
-                "Queue Redis connection failed: {}", e
-            )))?;
-        
-        let response = redis::cmd("PING").query_async::<String>(&mut conn).await
-            .map_err(|e| crate::error::Error::Redis(format!(
-                "Queue Redis PING failed: {}", e
-            )))?;
-        
+        let mut conn = self
+            .redis_client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| {
+                crate::error::Error::Redis(format!("Queue Redis connection failed: {}", e))
+            })?;
+
+        let response = redis::cmd("PING")
+            .query_async::<String>(&mut conn)
+            .await
+            .map_err(|e| crate::error::Error::Redis(format!("Queue Redis PING failed: {}", e)))?;
+
         if response == "PONG" {
             Ok(())
         } else {
             Err(crate::error::Error::Redis(format!(
-                "Queue Redis PING returned unexpected response: {}", response
+                "Queue Redis PING returned unexpected response: {}",
+                response
             )))
         }
     }

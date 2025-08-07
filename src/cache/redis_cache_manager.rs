@@ -64,7 +64,7 @@ impl RedisCacheManager {
             .set_exponent_base(2)
             .set_factor(500)
             .set_max_delay(5000);
-            
+
         let connection = client
             .get_connection_manager_with_config(connection_manager_config)
             .await
@@ -166,21 +166,25 @@ impl CacheManager for RedisCacheManager {
 
     async fn check_health(&self) -> Result<()> {
         // Use a dedicated connection for health check to avoid impacting main operations
-        let mut conn = self.client.get_multiplexed_async_connection().await
-            .map_err(|e| Error::Cache(format!(
-                "Failed to acquire health check connection: {}", e
-            )))?;
-        
-        let response = redis::cmd("PING").query_async::<String>(&mut conn).await
-            .map_err(|e| Error::Cache(format!(
-                "Cache health check PING failed: {}", e
-            )))?;
-        
+        let mut conn = self
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| {
+                Error::Cache(format!("Failed to acquire health check connection: {}", e))
+            })?;
+
+        let response = redis::cmd("PING")
+            .query_async::<String>(&mut conn)
+            .await
+            .map_err(|e| Error::Cache(format!("Cache health check PING failed: {}", e)))?;
+
         if response == "PONG" {
             Ok(())
         } else {
             Err(Error::Cache(format!(
-                "Cache Redis PING returned unexpected response: {}", response
+                "Cache Redis PING returned unexpected response: {}",
+                response
             )))
         }
     }

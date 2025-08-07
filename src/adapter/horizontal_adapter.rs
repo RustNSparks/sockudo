@@ -301,7 +301,7 @@ impl HorizontalAdapter {
         if let Some(mut request) = self.pending_requests.get_mut(&response.request_id) {
             // Add response to the list
             request.responses.push(response);
-            
+
             // Notify any waiting send_request calls that a new response has arrived
             request.notify.notify_one();
         }

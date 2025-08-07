@@ -156,21 +156,26 @@ impl CacheManager for RedisClusterCacheManager {
 
     async fn check_health(&self) -> Result<()> {
         // Use a dedicated connection for health check to avoid impacting main operations
-        let mut connection = self.client.get_async_connection().await
-            .map_err(|e| Error::Cache(format!(
-                "Failed to acquire health check connection: {}", e
-            )))?;
-        
-        let response = redis::cmd("PING").query_async::<String>(&mut connection).await
-            .map_err(|e| Error::Cache(format!(
-                "Cache Redis Cluster health check PING failed: {}", e
-            )))?;
-        
+        let mut connection = self.client.get_async_connection().await.map_err(|e| {
+            Error::Cache(format!("Failed to acquire health check connection: {}", e))
+        })?;
+
+        let response = redis::cmd("PING")
+            .query_async::<String>(&mut connection)
+            .await
+            .map_err(|e| {
+                Error::Cache(format!(
+                    "Cache Redis Cluster health check PING failed: {}",
+                    e
+                ))
+            })?;
+
         if response == "PONG" {
             Ok(())
         } else {
             Err(Error::Cache(format!(
-                "Cache Redis Cluster PING returned unexpected response: {}", response
+                "Cache Redis Cluster PING returned unexpected response: {}",
+                response
             )))
         }
     }

@@ -498,10 +498,9 @@ impl AppManager for DynamoDbAppManager {
     }
 
     async fn check_health(&self) -> Result<()> {
-        self.client.list_tables().send().await
-            .map_err(|e| crate::error::Error::Internal(format!(
-                "App manager DynamoDB connection failed: {}", e
-            )))?;
+        self.client.list_tables().send().await.map_err(|e| {
+            crate::error::Error::Internal(format!("App manager DynamoDB connection failed: {}", e))
+        })?;
         Ok(())
     }
 }

@@ -248,9 +248,9 @@ pub const HEALTH_CHECK_TIMEOUT_MS: u64 = 400;
 #[derive(Debug, Clone)]
 pub enum HealthStatus {
     Ok,
-    Degraded(Vec<String>),  // Some issues but still functional
-    Error(Vec<String>),     // Critical issues, not functional  
-    NotFound,               // App doesn't exist
+    Degraded(Vec<String>), // Some issues but still functional
+    Error(Vec<String>),    // Critical issues, not functional
+    NotFound,              // App doesn't exist
 }
 
 // src/error/macros.rs

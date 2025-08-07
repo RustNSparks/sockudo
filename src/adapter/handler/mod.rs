@@ -225,7 +225,6 @@ impl ConnectionHandler {
                 Error::Internal("Failed to check connection quota".to_string())
             })?;
         drop(connection_manager);
-        
 
         if current_count >= app_config.max_connections as usize {
             return Err(Error::OverConnectionQuota);

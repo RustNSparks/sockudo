@@ -220,21 +220,27 @@ impl QueueInterface for RedisClusterQueueManager {
 
     async fn check_health(&self) -> crate::error::Result<()> {
         // Create a separate connection for health check to avoid lock contention
-        let mut conn = self.redis_client.get_async_connection().await
-            .map_err(|e| crate::error::Error::Redis(format!(
-                "Queue Redis Cluster connection failed: {}", e
-            )))?;
-        
-        let response = redis::cmd("PING").query_async::<String>(&mut conn).await
-            .map_err(|e| crate::error::Error::Redis(format!(
-                "Queue Redis Cluster PING failed: {}", e
-            )))?;
-        
+        let mut conn = self
+            .redis_client
+            .get_async_connection()
+            .await
+            .map_err(|e| {
+                crate::error::Error::Redis(format!("Queue Redis Cluster connection failed: {}", e))
+            })?;
+
+        let response = redis::cmd("PING")
+            .query_async::<String>(&mut conn)
+            .await
+            .map_err(|e| {
+                crate::error::Error::Redis(format!("Queue Redis Cluster PING failed: {}", e))
+            })?;
+
         if response == "PONG" {
             Ok(())
         } else {
             Err(crate::error::Error::Redis(format!(
-                "Queue Redis Cluster PING returned unexpected response: {}", response
+                "Queue Redis Cluster PING returned unexpected response: {}",
+                response
             )))
         }
     }

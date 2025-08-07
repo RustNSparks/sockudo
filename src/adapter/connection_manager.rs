@@ -103,7 +103,7 @@ pub trait ConnectionManager: Send + Sync {
     async fn get_sockets_count(&self, app_id: &str) -> Result<usize>;
     async fn get_namespaces(&mut self) -> Result<DashMap<String, Arc<Namespace>>>;
     fn as_any_mut(&mut self) -> &mut dyn Any;
-    
+
     /// Check the health of the connection manager and its underlying adapter
     /// Returns Ok(()) if healthy, Err(error_message) if unhealthy with specific reason
     async fn check_health(&self) -> Result<()>;

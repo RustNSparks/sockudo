@@ -99,7 +99,6 @@ impl CacheManager for MemoryCacheManager {
         Ok(())
     }
 
-
     /// Returns the configured default TTL of the cache if a key exists,
     /// or None if the key doesn't exist or no default TTL is configured.
     async fn ttl(&mut self, key: &str) -> Result<Option<Duration>> {

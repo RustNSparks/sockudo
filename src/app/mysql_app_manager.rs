@@ -606,10 +606,12 @@ impl AppManager for MySQLAppManager {
     }
 
     async fn check_health(&self) -> Result<()> {
-        sqlx::query("SELECT 1").fetch_one(&self.pool).await
-            .map_err(|e| crate::error::Error::Internal(format!(
-                "App manager MySQL connection failed: {}", e
-            )))?;
+        sqlx::query("SELECT 1")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| {
+                crate::error::Error::Internal(format!("App manager MySQL connection failed: {}", e))
+            })?;
         Ok(())
     }
 }

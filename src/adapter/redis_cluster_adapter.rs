@@ -169,10 +169,16 @@ impl RedisClusterAdapter {
         let start = Instant::now();
         let notify = {
             let horizontal = self.horizontal.lock().await;
-            horizontal.pending_requests
+            horizontal
+                .pending_requests
                 .get(&request_id)
                 .map(|req| req.notify.clone())
-                .ok_or_else(|| Error::Other(format!("Request {} not found in pending requests", request_id)))?
+                .ok_or_else(|| {
+                    Error::Other(format!(
+                        "Request {} not found in pending requests",
+                        request_id
+                    ))
+                })?
         };
 
         let responses = loop {
@@ -462,9 +468,7 @@ impl RedisClusterAdapter {
         Ok(())
     }
 
-
     pub async fn get_node_count(&self) -> Result<usize> {
-
         let mut conn = self.connection.clone();
         let result: redis::RedisResult<Vec<redis::Value>> = redis::cmd("PUBSUB")
             .arg("NUMSUB")
@@ -903,21 +907,21 @@ impl ConnectionManager for RedisClusterAdapter {
 
     async fn check_health(&self) -> Result<()> {
         // Use a dedicated connection for health check to avoid impacting main operations
-        let mut conn = self.client.get_async_connection().await
-            .map_err(|e| Error::Redis(format!(
-                "Failed to acquire health check connection: {}", e
-            )))?;
-        
-        let response = redis::cmd("PING").query_async::<String>(&mut conn).await
-            .map_err(|e| Error::Redis(format!(
-                "Cluster health check PING failed: {}", e
-            )))?;
-        
+        let mut conn = self.client.get_async_connection().await.map_err(|e| {
+            Error::Redis(format!("Failed to acquire health check connection: {}", e))
+        })?;
+
+        let response = redis::cmd("PING")
+            .query_async::<String>(&mut conn)
+            .await
+            .map_err(|e| Error::Redis(format!("Cluster health check PING failed: {}", e)))?;
+
         if response == "PONG" {
             Ok(())
         } else {
             Err(Error::Redis(format!(
-                "Cluster PING returned unexpected response: {}", response
+                "Cluster PING returned unexpected response: {}",
+                response
             )))
         }
     }

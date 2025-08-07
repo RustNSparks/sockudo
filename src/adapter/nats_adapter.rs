@@ -193,10 +193,16 @@ impl NatsAdapter {
         let start = Instant::now();
         let notify = {
             let horizontal = self.horizontal.lock().await;
-            horizontal.pending_requests
+            horizontal
+                .pending_requests
                 .get(&request_id)
                 .map(|req| req.notify.clone())
-                .ok_or_else(|| Error::Other(format!("Request {} not found in pending requests", request_id)))?
+                .ok_or_else(|| {
+                    Error::Other(format!(
+                        "Request {} not found in pending requests",
+                        request_id
+                    ))
+                })?
         };
 
         let responses = loop {
@@ -438,9 +444,7 @@ impl NatsAdapter {
         Ok(())
     }
 
-
     pub async fn get_node_count(&self) -> Result<usize> {
-
         // If nodes_number is explicitly set, use that value
         if let Some(nodes) = self.config.nodes_number {
             return Ok(nodes as usize);
@@ -870,16 +874,13 @@ impl ConnectionManager for NatsAdapter {
         let state = self.client.connection_state();
         match state {
             async_nats::connection::State::Connected => Ok(()),
-            async_nats::connection::State::Disconnected => {
-                Err(crate::error::Error::Connection(
-                    "NATS client is disconnected".to_string()
-                ))
-            }
-            other_state => {
-                Err(crate::error::Error::Connection(format!(
-                    "NATS client in transitional state: {:?}", other_state
-                )))
-            }
+            async_nats::connection::State::Disconnected => Err(crate::error::Error::Connection(
+                "NATS client is disconnected".to_string(),
+            )),
+            other_state => Err(crate::error::Error::Connection(format!(
+                "NATS client in transitional state: {:?}",
+                other_state
+            ))),
         }
     }
 }

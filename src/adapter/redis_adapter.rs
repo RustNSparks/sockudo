@@ -85,15 +85,22 @@ impl RedisAdapter {
             .set_exponent_base(2)
             .set_factor(500)
             .set_max_delay(5000);
-            
+
         let connection = client
             .get_connection_manager_with_config(connection_manager_config.clone())
             .await
             .map_err(|e| Error::Redis(format!("Failed to connect to Redis: {}", e)))?;
 
         // Create ConnectionManager for events API broadcasts (reuse same config)
-        let events_connection = client.get_connection_manager_with_config(connection_manager_config).await
-            .map_err(|e| Error::Redis(format!("Failed to create Redis connection manager for events: {}", e)))?;
+        let events_connection = client
+            .get_connection_manager_with_config(connection_manager_config)
+            .await
+            .map_err(|e| {
+                Error::Redis(format!(
+                    "Failed to create Redis connection manager for events: {}",
+                    e
+                ))
+            })?;
 
         let broadcast_channel = format!("{}:{}", config.prefix, BROADCAST_SUFFIX);
         let request_channel = format!("{}:{}", config.prefix, REQUESTS_SUFFIX);
@@ -143,7 +150,7 @@ impl RedisAdapter {
         let connection = self.connection.clone();
         let request_channel = self.request_channel.clone();
         let config_timeout = self.config.request_timeout_ms;
-        
+
         let node_count = self.get_node_count().await?;
 
         // Create the request
@@ -183,7 +190,7 @@ impl RedisAdapter {
             }
         }
 
-        // Broadcast the request via Redis  
+        // Broadcast the request via Redis
         let request_json = serde_json::to_string(&request)
             .map_err(|e| Error::Other(format!("Failed to serialize request: {}", e)))?;
         let mut conn = connection.clone();
@@ -312,7 +319,6 @@ impl RedisAdapter {
         Ok(combined_response)
     }
 
-
     pub async fn start_listeners(&self) -> Result<()> {
         {
             let mut horizontal = self.horizontal.lock().await;
@@ -339,18 +345,21 @@ impl RedisAdapter {
         tokio::spawn(async move {
             let mut retry_delay = 500u64; // Start with 500ms delay
             const MAX_RETRY_DELAY: u64 = 10_000; // Max 10 seconds
-            
+
             loop {
                 debug!("Attempting to establish pub/sub connection...");
-                
+
                 let mut pubsub = match sub_client.get_async_pubsub().await {
                     Ok(pubsub) => {
                         retry_delay = 500; // Reset retry delay on success
                         debug!("Pub/sub connection established successfully");
                         pubsub
-                    },
+                    }
                     Err(e) => {
-                        error!("Failed to get pubsub connection: {}, retrying in {}ms", e, retry_delay);
+                        error!(
+                            "Failed to get pubsub connection: {}, retrying in {}ms",
+                            e, retry_delay
+                        );
                         tokio::time::sleep(tokio::time::Duration::from_millis(retry_delay)).await;
                         retry_delay = std::cmp::min(retry_delay * 2, MAX_RETRY_DELAY);
                         continue;
@@ -361,7 +370,10 @@ impl RedisAdapter {
                     .subscribe(&[&broadcast_channel, &request_channel, &response_channel])
                     .await
                 {
-                    error!("Failed to subscribe to channels: {}, retrying in {}ms", e, retry_delay);
+                    error!(
+                        "Failed to subscribe to channels: {}, retrying in {}ms",
+                        e, retry_delay
+                    );
                     tokio::time::sleep(tokio::time::Duration::from_millis(retry_delay)).await;
                     retry_delay = std::cmp::min(retry_delay * 2, MAX_RETRY_DELAY);
                     continue;
@@ -378,108 +390,112 @@ impl RedisAdapter {
                 let mut connection_broken = false;
 
                 while let Some(msg) = message_stream.next().await {
-                let channel: String = msg.get_channel_name().to_string();
-                let payload_result: redis::RedisResult<String> = msg.get_payload();
+                    let channel: String = msg.get_channel_name().to_string();
+                    let payload_result: redis::RedisResult<String> = msg.get_payload();
 
-                if let Ok(payload) = payload_result {
-                    let horizontal_clone = horizontal_arc.clone();
-                    let node_id_clone = node_id.clone();
-                    let pub_connection_clone = pub_connection.clone();
-                    let broadcast_channel_clone = broadcast_channel.clone();
-                    let request_channel_clone = request_channel.clone();
-                    let response_channel_clone = response_channel.clone();
+                    if let Ok(payload) = payload_result {
+                        let horizontal_clone = horizontal_arc.clone();
+                        let node_id_clone = node_id.clone();
+                        let pub_connection_clone = pub_connection.clone();
+                        let broadcast_channel_clone = broadcast_channel.clone();
+                        let request_channel_clone = request_channel.clone();
+                        let response_channel_clone = response_channel.clone();
 
-                    tokio::spawn(async move {
-                        if channel == broadcast_channel_clone {
-                            // Handle broadcast message
-                            if let Ok(broadcast) =
-                                serde_json::from_str::<BroadcastMessage>(&payload)
-                            {
-                                if broadcast.node_id == node_id_clone {
-                                    return;
-                                }
+                        tokio::spawn(async move {
+                            if channel == broadcast_channel_clone {
+                                // Handle broadcast message
+                                if let Ok(broadcast) =
+                                    serde_json::from_str::<BroadcastMessage>(&payload)
+                                {
+                                    if broadcast.node_id == node_id_clone {
+                                        return;
+                                    }
 
-                                if let Ok(message) = serde_json::from_str(&broadcast.message) {
-                                    let except_id = broadcast
-                                        .except_socket_id
-                                        .as_ref()
-                                        .map(|id| SocketId(id.clone()));
+                                    if let Ok(message) = serde_json::from_str(&broadcast.message) {
+                                        let except_id = broadcast
+                                            .except_socket_id
+                                            .as_ref()
+                                            .map(|id| SocketId(id.clone()));
 
-                                    let mut horizontal_lock = horizontal_clone.lock().await;
-                                    let _result = horizontal_lock
-                                        .local_adapter
-                                        .send(
-                                            &broadcast.channel,
-                                            message,
-                                            except_id.as_ref(),
-                                            &broadcast.app_id,
-                                        )
-                                        .await;
-                                }
-                            }
-                        } else if channel == request_channel_clone {
-                            // Handle request message
-                            if let Ok(request) = serde_json::from_str::<RequestBody>(&payload) {
-                                if request.node_id == node_id_clone {
-                                    return; // Skip processing our own requests
-                                }
-
-                                let response = {
-                                    // Release lock quickly to avoid deadlocks
-                                    let mut horizontal_lock = horizontal_clone.lock().await;
-                                    horizontal_lock.process_request(request).await
-                                };
-                                // Lock released here before publishing response
-
-                                if let Ok(response) = response {
-                                    if let Ok(response_json) = serde_json::to_string(&response) {
-                                        let mut conn = pub_connection_clone.clone();
-                                        let _ = conn
-                                            .publish::<_, _, ()>(
-                                                &response_channel_clone,
-                                                response_json,
+                                        let mut horizontal_lock = horizontal_clone.lock().await;
+                                        let _result = horizontal_lock
+                                            .local_adapter
+                                            .send(
+                                                &broadcast.channel,
+                                                message,
+                                                except_id.as_ref(),
+                                                &broadcast.app_id,
                                             )
                                             .await;
                                     }
                                 }
-                            }
-                        } else if channel == response_channel_clone {
-                            // Handle response message
-                            if let Ok(response) = serde_json::from_str::<ResponseBody>(&payload) {
-                                if response.node_id == node_id_clone {
-                                    return; // Skip processing our own responses
-                                }
+                            } else if channel == request_channel_clone {
+                                // Handle request message
+                                if let Ok(request) = serde_json::from_str::<RequestBody>(&payload) {
+                                    if request.node_id == node_id_clone {
+                                        return; // Skip processing our own requests
+                                    }
 
-                                let horizontal_lock = horizontal_clone.lock().await;
-                                let _ = horizontal_lock.process_response(response).await;
-                            } else {
-                                warn!("Failed to parse response message: {}", payload);
+                                    let response = {
+                                        // Release lock quickly to avoid deadlocks
+                                        let mut horizontal_lock = horizontal_clone.lock().await;
+                                        horizontal_lock.process_request(request).await
+                                    };
+                                    // Lock released here before publishing response
+
+                                    if let Ok(response) = response {
+                                        if let Ok(response_json) = serde_json::to_string(&response)
+                                        {
+                                            let mut conn = pub_connection_clone.clone();
+                                            let _ = conn
+                                                .publish::<_, _, ()>(
+                                                    &response_channel_clone,
+                                                    response_json,
+                                                )
+                                                .await;
+                                        }
+                                    }
+                                }
+                            } else if channel == response_channel_clone {
+                                // Handle response message
+                                if let Ok(response) = serde_json::from_str::<ResponseBody>(&payload)
+                                {
+                                    if response.node_id == node_id_clone {
+                                        return; // Skip processing our own responses
+                                    }
+
+                                    let horizontal_lock = horizontal_clone.lock().await;
+                                    let _ = horizontal_lock.process_response(response).await;
+                                } else {
+                                    warn!("Failed to parse response message: {}", payload);
+                                }
                             }
-                        }
-                    });
-                } else {
-                    // Error getting payload - connection might be broken
-                    warn!("Error getting message payload: {:?}", payload_result);
-                    connection_broken = true;
-                    break;
+                        });
+                    } else {
+                        // Error getting payload - connection might be broken
+                        warn!("Error getting message payload: {:?}", payload_result);
+                        connection_broken = true;
+                        break;
+                    }
                 }
+
+                if connection_broken {
+                    warn!(
+                        "Pub/sub connection broken, reconnecting in {}ms...",
+                        retry_delay
+                    );
+                    tokio::time::sleep(tokio::time::Duration::from_millis(retry_delay)).await;
+                    retry_delay = std::cmp::min(retry_delay * 2, MAX_RETRY_DELAY);
+                } else {
+                    warn!("Pub/sub message stream ended unexpectedly, reconnecting...");
+                }
+
+                // Connection ended, will retry in outer loop
             }
-            
-            if connection_broken {
-                warn!("Pub/sub connection broken, reconnecting in {}ms...", retry_delay);
-                tokio::time::sleep(tokio::time::Duration::from_millis(retry_delay)).await;
-                retry_delay = std::cmp::min(retry_delay * 2, MAX_RETRY_DELAY);
-            } else {
-                warn!("Pub/sub message stream ended unexpectedly, reconnecting...");
-            }
-            
-            // Connection ended, will retry in outer loop
-        }
         });
 
         Ok(())
     }
-
 
     pub async fn get_node_count(&self) -> Result<usize> {
         if self.config.cluster_mode {
@@ -610,33 +626,45 @@ impl ConnectionManager for RedisAdapter {
         };
 
         let broadcast_json = serde_json::to_string(&broadcast)?;
-        
+
         // Retry broadcast with exponential backoff to handle connection recovery
         let mut retry_delay = 100u64; // Start with 100ms
         const MAX_RETRIES: u32 = 3;
         const MAX_RETRY_DELAY: u64 = 1000; // Max 1 second
-        
+
         for attempt in 0..=MAX_RETRIES {
             let mut conn = self.events_connection.clone();
-            match conn.publish::<_, _, i32>(&self.broadcast_channel, &broadcast_json).await {
+            match conn
+                .publish::<_, _, i32>(&self.broadcast_channel, &broadcast_json)
+                .await
+            {
                 Ok(_subscriber_count) => {
                     if attempt > 0 {
                         debug!("Broadcast succeeded on retry attempt {}", attempt);
                     }
                     return Ok(());
-                },
+                }
                 Err(e) => {
                     if attempt == MAX_RETRIES {
-                        return Err(Error::Redis(format!("Failed to publish broadcast after {} attempts: {}", MAX_RETRIES + 1, e)));
+                        return Err(Error::Redis(format!(
+                            "Failed to publish broadcast after {} attempts: {}",
+                            MAX_RETRIES + 1,
+                            e
+                        )));
                     }
-                    
-                    warn!("Broadcast attempt {} failed: {}, retrying in {}ms", attempt + 1, e, retry_delay);
+
+                    warn!(
+                        "Broadcast attempt {} failed: {}, retrying in {}ms",
+                        attempt + 1,
+                        e,
+                        retry_delay
+                    );
                     tokio::time::sleep(tokio::time::Duration::from_millis(retry_delay)).await;
                     retry_delay = std::cmp::min(retry_delay * 2, MAX_RETRY_DELAY);
                 }
             }
         }
-        
+
         unreachable!() // Should never reach here due to early return or final attempt error
     }
 
@@ -925,7 +953,7 @@ impl ConnectionManager for RedisAdapter {
             let horizontal = self.horizontal.lock().await;
             horizontal.local_adapter.get_sockets_count(app_id).await?
         };
-        
+
         // Get distributed count - send_request will acquire its own lock
         match self
             .send_request(app_id, RequestType::SocketsCount, None, None, None)
@@ -950,21 +978,25 @@ impl ConnectionManager for RedisAdapter {
 
     async fn check_health(&self) -> Result<()> {
         // Use a dedicated connection for health check to avoid impacting main operations
-        let mut conn = self.client.get_multiplexed_async_connection().await
-            .map_err(|e| Error::Redis(format!(
-                "Failed to acquire health check connection: {}", e
-            )))?;
-        
-        let response = redis::cmd("PING").query_async::<String>(&mut conn).await
-            .map_err(|e| Error::Redis(format!(
-                "Health check PING failed: {}", e
-            )))?;
-        
+        let mut conn = self
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| {
+                Error::Redis(format!("Failed to acquire health check connection: {}", e))
+            })?;
+
+        let response = redis::cmd("PING")
+            .query_async::<String>(&mut conn)
+            .await
+            .map_err(|e| Error::Redis(format!("Health check PING failed: {}", e)))?;
+
         if response == "PONG" {
             Ok(())
         } else {
             Err(Error::Redis(format!(
-                "PING returned unexpected response: {}", response
+                "PING returned unexpected response: {}",
+                response
             )))
         }
     }
