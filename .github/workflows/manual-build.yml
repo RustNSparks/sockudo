@@ -1,4 +1,4 @@
-name: Manual Build
+name: Manual Build - Cross Platform Artifacts
 
 on:
   workflow_dispatch:
