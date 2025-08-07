@@ -6,7 +6,7 @@ services:
     networks:
       - sockudo-test
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -34,8 +34,8 @@ services:
       - RATE_LIMITER_DRIVER=redis
       - SHUTDOWN_GRACE_PERIOD=1
       - SSL_ENABLED=true
-      - SSL_CERT_PATH="/etc/ssl/certs/sockudo.crt"
-      - SSL_KEY_PATH="/etc/ssl/private/sockudo.key"
+      - SSL_CERT_PATH=/etc/ssl/certs/sockudo.crt
+      - SSL_KEY_PATH=/etc/ssl/private/sockudo.key
     ports:
       - "6002:6002"
       - "9602:9602"
