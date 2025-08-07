@@ -2,9 +2,9 @@ name: CI - Lint and Test
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, master, develop, beta ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, master, develop, beta ]
 
 env:
   CARGO_TERM_COLOR: always
