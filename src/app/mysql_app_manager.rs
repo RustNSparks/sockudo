@@ -663,10 +663,12 @@ mod tests {
 
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
-            // Setup test database
+            // Setup test database with proper credentials for Docker MySQL dev environment
             let config = DatabaseConnection {
-                database: "sockudo_test".to_string(),
-                table_name: "apps_test".to_string(),
+                username: "sockudo".to_string(),
+                password: "sockudo123".to_string(),
+                database: "sockudo".to_string(),
+                table_name: "applications".to_string(),
                 cache_ttl: 5, // Short TTL for testing
                 ..Default::default()
             };
