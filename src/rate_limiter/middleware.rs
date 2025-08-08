@@ -283,26 +283,29 @@ impl IpKeyExtractor {
     fn get_ip<B>(&self, req: &HyperRequest<B>) -> Option<String> {
         if self.trust_hops > 0
             && let Some(value) = req.headers().get("x-forwarded-for")
-                && let Ok(forwarded_str) = value.to_str() {
-                    let ips: Vec<&str> = forwarded_str.split(',').map(str::trim).collect();
-                    let client_ip_index = ips.len().saturating_sub(self.trust_hops);
-                    if let Some(ip_str) = ips.get(client_ip_index) {
-                        if ip_str.parse::<std::net::IpAddr>().is_ok() {
-                            return Some(ip_str.to_string());
-                        }
-                    } else if let Some(ip_str) = ips.first()
-                        && ip_str.parse::<std::net::IpAddr>().is_ok() {
-                            return Some(ip_str.to_string());
-                        }
+            && let Ok(forwarded_str) = value.to_str()
+        {
+            let ips: Vec<&str> = forwarded_str.split(',').map(str::trim).collect();
+            let client_ip_index = ips.len().saturating_sub(self.trust_hops);
+            if let Some(ip_str) = ips.get(client_ip_index) {
+                if ip_str.parse::<std::net::IpAddr>().is_ok() {
+                    return Some(ip_str.to_string());
                 }
+            } else if let Some(ip_str) = ips.first()
+                && ip_str.parse::<std::net::IpAddr>().is_ok()
+            {
+                return Some(ip_str.to_string());
+            }
+        }
 
         if let Some(value) = req.headers().get("x-real-ip")
-            && let Ok(real_ip_str) = value.to_str() {
-                let real_ip = real_ip_str.trim();
-                if real_ip.parse::<std::net::IpAddr>().is_ok() {
-                    return Some(real_ip.to_string());
-                }
+            && let Ok(real_ip_str) = value.to_str()
+        {
+            let real_ip = real_ip_str.trim();
+            if real_ip.parse::<std::net::IpAddr>().is_ok() {
+                return Some(real_ip.to_string());
             }
+        }
 
         req.extensions()
             .get::<ConnectInfo<SocketAddr>>()

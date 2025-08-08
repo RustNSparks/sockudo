@@ -308,9 +308,10 @@ impl WebhookIntegration {
         });
 
         if channel.starts_with("presence-")
-            && let Some(uid) = user_id {
-                client_event_pusher_payload["user_id"] = json!(uid);
-            }
+            && let Some(uid) = user_id
+        {
+            client_event_pusher_payload["user_id"] = json!(uid);
+        }
 
         let signature = format!(
             "{}:{}:{}:client_event",

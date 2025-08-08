@@ -1161,7 +1161,8 @@ impl ServerOptions {
         let default_app_secret = std::env::var("SOCKUDO_DEFAULT_APP_SECRET");
         let default_app_enabled = parse_bool_env("SOCKUDO_DEFAULT_APP_ENABLED", true);
 
-        if let (Ok(app_id), Ok(app_key), Ok(app_secret)) = (default_app_id, default_app_key, default_app_secret)
+        if let (Ok(app_id), Ok(app_key), Ok(app_secret)) =
+            (default_app_id, default_app_key, default_app_secret)
             && default_app_enabled
         {
             let default_app = App {

@@ -185,8 +185,9 @@ impl Drop for MemoryRateLimiter {
     fn drop(&mut self) {
         // Attempt to abort the cleanup task if it's still running
         if let Ok(mut task_guard) = self.cleanup_task.try_lock()
-            && let Some(task) = task_guard.take() {
-                task.abort();
-            }
+            && let Some(task) = task_guard.take()
+        {
+            task.abort();
+        }
     }
 }

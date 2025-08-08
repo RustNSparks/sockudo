@@ -286,13 +286,14 @@ async fn process_single_event_parallel(
     let target_channels: Vec<String> = match channels {
         Some(ch_list) if !ch_list.is_empty() => {
             if let Some(max_ch_at_once) = app.max_event_channels_at_once
-                && ch_list.len() > max_ch_at_once as usize {
-                    return Err(AppError::LimitExceeded(format!(
-                        "Number of channels ({}) exceeds limit ({})",
-                        ch_list.len(),
-                        max_ch_at_once
-                    )));
-                }
+                && ch_list.len() > max_ch_at_once as usize
+            {
+                return Err(AppError::LimitExceeded(format!(
+                    "Number of channels ({}) exceeds limit ({})",
+                    ch_list.len(),
+                    max_ch_at_once
+                )));
+            }
             ch_list
         }
         None => match channel {
@@ -535,11 +536,12 @@ pub async fn batch_events(
 
     // Validate batch size against app limits.
     if let Some(max_batch) = app_config.max_event_batch_size
-        && batch_len > max_batch as usize {
-            return Err(AppError::LimitExceeded(format!(
-                "Batch size ({batch_len}) exceeds limit ({max_batch})"
-            )));
-        }
+        && batch_len > max_batch as usize
+    {
+        return Err(AppError::LimitExceeded(format!(
+            "Batch size ({batch_len}) exceeds limit ({max_batch})"
+        )));
+    }
 
     let incoming_request_size_bytes = body_bytes.len(); // Use length of already serialized body_bytes
     let mut any_message_requests_info = false;

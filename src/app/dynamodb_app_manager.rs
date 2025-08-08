@@ -339,10 +339,11 @@ impl DynamoDbAppManager {
 
             if let Ok(response) = table_status
                 && let Some(table) = response.table()
-                    && let Some(status) = table.table_status()
-                        && status == &aws_sdk_dynamodb::types::TableStatus::Active {
-                            return Ok(());
-                        }
+                && let Some(status) = table.table_status()
+                && status == &aws_sdk_dynamodb::types::TableStatus::Active
+            {
+                return Ok(());
+            }
 
             retries += 1;
         }
@@ -477,13 +478,13 @@ impl AppManager for DynamoDbAppManager {
 
         let items = response.items();
         if !items.is_empty()
-            && let Some(item) = items.first() {
-                // Convert DynamoDB item to App
-                let app =
-                    self.item_to_app(aws_sdk_dynamodb::types::AttributeValue::M(item.clone()))?;
+            && let Some(item) = items.first()
+        {
+            // Convert DynamoDB item to App
+            let app = self.item_to_app(aws_sdk_dynamodb::types::AttributeValue::M(item.clone()))?;
 
-                return Ok(Some(app));
-            }
+            return Ok(Some(app));
+        }
 
         Ok(None)
     }

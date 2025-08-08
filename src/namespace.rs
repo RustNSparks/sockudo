@@ -168,15 +168,16 @@ impl Namespace {
         let user_id_option = ws_ref.get_user_id().await;
 
         if let Some(user_id) = user_id_option
-            && let Some(user_sockets_ref) = self.users.get_mut(&user_id) {
-                user_sockets_ref.remove(&ws_ref);
-                let is_empty = user_sockets_ref.is_empty();
-                drop(user_sockets_ref);
-                if is_empty {
-                    self.users.remove(&user_id);
-                    debug!("Removed empty user entry for: {}", user_id);
-                }
+            && let Some(user_sockets_ref) = self.users.get_mut(&user_id)
+        {
+            user_sockets_ref.remove(&ws_ref);
+            let is_empty = user_sockets_ref.is_empty();
+            drop(user_sockets_ref);
+            if is_empty {
+                self.users.remove(&user_id);
+                debug!("Removed empty user entry for: {}", user_id);
             }
+        }
 
         // Finally, remove the socket from the main sockets map.
         if self.sockets.remove(&socket_id).is_some() {

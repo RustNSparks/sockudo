@@ -142,12 +142,13 @@ impl ConnectionHandler {
 
         // Send channel_vacated webhook if no subscribers left
         if current_sub_count == 0
-            && let Some(webhook_integration) = &self.webhook_integration {
-                webhook_integration
-                    .send_channel_vacated(app_config, &channel_name)
-                    .await
-                    .ok();
-            }
+            && let Some(webhook_integration) = &self.webhook_integration
+        {
+            webhook_integration
+                .send_channel_vacated(app_config, &channel_name)
+                .await
+                .ok();
+        }
 
         Ok(())
     }
@@ -370,12 +371,13 @@ impl ConnectionHandler {
 
         // Send channel_vacated webhook if no subscribers left
         if current_sub_count == 0
-            && let Some(webhook_integration) = &self.webhook_integration {
-                webhook_integration
-                    .send_channel_vacated(app_config, channel_str)
-                    .await
-                    .ok();
-            }
+            && let Some(webhook_integration) = &self.webhook_integration
+        {
+            webhook_integration
+                .send_channel_vacated(app_config, channel_str)
+                .await
+                .ok();
+        }
 
         Ok(())
     }
@@ -565,15 +567,15 @@ impl ConnectionHandler {
                 // Send cache miss webhook if configured
                 if let Some(app_config) = self.app_manager.find_by_id(app_id).await?
                     && let Some(webhook_integration) = &self.webhook_integration
-                        && let Err(e) = webhook_integration
-                            .send_cache_missed(&app_config, channel)
-                            .await
-                        {
-                            warn!(
-                                "Failed to send cache_missed webhook for channel {}: {}",
-                                channel, e
-                            );
-                        }
+                    && let Err(e) = webhook_integration
+                        .send_cache_missed(&app_config, channel)
+                        .await
+                {
+                    warn!(
+                        "Failed to send cache_missed webhook for channel {}: {}",
+                        channel, e
+                    );
+                }
 
                 info!(
                     "No cached content found for channel: {}, sent cache_miss event",

@@ -55,11 +55,12 @@ impl ConnectionHandler {
         let user_info_size_kb = utils::data_to_bytes_flexible(vec![user_info]) / 1024;
 
         if let Some(max_size) = app_config.max_presence_member_size_in_kb
-            && user_info_size_kb > max_size as usize {
-                return Err(Error::Channel(format!(
-                    "Presence member data size ({user_info_size_kb}KB) exceeds limit ({max_size}KB)"
-                )));
-            }
+            && user_info_size_kb > max_size as usize
+        {
+            return Err(Error::Channel(format!(
+                "Presence member data size ({user_info_size_kb}KB) exceeds limit ({max_size}KB)"
+            )));
+        }
 
         // Check member count limit
         if let Some(max_members) = app_config.max_presence_members_per_channel {

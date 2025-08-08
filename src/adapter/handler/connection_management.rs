@@ -31,10 +31,11 @@ impl ConnectionHandler {
 
         // Track metrics if message was sent successfully
         if result.is_ok()
-            && let Some(ref metrics) = self.metrics {
-                let metrics_locked = metrics.lock().await;
-                metrics_locked.mark_ws_message_sent(app_id, message_size);
-            }
+            && let Some(ref metrics) = self.metrics
+        {
+            let metrics_locked = metrics.lock().await;
+            metrics_locked.mark_ws_message_sent(app_id, message_size);
+        }
 
         result
     }
@@ -72,13 +73,15 @@ impl ConnectionHandler {
         };
 
         // Track metrics if message was sent successfully
-        if result.is_ok() && target_socket_count > 0
-            && let Some(ref metrics) = self.metrics {
-                let metrics_locked = metrics.lock().await;
-                for _ in 0..target_socket_count {
-                    metrics_locked.mark_ws_message_sent(&app_config.id, message_size);
-                }
+        if result.is_ok()
+            && target_socket_count > 0
+            && let Some(ref metrics) = self.metrics
+        {
+            let metrics_locked = metrics.lock().await;
+            for _ in 0..target_socket_count {
+                metrics_locked.mark_ws_message_sent(&app_config.id, message_size);
             }
+        }
 
         result
     }
