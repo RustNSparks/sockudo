@@ -441,8 +441,8 @@ impl RedisAdapter {
                                     };
                                     // Lock released here before publishing response
 
-                                    if let Ok(response) = response {
-                                        if let Ok(response_json) = serde_json::to_string(&response)
+                                    if let Ok(response) = response
+                                        && let Ok(response_json) = serde_json::to_string(&response)
                                         {
                                             let mut conn = pub_connection_clone.clone();
                                             let _ = conn
@@ -452,7 +452,6 @@ impl RedisAdapter {
                                                 )
                                                 .await;
                                         }
-                                    }
                                 }
                             } else if channel == response_channel_clone {
                                 // Handle response message

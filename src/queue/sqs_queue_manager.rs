@@ -260,8 +260,7 @@ impl SqsQueueManager {
                                                     // Processing succeeded, delete the message
                                                     if let Some(receipt_handle) =
                                                         message.receipt_handle()
-                                                    {
-                                                        if let Err(e) = client
+                                                        && let Err(e) = client
                                                             .delete_message()
                                                             .queue_url(&queue_url)
                                                             .receipt_handle(receipt_handle)
@@ -276,7 +275,6 @@ impl SqsQueueManager {
                                                                 )
                                                             );
                                                         }
-                                                    }
                                                 }
                                                 Err(e) => {
                                                     // Processing failed, log the error
@@ -300,8 +298,8 @@ impl SqsQueueManager {
                                             );
 
                                             // Delete malformed messages
-                                            if let Some(receipt_handle) = message.receipt_handle() {
-                                                if let Err(e) = client
+                                            if let Some(receipt_handle) = message.receipt_handle()
+                                                && let Err(e) = client
                                                     .delete_message()
                                                     .queue_url(&queue_url)
                                                     .receipt_handle(receipt_handle)
@@ -316,7 +314,6 @@ impl SqsQueueManager {
                                                         )
                                                     );
                                                 }
-                                            }
                                         }
                                     }
                                 }

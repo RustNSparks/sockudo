@@ -91,15 +91,14 @@ impl WatchlistManager {
             }
 
             // If user just came online, notify their watchers
-            if was_offline {
-                if let Some(user_entry) = app_watchlists.get(user_id) {
+            if was_offline
+                && let Some(user_entry) = app_watchlists.get(user_id) {
                     for _ in &user_entry.watchers {
                         events_to_send.push(PusherMessage::watchlist_online_event(vec![
                             user_id.to_string(),
                         ]));
                     }
                 }
-            }
 
             // Send current online status of watched users to this user
             let mut online_watched_users = Vec::new();
@@ -137,25 +136,23 @@ impl WatchlistManager {
     ) -> Result<Vec<PusherMessage>> {
         let mut events_to_send = Vec::new();
 
-        if let Some(app_online_users) = self.online_users.get(app_id) {
-            if let Some(mut user_sockets) = app_online_users.get_mut(user_id) {
+        if let Some(app_online_users) = self.online_users.get(app_id)
+            && let Some(mut user_sockets) = app_online_users.get_mut(user_id) {
                 user_sockets.remove(socket_id);
 
                 // If user has no more connections, they're offline
                 if user_sockets.is_empty() {
                     // Notify watchers that this user went offline
-                    if let Some(app_watchlists) = self.watchlists.get(app_id) {
-                        if let Some(user_entry) = app_watchlists.get(user_id) {
+                    if let Some(app_watchlists) = self.watchlists.get(app_id)
+                        && let Some(user_entry) = app_watchlists.get(user_id) {
                             for _ in &user_entry.watchers {
                                 events_to_send.push(PusherMessage::watchlist_offline_event(vec![
                                     user_id.to_string(),
                                 ]));
                             }
                         }
-                    }
                 }
             }
-        }
 
         Ok(events_to_send)
     }
@@ -169,9 +166,9 @@ impl WatchlistManager {
         let mut online_users = Vec::new();
         let mut offline_users = Vec::new();
 
-        if let Some(app_watchlists) = self.watchlists.get(app_id) {
-            if let Some(user_entry) = app_watchlists.get(user_id) {
-                if let Some(app_online_users) = self.online_users.get(app_id) {
+        if let Some(app_watchlists) = self.watchlists.get(app_id)
+            && let Some(user_entry) = app_watchlists.get(user_id)
+                && let Some(app_online_users) = self.online_users.get(app_id) {
                     for watched_user_id in &user_entry.watching {
                         if app_online_users.contains_key(watched_user_id)
                             && !app_online_users.get(watched_user_id).unwrap().is_empty()
@@ -182,8 +179,6 @@ impl WatchlistManager {
                         }
                     }
                 }
-            }
-        }
 
         Ok((online_users, offline_users))
     }

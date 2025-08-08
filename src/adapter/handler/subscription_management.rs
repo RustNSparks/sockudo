@@ -57,8 +57,8 @@ impl ConnectionHandler {
         };
 
         // Track subscription metrics if successful
-        if subscription_result.success {
-            if let Some(ref metrics) = self.metrics {
+        if subscription_result.success
+            && let Some(ref metrics) = self.metrics {
                 let channel_type = ChannelType::from_name(&request.channel);
                 let channel_type_str = channel_type.as_str();
 
@@ -80,7 +80,6 @@ impl ConnectionHandler {
                     .await;
                 }
             }
-        }
 
         // Convert the channel manager result to our result type
         Ok(SubscriptionResult {
@@ -102,14 +101,13 @@ impl ConnectionHandler {
         subscription_result: &SubscriptionResult,
     ) -> Result<()> {
         // Send webhooks if this is the first connection to the channel
-        if subscription_result.channel_connections == Some(1) {
-            if let Some(webhook_integration) = &self.webhook_integration {
+        if subscription_result.channel_connections == Some(1)
+            && let Some(webhook_integration) = &self.webhook_integration {
                 webhook_integration
                     .send_channel_occupied(app_config, &request.channel)
                     .await
                     .ok();
             }
-        }
 
         // Update connection state
         self.update_connection_subscription_state(
@@ -139,8 +137,8 @@ impl ConnectionHandler {
         }
 
         // Send subscription count webhook for non-presence channels
-        if !request.channel.starts_with("presence-") {
-            if let Some(webhook_integration) = &self.webhook_integration {
+        if !request.channel.starts_with("presence-")
+            && let Some(webhook_integration) = &self.webhook_integration {
                 let current_count = self
                     .connection_manager
                     .lock()
@@ -153,7 +151,6 @@ impl ConnectionHandler {
                     .await
                     .ok();
             }
-        }
 
         // Handle cache channels
         if is_cache_channel(&request.channel) {

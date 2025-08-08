@@ -407,8 +407,8 @@ impl NatsAdapter {
                         horizontal_lock.process_request(request).await
                     };
 
-                    if let Ok(response) = response {
-                        if let Ok(response_data) = serde_json::to_vec(&response) {
+                    if let Ok(response) = response
+                        && let Ok(response_data) = serde_json::to_vec(&response) {
                             let _ = request_client
                                 .publish(
                                     Subject::from(request_response_subject.clone()),
@@ -416,7 +416,6 @@ impl NatsAdapter {
                                 )
                                 .await;
                         }
-                    }
                 }
             }
         });
