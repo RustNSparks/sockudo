@@ -1,0 +1,36 @@
+#!/bin/bash
+set -e
+
+echo "🔧 Running pre-commit checks..."
+
+# Get list of staged Rust files
+STAGED_RUST_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(rs)$' || true)
+
+if [ -z "$STAGED_RUST_FILES" ]; then
+    echo "📁 No Rust files to check"
+    exit 0
+fi
+
+echo "📝 Formatting Rust files..."
+
+# Format the entire project
+cargo fmt --all
+
+# Check if any files were modified by formatting
+MODIFIED_FILES=$(git diff --name-only)
+
+if [ -n "$MODIFIED_FILES" ]; then
+    echo "📋 Files formatted:"
+    echo "$MODIFIED_FILES"
+    
+    # Add the formatted files back to staging
+    for FILE in $STAGED_RUST_FILES; do
+        if [ -f "$FILE" ]; then
+            git add "$FILE"
+        fi
+    done
+    
+    echo "✨ Formatting changes added to commit"
+fi
+
+echo "✅ Pre-commit checks passed"

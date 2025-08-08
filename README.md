@@ -573,6 +573,30 @@ docker-compose logs -f sockudo
 # make test
 ```
 
+#### Development Setup
+
+**For contributors and developers:**
+
+1. **Install Git hooks** (recommended for all developers):
+   ```bash
+   ./scripts/install-hooks.sh
+   ```
+   This installs a pre-commit hook that automatically formats Rust code before commits.
+
+2. **Manual hook installation** (alternative):
+   ```bash
+   # Copy the hook manually
+   cp scripts/git-hooks/pre-commit .git/hooks/pre-commit
+   chmod +x .git/hooks/pre-commit
+   ```
+
+3. **Disable hooks temporarily** (if needed):
+   ```bash
+   git commit --no-verify
+   ```
+
+The pre-commit hook ensures your code is properly formatted and matches CI requirements.
+
 #### Production
 
 ```bash

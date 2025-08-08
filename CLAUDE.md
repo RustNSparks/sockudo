@@ -16,6 +16,9 @@ make quick-start
 # Development environment
 make dev
 
+# Install Git hooks (recommended for all developers)
+./scripts/install-hooks.sh
+
 # Run tests
 make test
 cargo test
