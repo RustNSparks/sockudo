@@ -440,12 +440,13 @@ impl RedisClusterAdapter {
                             };
 
                             if let Ok(response) = response
-                                && let Ok(response_json) = serde_json::to_string(&response) {
-                                    let mut conn = pub_connection_clone.clone();
-                                    let _ = conn
-                                        .publish::<_, _, ()>(&response_channel_clone, response_json)
-                                        .await;
-                                }
+                                && let Ok(response_json) = serde_json::to_string(&response)
+                            {
+                                let mut conn = pub_connection_clone.clone();
+                                let _ = conn
+                                    .publish::<_, _, ()>(&response_channel_clone, response_json)
+                                    .await;
+                            }
                         }
                     } else if channel == response_channel_clone {
                         // Handle response message

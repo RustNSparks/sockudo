@@ -266,15 +266,15 @@ impl SqsQueueManager {
                                                             .receipt_handle(receipt_handle)
                                                             .send()
                                                             .await
-                                                        {
-                                                            error!(
-                                                                "{}",
-                                                                format!(
-                                                                    "Failed to delete message from SQS queue {}: {}",
-                                                                    queue_name, e
-                                                                )
-                                                            );
-                                                        }
+                                                    {
+                                                        error!(
+                                                            "{}",
+                                                            format!(
+                                                                "Failed to delete message from SQS queue {}: {}",
+                                                                queue_name, e
+                                                            )
+                                                        );
+                                                    }
                                                 }
                                                 Err(e) => {
                                                     // Processing failed, log the error
@@ -305,15 +305,15 @@ impl SqsQueueManager {
                                                     .receipt_handle(receipt_handle)
                                                     .send()
                                                     .await
-                                                {
-                                                    error!(
-                                                        "{}",
-                                                        format!(
-                                                            "Failed to delete malformed message from SQS queue {}: {}",
-                                                            queue_name, e
-                                                        )
-                                                    );
-                                                }
+                                            {
+                                                error!(
+                                                    "{}",
+                                                    format!(
+                                                        "Failed to delete malformed message from SQS queue {}: {}",
+                                                        queue_name, e
+                                                    )
+                                                );
+                                            }
                                         }
                                     }
                                 }

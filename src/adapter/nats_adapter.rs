@@ -408,14 +408,15 @@ impl NatsAdapter {
                     };
 
                     if let Ok(response) = response
-                        && let Ok(response_data) = serde_json::to_vec(&response) {
-                            let _ = request_client
-                                .publish(
-                                    Subject::from(request_response_subject.clone()),
-                                    response_data.into(),
-                                )
-                                .await;
-                        }
+                        && let Ok(response_data) = serde_json::to_vec(&response)
+                    {
+                        let _ = request_client
+                            .publish(
+                                Subject::from(request_response_subject.clone()),
+                                response_data.into(),
+                            )
+                            .await;
+                    }
                 }
             }
         });

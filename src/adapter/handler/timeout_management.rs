@@ -107,16 +107,17 @@ impl ConnectionHandler {
                             // Check if we're still in PingSent state (no pong received)
                             if let crate::websocket::ConnectionStatus::PingSent(ping_time) =
                                 ws.state.status
-                                && ping_time.elapsed() > Duration::from_secs(PONG_TIMEOUT) {
-                                    // No pong received, close connection gracefully
-                                    warn!(
-                                        "No pong received from socket {} after ping, closing connection",
-                                        socket_id_clone
-                                    );
-                                    let _ = ws
-                                        .close(4201, "Pong reply not received in time".to_string())
-                                        .await;
-                                }
+                                && ping_time.elapsed() > Duration::from_secs(PONG_TIMEOUT)
+                            {
+                                // No pong received, close connection gracefully
+                                warn!(
+                                    "No pong received from socket {} after ping, closing connection",
+                                    socket_id_clone
+                                );
+                                let _ = ws
+                                    .close(4201, "Pong reply not received in time".to_string())
+                                    .await;
+                            }
                         }
                         // After handling ping/pong, wait full activity timeout before next check
                         drop(conn_manager);

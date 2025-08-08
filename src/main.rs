@@ -1037,9 +1037,10 @@ impl SockudoServer {
             }
         }
         if let Some(queue_manager_arc) = &self.state.queue_manager
-            && let Err(e) = queue_manager_arc.disconnect().await {
-                warn!("Error disconnecting queue manager: {}", e);
-            }
+            && let Err(e) = queue_manager_arc.disconnect().await
+        {
+            warn!("Error disconnecting queue manager: {}", e);
+        }
         // Add disconnect for app_manager if it has such a method
         // self.state.app_manager.disconnect().await?;
 
