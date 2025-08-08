@@ -70,12 +70,12 @@ jobs:
             matrix_items=$(echo "$matrix_items" | jq '. += [{"os": "windows-latest", "target": "x86_64-pc-windows-msvc", "name": "windows-x64", "binary_name": "sockudo.exe"}]')
           fi
           
-          echo "matrix={\"include\":$matrix_items}" >> $GITHUB_OUTPUT
+          echo "matrix={\"include\":$matrix_items}" >> "$GITHUB_OUTPUT"
           
           if [[ "$matrix_items" != "[]" ]]; then
-            echo "has_builds=true" >> $GITHUB_OUTPUT
+            echo "has_builds=true" >> "$GITHUB_OUTPUT"
           else
-            echo "has_builds=false" >> $GITHUB_OUTPUT
+            echo "has_builds=false" >> "$GITHUB_OUTPUT"
           fi
 
   # =============================================================================
