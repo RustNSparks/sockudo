@@ -1161,15 +1161,13 @@ impl ServerOptions {
         let default_app_secret = std::env::var("SOCKUDO_DEFAULT_APP_SECRET");
         let default_app_enabled = parse_bool_env("SOCKUDO_DEFAULT_APP_ENABLED", true);
 
-        if default_app_id.is_ok()
-            && default_app_key.is_ok()
-            && default_app_secret.is_ok()
+        if let (Ok(app_id), Ok(app_key), Ok(app_secret)) = (default_app_id, default_app_key, default_app_secret)
             && default_app_enabled
         {
             let default_app = App {
-                id: default_app_id.unwrap(),
-                key: default_app_key.unwrap(),
-                secret: default_app_secret.unwrap(),
+                id: app_id,
+                key: app_key,
+                secret: app_secret,
                 enable_client_messages: parse_bool_env("SOCKUDO_ENABLE_CLIENT_MESSAGES", false),
                 enabled: default_app_enabled,
                 max_connections: parse_env::<u32>("SOCKUDO_DEFAULT_APP_MAX_CONNECTIONS", 100),
