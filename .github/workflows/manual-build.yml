@@ -228,6 +228,9 @@ jobs:
       (needs.build.result == 'success' || needs.docker.result == 'success')
     
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Find PR number
         id: pr
         run: |
