@@ -162,11 +162,10 @@ impl ConnectionManager for LocalAdapter {
             let mut target_socket_refs = Vec::new();
             for socket_id_entry in sockets.iter() {
                 let socket_id = socket_id_entry.key();
-                if except != Some(socket_id) {
-                    if let Some(socket_ref) = namespace.get_connection(socket_id) {
+                if except != Some(socket_id)
+                    && let Some(socket_ref) = namespace.get_connection(socket_id) {
                         target_socket_refs.push(socket_ref);
                     }
-                }
             }
 
             // Send messages in parallel using WebSocketRef

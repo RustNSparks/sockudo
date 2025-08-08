@@ -307,11 +307,10 @@ impl WebhookIntegration {
             "socket_id": socket_id,
         });
 
-        if channel.starts_with("presence-") {
-            if let Some(uid) = user_id {
+        if channel.starts_with("presence-")
+            && let Some(uid) = user_id {
                 client_event_pusher_payload["user_id"] = json!(uid);
             }
-        }
 
         let signature = format!(
             "{}:{}:{}:client_event",
