@@ -30,6 +30,9 @@ pub enum Error {
     #[error("Connection is unauthorized")]
     Unauthorized,
 
+    #[error("Origin not allowed")]
+    OriginNotAllowed,
+
     // 4100-4199: Reconnect with backoff errors
     #[error("Over capacity")]
     OverCapacity,
@@ -171,6 +174,7 @@ impl Error {
             Error::UnsupportedProtocolVersion(_) => 4007,
             Error::NoProtocolVersion => 4008,
             Error::Unauthorized => 4009,
+            Error::OriginNotAllowed => 4009,
 
             // 4100-4199: Reconnect with backoff
             Error::OverCapacity => 4100,

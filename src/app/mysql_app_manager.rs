@@ -88,6 +88,7 @@ impl MySQLAppManager {
                 max_event_payload_in_kb INT UNSIGNED NULL,
                 max_event_batch_size INT UNSIGNED NULL,
                 enable_user_authentication BOOLEAN NULL,
+                allowed_origins JSON NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -104,6 +105,32 @@ impl MySQLAppManager {
             .execute(&self.pool)
             .await
             .map_err(|e| Error::Internal(format!("Failed to create MySQL table: {e}")))?;
+
+        // Add migration for allowed_origins column if it doesn't exist
+        // MySQL doesn't support IF NOT EXISTS for columns, so we need to check first
+        let check_column_query = format!(
+            r#"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+               WHERE TABLE_SCHEMA = DATABASE() 
+               AND TABLE_NAME = '{}' 
+               AND COLUMN_NAME = 'allowed_origins'"#,
+            self.config.table_name
+        );
+        
+        let column_exists: Option<(String,)> = sqlx::query_as(&check_column_query)
+            .fetch_optional(&self.pool)
+            .await
+            .unwrap_or(None);
+        
+        if column_exists.is_none() {
+            let add_column_query = format!(
+                r#"ALTER TABLE `{}` ADD COLUMN allowed_origins JSON NULL"#,
+                self.config.table_name
+            );
+            
+            if let Err(e) = sqlx::query(&add_column_query).execute(&self.pool).await {
+                warn!("Could not add allowed_origins column (may already exist): {}", e);
+            }
+        }
 
         info!(
             "{}",
@@ -138,7 +165,8 @@ impl MySQLAppManager {
                 max_event_name_length,
                 max_event_payload_in_kb,
                 max_event_batch_size,
-                enable_user_authentication
+                enable_user_authentication,
+                allowed_origins
             FROM `{}` WHERE id = ?"#,
             self.config.table_name
         );
@@ -192,7 +220,8 @@ impl MySQLAppManager {
                 max_event_name_length,
                 max_event_payload_in_kb,
                 max_event_batch_size,
-                enable_user_authentication
+                enable_user_authentication,
+                allowed_origins
             FROM `{}` WHERE `key` = ?"#,
             self.config.table_name
         );
@@ -376,7 +405,7 @@ impl MySQLAppManager {
             max_event_payload_in_kb,
             max_event_batch_size,
             enable_user_authentication,
-            enable_watchlist_events
+            allowed_origins
         FROM `{}`"#,
             self.config.table_name // Ensure config.table_name is safely handled
         );
@@ -533,6 +562,7 @@ struct AppRow {
     max_event_payload_in_kb: Option<u32>,
     max_event_batch_size: Option<u32>,
     enable_user_authentication: Option<bool>,
+    allowed_origins: Option<serde_json::Value>,
 }
 
 impl AppRow {
@@ -558,6 +588,9 @@ impl AppRow {
             enable_user_authentication: self.enable_user_authentication,
             webhooks: None, // Assuming webhooks are not part of the App struct
             enable_watchlist_events: None, // Assuming this is not part of the App struct
+            allowed_origins: self.allowed_origins.and_then(|json| {
+                serde_json::from_value::<Vec<String>>(json).ok()
+            }),
         }
     }
 }
@@ -654,6 +687,7 @@ mod tests {
             enable_user_authentication: Some(true),
             webhooks: None,
             enable_watchlist_events: None,
+            allowed_origins: None,
         }
     }
 

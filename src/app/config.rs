@@ -36,6 +36,8 @@ pub struct App {
     pub webhooks: Option<Vec<Webhook>>,
     #[serde(default)]
     pub enable_watchlist_events: Option<bool>,
+    #[serde(default)]
+    pub allowed_origins: Option<Vec<String>>,
 }
 
 // Helper functions to deserialize numbers from strings
