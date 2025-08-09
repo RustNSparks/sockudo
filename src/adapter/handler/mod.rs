@@ -110,7 +110,6 @@ impl ConnectionHandler {
         };
 
         // Origin validation will happen after WebSocket upgrade to allow error message sending
-
         let (socket_rx, mut socket_tx) = match self.upgrade_websocket(fut).await {
             Ok(sockets) => sockets,
             Err(e) => {
@@ -143,7 +142,7 @@ impl ConnectionHandler {
                 use fastwebsockets::{Frame, Payload};
 
                 // Create and send the error message
-                let error_message = crate::protocol::messages::PusherMessage::error(
+                let error_message = PusherMessage::error(
                     Error::OriginNotAllowed.close_code(),
                     Error::OriginNotAllowed.to_string(),
                     None,
@@ -152,10 +151,10 @@ impl ConnectionHandler {
                 if let Ok(payload_str) = serde_json::to_string(&error_message) {
                     let payload = Payload::from(payload_str.as_bytes());
                     if let Err(e) = socket_tx.write_frame(Frame::text(payload)).await {
-                        tracing::warn!("Failed to send origin rejection message: {}", e);
+                        warn!("Failed to send origin rejection message: {}", e);
                     }
                 } else {
-                    tracing::warn!("Failed to serialize origin rejection message");
+                    warn!("Failed to serialize origin rejection message");
                 }
 
                 // Send close frame
@@ -166,12 +165,12 @@ impl ConnectionHandler {
                     ))
                     .await
                 {
-                    tracing::warn!("Failed to send origin rejection close frame: {}", e);
+                    warn!("Failed to send origin rejection close frame: {}", e);
                 }
 
                 // Ensure frames are flushed
                 if let Err(e) = socket_tx.flush().await {
-                    tracing::warn!(
+                    warn!(
                         "Failed to flush WebSocket frames during origin rejection: {}",
                         e
                     );
