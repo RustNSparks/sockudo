@@ -88,17 +88,17 @@ impl OriginValidator {
         }
 
         // Basic URL validation for patterns with protocols
-        if pattern.contains("://") {
-            if let Some(protocol_end) = pattern.find("://") {
-                let protocol = &pattern[..protocol_end];
-                if protocol.is_empty() {
-                    return Err("protocol cannot be empty".to_string());
-                }
+        if pattern.contains("://")
+            && let Some(protocol_end) = pattern.find("://")
+        {
+            let protocol = &pattern[..protocol_end];
+            if protocol.is_empty() {
+                return Err("protocol cannot be empty".to_string());
+            }
 
-                let host_part = &pattern[protocol_end + 3..];
-                if host_part.is_empty() {
-                    return Err("host part cannot be empty".to_string());
-                }
+            let host_part = &pattern[protocol_end + 3..];
+            if host_part.is_empty() {
+                return Err("host part cannot be empty".to_string());
             }
         }
 
