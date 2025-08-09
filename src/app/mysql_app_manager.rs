@@ -115,20 +115,23 @@ impl MySQLAppManager {
                AND COLUMN_NAME = 'allowed_origins'"#,
             self.config.table_name
         );
-        
+
         let column_exists: Option<(String,)> = sqlx::query_as(&check_column_query)
             .fetch_optional(&self.pool)
             .await
             .unwrap_or(None);
-        
+
         if column_exists.is_none() {
             let add_column_query = format!(
                 r#"ALTER TABLE `{}` ADD COLUMN allowed_origins JSON NULL"#,
                 self.config.table_name
             );
-            
+
             if let Err(e) = sqlx::query(&add_column_query).execute(&self.pool).await {
-                warn!("Could not add allowed_origins column (may already exist): {}", e);
+                warn!(
+                    "Could not add allowed_origins column (may already exist): {}",
+                    e
+                );
             }
         }
 
@@ -588,9 +591,9 @@ impl AppRow {
             enable_user_authentication: self.enable_user_authentication,
             webhooks: None, // Assuming webhooks are not part of the App struct
             enable_watchlist_events: None, // Assuming this is not part of the App struct
-            allowed_origins: self.allowed_origins.and_then(|json| {
-                serde_json::from_value::<Vec<String>>(json).ok()
-            }),
+            allowed_origins: self
+                .allowed_origins
+                .and_then(|json| serde_json::from_value::<Vec<String>>(json).ok()),
         }
     }
 }

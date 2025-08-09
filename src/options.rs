@@ -1224,7 +1224,12 @@ impl ServerOptions {
                 allowed_origins: {
                     if let Ok(origins_str) = std::env::var("SOCKUDO_DEFAULT_APP_ALLOWED_ORIGINS") {
                         if !origins_str.is_empty() {
-                            Some(origins_str.split(',').map(|s| s.trim().to_string()).collect())
+                            Some(
+                                origins_str
+                                    .split(',')
+                                    .map(|s| s.trim().to_string())
+                                    .collect(),
+                            )
                         } else {
                             None
                         }

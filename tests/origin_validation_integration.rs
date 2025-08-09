@@ -70,20 +70,18 @@ mod origin_validation_integration_tests {
         ));
 
         // Test general subdomain wildcard (matches any protocol)
-        let general_patterns = vec![
-            "*.example.com".to_string(),
-        ];
+        let general_patterns = vec!["*.example.com".to_string()];
 
         assert!(OriginValidator::validate_origin(
             "https://app.example.com",
             &general_patterns
         ));
-        
+
         assert!(OriginValidator::validate_origin(
             "http://app.example.com",
             &general_patterns
         ));
-        
+
         assert!(OriginValidator::validate_origin(
             "https://deep.nested.example.com",
             &general_patterns
@@ -91,7 +89,7 @@ mod origin_validation_integration_tests {
 
         // Test localhost with any port
         let localhost_patterns = vec!["http://localhost:*".to_string()];
-        
+
         assert!(OriginValidator::validate_origin(
             "http://localhost:3000",
             &localhost_patterns

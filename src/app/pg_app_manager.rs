@@ -102,9 +102,12 @@ impl PgSQLAppManager {
             r#"ALTER TABLE {} ADD COLUMN IF NOT EXISTS allowed_origins JSONB"#,
             self.config.table_name
         );
-        
+
         if let Err(e) = sqlx::query(&add_column_query).execute(&self.pool).await {
-            warn!("Could not add allowed_origins column (may already exist): {}", e);
+            warn!(
+                "Could not add allowed_origins column (may already exist): {}",
+                e
+            );
         }
 
         info!("Ensured table '{}' exists", self.config.table_name);
@@ -531,9 +534,9 @@ impl AppRow {
             enable_user_authentication: self.enable_user_authentication,
             webhooks: None,
             enable_watchlist_events: self.enable_watchlist_events,
-            allowed_origins: self.allowed_origins.and_then(|json| {
-                serde_json::from_value::<Vec<String>>(json).ok()
-            }),
+            allowed_origins: self
+                .allowed_origins
+                .and_then(|json| serde_json::from_value::<Vec<String>>(json).ok()),
         }
     }
 }

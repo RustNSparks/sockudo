@@ -39,7 +39,7 @@ impl OriginValidator {
 
     fn matches_wildcard(origin: &str, pattern: &str) -> bool {
         let pattern_parts: Vec<&str> = pattern.split('*').collect();
-        
+
         if pattern_parts.len() != 2 {
             return false;
         }
@@ -50,23 +50,23 @@ impl OriginValidator {
         // Special case for subdomain wildcards without protocol (e.g., "*.example.com")
         if pattern.starts_with("*.") && !pattern.contains("://") {
             let domain_suffix = &pattern[2..];
-            
+
             // Allow exact domain match
             if origin == domain_suffix {
                 return true;
             }
-            
+
             // Check if origin (with or without protocol) ends with the domain pattern
             if let Some(origin_without_protocol) = origin.split("://").nth(1) {
                 if origin_without_protocol == domain_suffix {
                     return true;
                 }
-                
+
                 if origin_without_protocol.ends_with(&format!(".{}", domain_suffix)) {
                     return true;
                 }
             }
-            
+
             return origin.ends_with(&format!(".{}", domain_suffix));
         }
 
@@ -81,10 +81,7 @@ mod tests {
 
     #[test]
     fn test_empty_allowed_origins() {
-        assert!(OriginValidator::validate_origin(
-            "https://example.com",
-            &[]
-        ));
+        assert!(OriginValidator::validate_origin("https://example.com", &[]));
     }
 
     #[test]
@@ -132,10 +129,7 @@ mod tests {
             "https://deep.nested.example.com",
             &allowed
         ));
-        assert!(OriginValidator::validate_origin(
-            "example.com",
-            &allowed
-        ));
+        assert!(OriginValidator::validate_origin("example.com", &allowed));
         assert!(!OriginValidator::validate_origin(
             "https://example.org",
             &allowed

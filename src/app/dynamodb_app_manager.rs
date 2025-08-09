@@ -135,9 +135,8 @@ impl DynamoDbAppManager {
                 },
                 webhooks: None,
                 enable_watchlist_events: None,
-                allowed_origins: if let Some(
-                    aws_sdk_dynamodb::types::AttributeValue::L(list),
-                ) = map.get("allowed_origins")
+                allowed_origins: if let Some(aws_sdk_dynamodb::types::AttributeValue::L(list)) =
+                    map.get("allowed_origins")
                 {
                     let origins: Vec<String> = list
                         .iter()
