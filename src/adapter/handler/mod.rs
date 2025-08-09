@@ -151,19 +151,31 @@ impl ConnectionHandler {
 
                 if let Ok(payload_str) = serde_json::to_string(&error_message) {
                     let payload = Payload::from(payload_str.as_bytes());
-                    let _ = socket_tx.write_frame(Frame::text(payload)).await;
+                    if let Err(e) = socket_tx.write_frame(Frame::text(payload)).await {
+                        tracing::warn!("Failed to send origin rejection message: {}", e);
+                    }
+                } else {
+                    tracing::warn!("Failed to serialize origin rejection message");
                 }
 
                 // Send close frame
-                let _ = socket_tx
+                if let Err(e) = socket_tx
                     .write_frame(Frame::close(
                         Error::OriginNotAllowed.close_code(),
                         Error::OriginNotAllowed.to_string().as_bytes(),
                     ))
-                    .await;
+                    .await
+                {
+                    tracing::warn!("Failed to send origin rejection close frame: {}", e);
+                }
 
                 // Ensure frames are flushed
-                let _ = socket_tx.flush().await;
+                if let Err(e) = socket_tx.flush().await {
+                    tracing::warn!(
+                        "Failed to flush WebSocket frames during origin rejection: {}",
+                        e
+                    );
+                }
 
                 return Err(Error::OriginNotAllowed);
             }

@@ -120,8 +120,8 @@ mod origin_validation_integration_tests {
             &origins
         ));
 
-        // Test case sensitivity
-        assert!(!OriginValidator::validate_origin(
+        // Test case insensitive matching (RFC 6454 compliance)
+        assert!(OriginValidator::validate_origin(
             "https://EXAMPLE.COM",
             &origins
         ));
