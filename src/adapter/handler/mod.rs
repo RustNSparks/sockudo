@@ -439,6 +439,15 @@ impl ConnectionHandler {
             warn!("Failed to clear auth timeout for {}: {}", socket_id, e);
         }
 
+        // Ensure disconnect cleanup is called to properly decrement connection count
+        // This handles cases where the message loop exits without receiving a clean Close frame
+        if let Err(e) = self.handle_disconnect(&app_config.id, socket_id).await {
+            warn!(
+                "Failed to handle disconnect during cleanup for {}: {}",
+                socket_id, e
+            );
+        }
+
         debug!("Socket {} cleanup completed", socket_id);
     }
 
