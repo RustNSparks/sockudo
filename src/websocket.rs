@@ -135,6 +135,7 @@ pub struct ConnectionState {
     pub user: Option<Value>,
     pub timeouts: ConnectionTimeouts,
     pub status: ConnectionStatus,
+    pub disconnecting: bool,
 }
 
 impl Default for ConnectionState {
@@ -156,6 +157,7 @@ impl ConnectionState {
             user: None,
             timeouts: ConnectionTimeouts::new(),
             status: ConnectionStatus::Active,
+            disconnecting: false,
         }
     }
 
@@ -171,6 +173,7 @@ impl ConnectionState {
             user: None,
             timeouts: ConnectionTimeouts::new(),
             status: ConnectionStatus::Active,
+            disconnecting: false,
         }
     }
 
