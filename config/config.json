@@ -39,10 +39,10 @@
           "id": "app-id",
           "key": "app-key",
           "secret": "app-secret",
-          "max_connections": "1000000000",
+          "max_connections": 1000,
           "enable_client_messages": true,
           "enabled": true,
-          "max_client_events_per_second": "1000000000"
+          "max_client_events_per_second": 100
         }
       ]
     },
