@@ -6,13 +6,13 @@ pub struct App {
     pub id: String,
     pub key: String,
     pub secret: String,
-    #[serde(deserialize_with = "deserialize_number_from_string")]
+    #[serde(deserialize_with = "deserialize_flexible_number")]
     pub max_connections: u32,
     pub enable_client_messages: bool,
     pub enabled: bool,
     #[serde(default, deserialize_with = "deserialize_optional_number_from_string")]
     pub max_backend_events_per_second: Option<u32>,
-    #[serde(deserialize_with = "deserialize_number_from_string")]
+    #[serde(deserialize_with = "deserialize_flexible_number")]
     pub max_client_events_per_second: u32,
     #[serde(default, deserialize_with = "deserialize_optional_number_from_string")]
     pub max_read_requests_per_second: Option<u32>,
@@ -38,14 +38,50 @@ pub struct App {
     pub enable_watchlist_events: Option<bool>,
 }
 
-// Helper functions to deserialize numbers from strings
-fn deserialize_number_from_string<'de, D>(deserializer: D) -> Result<u32, D::Error>
+// Helper functions to deserialize numbers from strings or numbers
+fn deserialize_flexible_number<'de, D>(deserializer: D) -> Result<u32, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    use serde::de::Error;
-    let value = String::deserialize(deserializer)?;
-    value.parse::<u32>().map_err(D::Error::custom)
+    use serde::de::{Error, Visitor};
+    use std::fmt;
+
+    struct FlexibleU32Visitor;
+
+    impl<'de> Visitor<'de> for FlexibleU32Visitor {
+        type Value = u32;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a number or string containing a number")
+        }
+
+        fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(v)
+        }
+
+        fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            if v <= u32::MAX as u64 {
+                Ok(v as u32)
+            } else {
+                Err(E::custom(format!("number {} is too large for u32", v)))
+            }
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            v.parse::<u32>().map_err(E::custom)
+        }
+    }
+
+    deserializer.deserialize_any(FlexibleU32Visitor)
 }
 
 fn deserialize_optional_number_from_string<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
