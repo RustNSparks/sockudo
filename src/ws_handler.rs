@@ -57,6 +57,7 @@ pub async fn handle_ws_upgrade(
                 match &e {
                     crate::error::Error::ApplicationNotFound
                     | crate::error::Error::ApplicationDisabled
+                    | crate::error::Error::OriginNotAllowed
                     | crate::error::Error::Auth(_)
                     | crate::error::Error::InvalidMessageFormat(_)
                     | crate::error::Error::InvalidEventName(_) => {

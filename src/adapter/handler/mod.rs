@@ -109,7 +109,21 @@ impl ConnectionHandler {
             }
         };
 
-        // Validate origin if configured
+        // Origin validation will happen after WebSocket upgrade to allow error message sending
+
+        let (socket_rx, mut socket_tx) = match self.upgrade_websocket(fut).await {
+            Ok(sockets) => sockets,
+            Err(e) => {
+                // Track WebSocket upgrade errors
+                if let Some(ref metrics) = self.metrics {
+                    let metrics_locked = metrics.lock().await;
+                    metrics_locked.mark_connection_error(&app_config.id, "websocket_upgrade_error");
+                }
+                return Err(e);
+            }
+        };
+
+        // Validate origin AFTER WebSocket establishment to allow error message sending
         if let Some(ref allowed_origins) = app_config.allowed_origins
             && !allowed_origins.is_empty()
         {
@@ -124,21 +138,36 @@ impl ConnectionHandler {
                     let metrics_locked = metrics.lock().await;
                     metrics_locked.mark_connection_error(&app_config.id, "origin_not_allowed");
                 }
+
+                // Send error message directly through the raw WebSocket before closing
+                use fastwebsockets::{Frame, Payload};
+
+                // Create and send the error message
+                let error_message = crate::protocol::messages::PusherMessage::error(
+                    Error::OriginNotAllowed.close_code(),
+                    Error::OriginNotAllowed.to_string(),
+                    None,
+                );
+
+                if let Ok(payload_str) = serde_json::to_string(&error_message) {
+                    let payload = Payload::from(payload_str.as_bytes());
+                    let _ = socket_tx.write_frame(Frame::text(payload)).await;
+                }
+
+                // Send close frame
+                let _ = socket_tx
+                    .write_frame(Frame::close(
+                        Error::OriginNotAllowed.close_code(),
+                        Error::OriginNotAllowed.to_string().as_bytes(),
+                    ))
+                    .await;
+
+                // Ensure frames are flushed
+                let _ = socket_tx.flush().await;
+
                 return Err(Error::OriginNotAllowed);
             }
         }
-
-        let (socket_rx, socket_tx) = match self.upgrade_websocket(fut).await {
-            Ok(sockets) => sockets,
-            Err(e) => {
-                // Track WebSocket upgrade errors
-                if let Some(ref metrics) = self.metrics {
-                    let metrics_locked = metrics.lock().await;
-                    metrics_locked.mark_connection_error(&app_config.id, "websocket_upgrade_error");
-                }
-                return Err(e);
-            }
-        };
 
         // Connection quota check
         self.check_connection_quota(&app_config).await?;
