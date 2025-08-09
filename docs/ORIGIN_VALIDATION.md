@@ -172,7 +172,7 @@ The origin validation works exactly like CORS, supporting both protocol-specific
 
 ## Error Response
 
-When a connection is rejected due to origin validation, the client receives a Pusher protocol error:
+When a connection is rejected due to origin validation, the client receives a Pusher protocol error before the connection is closed:
 
 ```json
 {
@@ -185,6 +185,12 @@ When a connection is rejected due to origin validation, the client receives a Pu
 ```
 
 Error code 4009 indicates an unauthorized connection, following the Pusher protocol specification.
+
+### Implementation Details
+
+- **Validation Timing**: Origin validation occurs after the WebSocket upgrade completes but before the connection is fully established. This ensures clients receive the error message through the WebSocket connection.
+- **Single Error Message**: The error is sent exactly once to avoid duplicate messages.
+- **Metrics**: Connection errors due to origin validation are tracked as `origin_not_allowed` in metrics without duplication.
 
 ## Security Considerations
 
