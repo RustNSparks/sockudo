@@ -85,7 +85,12 @@ impl ConnectionHandler {
         &self.webhook_integration
     }
 
-    pub async fn handle_socket(&self, fut: upgrade::UpgradeFut, app_key: String, origin: Option<String>) -> Result<()> {
+    pub async fn handle_socket(
+        &self,
+        fut: upgrade::UpgradeFut,
+        app_key: String,
+        origin: Option<String>,
+    ) -> Result<()> {
         // Early validation and setup
         let app_config = match self.validate_and_get_app(&app_key).await {
             Ok(app) => app,
@@ -105,21 +110,21 @@ impl ConnectionHandler {
         };
 
         // Validate origin if configured
-        if let Some(ref allowed_origins) = app_config.allowed_origins {
-            if !allowed_origins.is_empty() {
-                use crate::adapter::handler::origin_validation::OriginValidator;
-                
-                // If no origin header is provided, reject the connection
-                let origin_str = origin.as_deref().unwrap_or("");
-                
-                if !OriginValidator::validate_origin(origin_str, allowed_origins) {
-                    // Track origin validation errors
-                    if let Some(ref metrics) = self.metrics {
-                        let metrics_locked = metrics.lock().await;
-                        metrics_locked.mark_connection_error(&app_config.id, "origin_not_allowed");
-                    }
-                    return Err(Error::OriginNotAllowed);
+        if let Some(ref allowed_origins) = app_config.allowed_origins
+            && !allowed_origins.is_empty()
+        {
+            use crate::adapter::handler::origin_validation::OriginValidator;
+
+            // If no origin header is provided, reject the connection
+            let origin_str = origin.as_deref().unwrap_or("");
+
+            if !OriginValidator::validate_origin(origin_str, allowed_origins) {
+                // Track origin validation errors
+                if let Some(ref metrics) = self.metrics {
+                    let metrics_locked = metrics.lock().await;
+                    metrics_locked.mark_connection_error(&app_config.id, "origin_not_allowed");
                 }
+                return Err(Error::OriginNotAllowed);
             }
         }
 

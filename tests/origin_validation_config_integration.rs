@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod origin_validation_config_integration_tests {
-    use sockudo::app::config::App;
-    use sockudo::app::memory_app_manager::MemoryAppManager;
-    use sockudo::app::manager::AppManager;
     use sockudo::adapter::handler::origin_validation::OriginValidator;
+    use sockudo::app::config::App;
+    use sockudo::app::manager::AppManager;
+    use sockudo::app::memory_app_manager::MemoryAppManager;
 
     #[tokio::test]
     async fn test_memory_app_manager_with_allowed_origins() {
@@ -84,75 +84,118 @@ mod origin_validation_config_integration_tests {
             },
         ];
 
-        // Create memory app manager  
+        // Create memory app manager
         let app_manager = MemoryAppManager::new();
-        
+
         // Add apps to the manager
         for app in apps {
             app_manager.create_app(app).await.unwrap();
         }
 
         // Test app with no restrictions
-        let app1 = app_manager.find_by_id("app-no-restrictions").await.unwrap().unwrap();
+        let app1 = app_manager
+            .find_by_id("app-no-restrictions")
+            .await
+            .unwrap()
+            .unwrap();
         assert!(app1.allowed_origins.is_none());
         // Validator should allow any origin when no restrictions are configured
         assert!(OriginValidator::validate_origin(
             "https://any-site.com",
-            &app1.allowed_origins.as_deref().unwrap_or_default()
+            app1.allowed_origins.as_deref().unwrap_or_default()
         ));
 
         // Test app with specific allowed origins
-        let app2 = app_manager.find_by_id("app-with-origins").await.unwrap().unwrap();
+        let app2 = app_manager
+            .find_by_id("app-with-origins")
+            .await
+            .unwrap()
+            .unwrap();
         assert!(app2.allowed_origins.is_some());
         let allowed_origins = app2.allowed_origins.as_ref().unwrap();
-        
+
         // Should allow configured origins
-        assert!(OriginValidator::validate_origin("https://app.example.com", allowed_origins));
-        assert!(OriginValidator::validate_origin("https://test.staging.example.com", allowed_origins));
-        assert!(OriginValidator::validate_origin("http://localhost:3000", allowed_origins));
-        
+        assert!(OriginValidator::validate_origin(
+            "https://app.example.com",
+            allowed_origins
+        ));
+        assert!(OriginValidator::validate_origin(
+            "https://test.staging.example.com",
+            allowed_origins
+        ));
+        assert!(OriginValidator::validate_origin(
+            "http://localhost:3000",
+            allowed_origins
+        ));
+
         // Should reject non-allowed origins
-        assert!(!OriginValidator::validate_origin("https://evil.com", allowed_origins));
-        assert!(!OriginValidator::validate_origin("http://app.example.com", allowed_origins)); // Different protocol
+        assert!(!OriginValidator::validate_origin(
+            "https://evil.com",
+            allowed_origins
+        ));
+        assert!(!OriginValidator::validate_origin(
+            "http://app.example.com",
+            allowed_origins
+        )); // Different protocol
 
         // Test app with wildcard allow all
-        let app3 = app_manager.find_by_id("app-allow-all").await.unwrap().unwrap();
+        let app3 = app_manager
+            .find_by_id("app-allow-all")
+            .await
+            .unwrap()
+            .unwrap();
         assert!(app3.allowed_origins.is_some());
         let allowed_origins = app3.allowed_origins.as_ref().unwrap();
-        
+
         // Should allow any origin due to wildcard
-        assert!(OriginValidator::validate_origin("https://any-site.com", allowed_origins));
-        assert!(OriginValidator::validate_origin("http://malicious.com", allowed_origins));
+        assert!(OriginValidator::validate_origin(
+            "https://any-site.com",
+            allowed_origins
+        ));
+        assert!(OriginValidator::validate_origin(
+            "http://malicious.com",
+            allowed_origins
+        ));
     }
 
     #[test]
     fn test_environment_variable_parsing() {
         // Test the environment variable parsing logic from options.rs
-        
+
         // Test empty string
-        let empty_result = if "".is_empty() {
+        let empty_str = "";
+        let empty_result = if empty_str.is_empty() {
             None
         } else {
-            Some("".split(',').map(|s| s.trim().to_string()).collect::<Vec<String>>())
+            Some(
+                empty_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .collect::<Vec<String>>(),
+            )
         };
         assert_eq!(empty_result, None);
-        
+
         // Test single origin
         let single_result = "https://app.example.com"
             .split(',')
             .map(|s| s.trim().to_string())
             .collect::<Vec<String>>();
         assert_eq!(single_result, vec!["https://app.example.com"]);
-        
+
         // Test multiple origins
-        let multiple_result = "https://app.example.com,*.staging.example.com, http://localhost:3000"
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .collect::<Vec<String>>();
-        assert_eq!(multiple_result, vec![
-            "https://app.example.com",
-            "*.staging.example.com", 
-            "http://localhost:3000"
-        ]);
+        let multiple_result =
+            "https://app.example.com,*.staging.example.com, http://localhost:3000"
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .collect::<Vec<String>>();
+        assert_eq!(
+            multiple_result,
+            vec![
+                "https://app.example.com",
+                "*.staging.example.com",
+                "http://localhost:3000"
+            ]
+        );
     }
 }
