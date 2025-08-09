@@ -38,10 +38,10 @@ impl OriginValidator {
 
         // CORS-like protocol-less matching
         // If pattern has no protocol, match against origin without protocol
-        if !pattern.contains("://") {
-            if let Some(origin_without_protocol) = origin.split("://").nth(1) {
-                return pattern == origin_without_protocol;
-            }
+        if !pattern.contains("://")
+            && let Some(origin_without_protocol) = origin.split("://").nth(1)
+        {
+            return pattern == origin_without_protocol;
         }
 
         false
