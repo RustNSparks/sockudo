@@ -84,6 +84,7 @@ impl PgSQLAppManager {
                 max_event_batch_size INTEGER,
                 enable_user_authentication BOOLEAN,
                 enable_watchlist_events BOOLEAN,
+                allowed_origins JSONB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -95,6 +96,19 @@ impl PgSQLAppManager {
             .execute(&self.pool)
             .await
             .map_err(|e| Error::Internal(format!("Failed to create PostgreSQL table: {e}")))?;
+
+        // Add migration for allowed_origins column if it doesn't exist
+        let add_column_query = format!(
+            r#"ALTER TABLE {} ADD COLUMN IF NOT EXISTS allowed_origins JSONB"#,
+            self.config.table_name
+        );
+
+        if let Err(e) = sqlx::query(&add_column_query).execute(&self.pool).await {
+            warn!(
+                "Could not add allowed_origins column (may already exist): {}",
+                e
+            );
+        }
 
         info!("Ensured table '{}' exists", self.config.table_name);
         Ok(())
@@ -126,7 +140,8 @@ impl PgSQLAppManager {
                 max_event_payload_in_kb,
                 max_event_batch_size,
                 enable_user_authentication,
-                enable_watchlist_events
+                enable_watchlist_events,
+                allowed_origins
             FROM {} WHERE id = $1"#,
             self.config.table_name
         );
@@ -173,7 +188,8 @@ impl PgSQLAppManager {
                 max_event_payload_in_kb,
                 max_event_batch_size,
                 enable_user_authentication,
-                enable_watchlist_events
+                enable_watchlist_events,
+                allowed_origins
             FROM {} WHERE key = $1"#,
             self.config.table_name
         );
@@ -349,7 +365,8 @@ impl PgSQLAppManager {
             max_event_payload_in_kb,
             max_event_batch_size,
             enable_user_authentication,
-            enable_watchlist_events
+            enable_watchlist_events,
+            allowed_origins
         FROM {}"#,
             self.config.table_name
         );
@@ -489,6 +506,7 @@ struct AppRow {
     max_event_batch_size: Option<i32>,
     enable_user_authentication: Option<bool>,
     enable_watchlist_events: Option<bool>,
+    allowed_origins: Option<serde_json::Value>,
 }
 
 impl AppRow {
@@ -516,6 +534,9 @@ impl AppRow {
             enable_user_authentication: self.enable_user_authentication,
             webhooks: None,
             enable_watchlist_events: self.enable_watchlist_events,
+            allowed_origins: self
+                .allowed_origins
+                .and_then(|json| serde_json::from_value::<Vec<String>>(json).ok()),
         }
     }
 }
@@ -601,6 +622,7 @@ mod tests {
             enable_user_authentication: Some(true),
             webhooks: None,
             enable_watchlist_events: None,
+            allowed_origins: None,
         }
     }
 

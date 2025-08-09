@@ -135,6 +135,27 @@ impl DynamoDbAppManager {
                 },
                 webhooks: None,
                 enable_watchlist_events: None,
+                allowed_origins: if let Some(aws_sdk_dynamodb::types::AttributeValue::L(list)) =
+                    map.get("allowed_origins")
+                {
+                    let origins: Vec<String> = list
+                        .iter()
+                        .filter_map(|item| {
+                            if let aws_sdk_dynamodb::types::AttributeValue::S(s) = item {
+                                Some(s.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    if origins.is_empty() {
+                        None
+                    } else {
+                        Some(origins)
+                    }
+                } else {
+                    None
+                },
             })
         } else {
             Err(Error::Internal("Invalid DynamoDB item format".to_string()))
