@@ -26,15 +26,25 @@ impl OriginValidator {
     }
 
     fn matches_pattern(origin: &str, pattern: &str) -> bool {
+        // Exact match first
         if pattern == origin {
             return true;
         }
 
+        // Handle wildcard patterns
         if pattern.contains('*') {
-            Self::matches_wildcard(origin, pattern)
-        } else {
-            false
+            return Self::matches_wildcard(origin, pattern);
         }
+
+        // CORS-like protocol-less matching
+        // If pattern has no protocol, match against origin without protocol
+        if !pattern.contains("://") {
+            if let Some(origin_without_protocol) = origin.split("://").nth(1) {
+                return pattern == origin_without_protocol;
+            }
+        }
+
+        false
     }
 
     fn matches_wildcard(origin: &str, pattern: &str) -> bool {
@@ -187,6 +197,185 @@ mod tests {
         ));
         assert!(!OriginValidator::validate_origin(
             "http://localhost",
+            &allowed
+        ));
+    }
+
+    #[test]
+    fn test_cors_like_protocol_less_matching() {
+        let allowed = vec!["example.com".to_string()];
+
+        // Protocol-less pattern should match any protocol
+        assert!(OriginValidator::validate_origin(
+            "https://example.com",
+            &allowed
+        ));
+        assert!(OriginValidator::validate_origin(
+            "http://example.com",
+            &allowed
+        ));
+
+        // Should not match different domains
+        assert!(!OriginValidator::validate_origin(
+            "https://other.com",
+            &allowed
+        ));
+    }
+
+    #[test]
+    fn test_cors_like_with_ports() {
+        let allowed = vec!["node1.ghslocal.com:444".to_string()];
+
+        // Should match both protocols with same host:port
+        assert!(OriginValidator::validate_origin(
+            "https://node1.ghslocal.com:444",
+            &allowed
+        ));
+        assert!(OriginValidator::validate_origin(
+            "http://node1.ghslocal.com:444",
+            &allowed
+        ));
+
+        // Should not match different ports
+        assert!(!OriginValidator::validate_origin(
+            "https://node1.ghslocal.com:443",
+            &allowed
+        ));
+
+        // Should not match without port when pattern has port
+        assert!(!OriginValidator::validate_origin(
+            "https://node1.ghslocal.com",
+            &allowed
+        ));
+    }
+
+    #[test]
+    fn test_mixed_protocol_patterns() {
+        let allowed = vec![
+            "https://secure.example.com".to_string(), // Protocol-specific
+            "flexible.example.com".to_string(),       // Protocol-agnostic
+            "http://insecure.example.com".to_string(), // HTTP only
+        ];
+
+        // Protocol-specific should only match exact protocol
+        assert!(OriginValidator::validate_origin(
+            "https://secure.example.com",
+            &allowed
+        ));
+        assert!(!OriginValidator::validate_origin(
+            "http://secure.example.com", // Different protocol
+            &allowed
+        ));
+
+        // Protocol-agnostic should match any protocol
+        assert!(OriginValidator::validate_origin(
+            "https://flexible.example.com",
+            &allowed
+        ));
+        assert!(OriginValidator::validate_origin(
+            "http://flexible.example.com",
+            &allowed
+        ));
+
+        // HTTP-only should only match HTTP
+        assert!(OriginValidator::validate_origin(
+            "http://insecure.example.com",
+            &allowed
+        ));
+        assert!(!OriginValidator::validate_origin(
+            "https://insecure.example.com", // Different protocol
+            &allowed
+        ));
+    }
+
+    #[test]
+    fn test_protocol_less_with_subdomains() {
+        let allowed = vec!["api.example.com".to_string()];
+
+        // Should match exact subdomain with any protocol
+        assert!(OriginValidator::validate_origin(
+            "https://api.example.com",
+            &allowed
+        ));
+        assert!(OriginValidator::validate_origin(
+            "http://api.example.com",
+            &allowed
+        ));
+
+        // Should not match different subdomains
+        assert!(!OriginValidator::validate_origin(
+            "https://app.example.com",
+            &allowed
+        ));
+        assert!(!OriginValidator::validate_origin(
+            "https://example.com", // Missing subdomain
+            &allowed
+        ));
+    }
+
+    #[test]
+    fn test_backwards_compatibility() {
+        let allowed = vec![
+            "https://old-style.com".to_string(), // Full URLs should still work
+            "new-style.com".to_string(),         // Protocol-less should work
+        ];
+
+        // Old behavior: exact match with protocol
+        assert!(OriginValidator::validate_origin(
+            "https://old-style.com",
+            &allowed
+        ));
+        assert!(!OriginValidator::validate_origin(
+            "http://old-style.com", // Different protocol should not match
+            &allowed
+        ));
+
+        // New behavior: protocol-less matches any protocol
+        assert!(OriginValidator::validate_origin(
+            "https://new-style.com",
+            &allowed
+        ));
+        assert!(OriginValidator::validate_origin(
+            "http://new-style.com",
+            &allowed
+        ));
+    }
+
+    #[test]
+    fn test_edge_cases_with_protocols() {
+        let allowed = vec![
+            "localhost:3000".to_string(),
+            "127.0.0.1:8080".to_string(),
+            "custom-protocol://example.com".to_string(), // Unusual protocol
+        ];
+
+        // Localhost with port
+        assert!(OriginValidator::validate_origin(
+            "http://localhost:3000",
+            &allowed
+        ));
+        assert!(OriginValidator::validate_origin(
+            "https://localhost:3000",
+            &allowed
+        ));
+
+        // IP with port
+        assert!(OriginValidator::validate_origin(
+            "http://127.0.0.1:8080",
+            &allowed
+        ));
+        assert!(OriginValidator::validate_origin(
+            "https://127.0.0.1:8080",
+            &allowed
+        ));
+
+        // Custom protocol should match exactly
+        assert!(OriginValidator::validate_origin(
+            "custom-protocol://example.com",
+            &allowed
+        ));
+        assert!(!OriginValidator::validate_origin(
+            "https://example.com", // Different protocol
             &allowed
         ));
     }

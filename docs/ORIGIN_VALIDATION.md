@@ -123,27 +123,34 @@ aws dynamodb put-item \
     }'
 ```
 
-## Wildcard Support
+## Pattern Matching (CORS-like Behavior)
 
-The origin validation supports several wildcard patterns:
+The origin validation works exactly like CORS, supporting both protocol-specific and protocol-agnostic patterns:
 
-### 1. Allow All Origins
-```json
-"allowed_origins": ["*"]
-```
-
-### 2. Subdomain Wildcards
+### 1. Protocol-Agnostic Patterns (Recommended)
 ```json
 "allowed_origins": [
-  "*.example.com",              // Matches any subdomain of example.com (any protocol)
-  "https://*.example.com"        // Matches only HTTPS subdomains of example.com
+  "example.com",                // Matches both http:// and https://
+  "api.example.com",            // Matches both protocols for subdomain
+  "localhost:3000",             // Matches both http:// and https:// on port 3000
+  "node1.ghslocal.com:444"      // Custom domain with port - matches both protocols
 ]
 ```
 
-### 3. Port Wildcards
+### 2. Protocol-Specific Patterns
 ```json
 "allowed_origins": [
-  "http://localhost:*"           // Matches localhost on any port
+  "https://secure.example.com", // Only matches HTTPS
+  "http://insecure.example.com" // Only matches HTTP
+]
+```
+
+### 3. Wildcard Patterns
+```json
+"allowed_origins": [
+  "*",                          // Matches any origin
+  "*.example.com",              // Matches any subdomain (any protocol)
+  "https://*.secure.com"        // Matches HTTPS subdomains only
 ]
 ```
 
@@ -151,7 +158,10 @@ The origin validation supports several wildcard patterns:
 
 1. **Empty or Missing Configuration**: If `allowed_origins` is not configured or is empty, all origins are allowed (backward compatible).
 
-2. **Exact Matching**: Origins must match exactly including protocol, domain, and port (if specified).
+2. **CORS-like Matching**: 
+   - **Protocol-agnostic**: `example.com` matches both `http://example.com` and `https://example.com`
+   - **Protocol-specific**: `https://example.com` only matches `https://example.com`
+   - **Exact port matching**: `localhost:3000` matches both protocols but requires exact port
 
 3. **Wildcard Matching**: 
    - `*.domain.com` matches any subdomain including nested subdomains
@@ -186,39 +196,50 @@ Error code 4009 indicates an unauthorized connection, following the Pusher proto
 
 ## Examples
 
-### Example 1: Production App with Specific Origins
-
+### Example 1: Mixed Protocol Environment (Recommended)
 ```json
 {
   "id": "production-app",
   "allowed_origins": [
-    "https://www.myapp.com",
-    "https://app.myapp.com"
+    "www.myapp.com",              // Matches both HTTP and HTTPS
+    "app.myapp.com",              // Matches both HTTP and HTTPS
+    "https://secure.myapp.com"    // HTTPS only for sensitive areas
   ]
 }
 ```
 
-### Example 2: Development App with Localhost
-
+### Example 2: Development Environment
 ```json
 {
-  "id": "dev-app",
+  "id": "dev-app", 
   "allowed_origins": [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3000"
+    "localhost:3000",             // Matches both protocols
+    "localhost:3001",             // Matches both protocols
+    "127.0.0.1:8080"              // Matches both protocols
   ]
 }
 ```
 
-### Example 3: Staging with Wildcard Subdomains
-
+### Example 3: Multi-node Environment  
 ```json
 {
-  "id": "staging-app",
+  "id": "multinode-app",
   "allowed_origins": [
-    "*.staging.myapp.com",
-    "https://preview-*.myapp.com"
+    "node1.ghslocal.com:444",     // Matches both HTTP and HTTPS
+    "node2.ghslocal.com:444",     // Matches both HTTP and HTTPS  
+    "*.ghslocal.com"              // Wildcard for all subdomains
+  ]
+}
+```
+
+### Example 4: Security-Conscious Setup
+```json
+{
+  "id": "secure-app",
+  "allowed_origins": [
+    "https://app.example.com",    // HTTPS only for production
+    "https://admin.example.com",  // HTTPS only for admin
+    "localhost:3000"              // Any protocol for local dev
   ]
 }
 ```
