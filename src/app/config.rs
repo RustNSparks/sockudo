@@ -62,15 +62,24 @@ where
             Ok(v)
         }
 
+        fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            u32::try_from(v).map_err(|_| {
+                if v < 0 {
+                    E::custom(format!("number {} cannot be negative", v))
+                } else {
+                    E::custom(format!("number {} is too large for u32", v))
+                }
+            })
+        }
+
         fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
         where
             E: Error,
         {
-            if v <= u32::MAX as u64 {
-                Ok(v as u32)
-            } else {
-                Err(E::custom(format!("number {} is too large for u32", v)))
-            }
+            u32::try_from(v).map_err(|_| E::custom(format!("number {} is too large for u32", v)))
         }
 
         fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
