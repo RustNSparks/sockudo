@@ -115,12 +115,9 @@ impl ConnectionHandler {
             }
         };
 
-        // Connection quota check
-        self.check_connection_quota(&app_config).await?;
-
-        // Initialize socket
+        // Initialize socket with atomic quota check
         let socket_id = SocketId::new();
-        self.initialize_socket(socket_id.clone(), socket_tx, &app_config)
+        self.initialize_socket_with_quota_check(socket_id.clone(), socket_tx, &app_config)
             .await?;
 
         // Setup rate limiting if needed
@@ -144,35 +141,57 @@ impl ConnectionHandler {
         result
     }
 
-    async fn initialize_socket(
+    async fn initialize_socket_with_quota_check(
         &self,
         socket_id: SocketId,
         socket_tx: WebSocketWrite<WriteHalf<TokioIo<Upgraded>>>,
         app_config: &App,
     ) -> Result<()> {
-        let mut connection_manager = self.connection_manager.lock().await;
-
-        // Remove any existing connection with the same socket_id (unlikely but safe)
-        if let Some(conn) = connection_manager
-            .get_connection(&socket_id, &app_config.id)
-            .await
+        // True atomic operation: quota check and socket addition under single lock
+        // This is the only way to prevent race conditions
         {
+            let mut connection_manager = self.connection_manager.lock().await;
+
+            // Check quota first - this must be atomic with add_socket
+            if app_config.max_connections > 0 {
+                let current_count = connection_manager
+                    .get_sockets_count(&app_config.id)
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            "Error getting sockets count for app {}: {}",
+                            app_config.id, e
+                        );
+                        Error::Internal("Failed to check connection quota".to_string())
+                    })?;
+
+                if current_count >= app_config.max_connections as usize {
+                    return Err(Error::OverConnectionQuota);
+                }
+            }
+
+            // Remove any existing connection with the same socket_id (should be rare)
+            if let Some(conn) = connection_manager
+                .get_connection(&socket_id, &app_config.id)
+                .await
+            {
+                connection_manager
+                    .cleanup_connection(&app_config.id, conn)
+                    .await;
+            }
+
+            // Add the new socket - this must be in the same critical section as quota check
             connection_manager
-                .cleanup_connection(&app_config.id, conn)
-                .await;
-        }
+                .add_socket(
+                    socket_id.clone(),
+                    socket_tx,
+                    &app_config.id,
+                    &self.app_manager,
+                )
+                .await?;
+        } // Lock released - atomic operation complete
 
-        // Add the new socket
-        connection_manager
-            .add_socket(
-                socket_id.clone(),
-                socket_tx,
-                &app_config.id,
-                &self.app_manager,
-            )
-            .await?;
-
-        // Update metrics
+        // Update metrics after lock is released to prevent deadlock
         if let Some(ref metrics) = self.metrics {
             let metrics_locked = metrics.lock().await;
             metrics_locked.mark_new_connection(&app_config.id, &socket_id);
@@ -206,31 +225,6 @@ impl ConnectionHandler {
         let ws = fut.await.map_err(Error::WebSocket)?;
         let (rx, tx) = ws.split(tokio::io::split);
         Ok((FragmentCollectorRead::new(rx), tx))
-    }
-
-    async fn check_connection_quota(&self, app_config: &App) -> Result<()> {
-        if app_config.max_connections == 0 {
-            return Ok(());
-        }
-
-        let connection_manager = self.connection_manager.lock().await;
-        let current_count = connection_manager
-            .get_sockets_count(&app_config.id)
-            .await
-            .map_err(|e| {
-                error!(
-                    "Error getting sockets count for app {}: {}",
-                    app_config.id, e
-                );
-                Error::Internal("Failed to check connection quota".to_string())
-            })?;
-        drop(connection_manager);
-
-        if current_count >= app_config.max_connections as usize {
-            return Err(Error::OverConnectionQuota);
-        }
-
-        Ok(())
     }
 
     async fn run_message_loop(
