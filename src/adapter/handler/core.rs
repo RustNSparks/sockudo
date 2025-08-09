@@ -182,7 +182,7 @@ impl ConnectionHandler {
         };
 
         // Extract connection state before cleanup
-        let (subscribed_channels, user_id, user_watchlist) = self
+        let (connection_existed, subscribed_channels, user_id, user_watchlist) = self
             .extract_connection_state_for_disconnect(socket_id, &app_config)
             .await?;
 
@@ -212,10 +212,14 @@ impl ConnectionHandler {
         self.cleanup_connection_from_manager(socket_id, app_id)
             .await;
 
-        // Update metrics
-        if let Some(ref metrics) = self.metrics {
-            let metrics_locked = metrics.lock().await;
-            metrics_locked.mark_disconnection(app_id, socket_id);
+        // Update metrics ONLY if connection actually existed
+        if connection_existed {
+            if let Some(ref metrics) = self.metrics {
+                let metrics_locked = metrics.lock().await;
+                metrics_locked.mark_disconnection(app_id, socket_id);
+            }
+        } else {
+            debug!("Skipping metrics update for non-existent connection: {}", socket_id);
         }
 
         debug!(
@@ -230,7 +234,7 @@ impl ConnectionHandler {
         &self,
         socket_id: &SocketId,
         app_config: &App,
-    ) -> Result<(HashSet<String>, Option<String>, Option<Vec<String>>)> {
+    ) -> Result<(bool, HashSet<String>, Option<String>, Option<Vec<String>>)> {
         let mut connection_manager = self.connection_manager.lock().await;
         match connection_manager
             .get_connection(socket_id, &app_config.id)
@@ -249,6 +253,7 @@ impl ConnectionHandler {
                     .and_then(|ui| ui.watchlist.clone());
 
                 Ok((
+                    true,
                     conn_locked.state.subscribed_channels.clone(),
                     conn_locked.state.user_id.clone(),
                     watchlist,
@@ -259,7 +264,7 @@ impl ConnectionHandler {
                     "No connection found for socket during disconnect: {}",
                     socket_id
                 );
-                Ok((HashSet::new(), None, None))
+                Ok((false, HashSet::new(), None, None))
             }
         }
     }
