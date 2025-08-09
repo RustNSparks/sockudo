@@ -157,27 +157,29 @@ impl ConnectionHandler {
         debug!("Handling disconnect for socket: {}", socket_id);
 
         // Check if already disconnecting and set flag atomically
-        // Use try_lock to prevent deadlock from nested locking
-        let already_disconnecting = {
+        // Release connection_manager lock quickly to reduce contention
+        let conn = {
             let mut connection_manager = self.connection_manager.lock().await;
-            if let Some(conn) = connection_manager.get_connection(socket_id, app_id).await {
-                // Use try_lock to avoid blocking on nested locks (prevents deadlock)
-                if let Ok(mut conn_locked) = conn.0.try_lock() {
-                    let was_disconnecting = conn_locked.state.disconnecting;
-                    conn_locked.state.disconnecting = true;
-                    was_disconnecting
-                } else {
-                    // Connection is busy being accessed by another thread - assume it's being handled
-                    debug!(
-                        "Connection {} is busy, assuming disconnect already in progress",
-                        socket_id
-                    );
-                    true // Skip processing
-                }
+            connection_manager.get_connection(socket_id, app_id).await
+        };
+
+        let already_disconnecting = if let Some(conn) = conn {
+            // Use try_lock to avoid blocking on nested locks (prevents deadlock)
+            if let Ok(mut conn_locked) = conn.0.try_lock() {
+                let was_disconnecting = conn_locked.state.disconnecting;
+                conn_locked.state.disconnecting = true;
+                was_disconnecting
             } else {
-                // Connection doesn't exist - it may have been cleaned up already
-                true
+                // Connection is busy being accessed by another thread - assume it's being handled
+                debug!(
+                    "Connection {} is busy, assuming disconnect already in progress",
+                    socket_id
+                );
+                true // Skip processing
             }
+        } else {
+            // Connection doesn't exist - it may have been cleaned up already
+            true
         };
 
         if already_disconnecting {
