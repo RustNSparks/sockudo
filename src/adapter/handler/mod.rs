@@ -313,8 +313,8 @@ impl ConnectionHandler {
         }
 
         debug!(
-            "Received message from {}: event '{}'",
-            socket_id, event_name
+            "Received message from {socket_id}: event '{event_name}', full message: {:?}",
+            message
         );
 
         // Handle rate limiting for client events
@@ -379,7 +379,21 @@ impl ConnectionHandler {
             Some(MessageData::String(s)) => {
                 serde_json::from_str(s).unwrap_or_else(|_| Value::String(s.clone()))
             }
-            _ => Value::Null,
+            Some(MessageData::Structured { extra, .. }) => {
+                // For client events, the data is in the extra fields
+                // Always convert the extra HashMap to a JSON object to preserve structure
+                if !extra.is_empty() {
+                    Value::Object(
+                        extra
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect::<serde_json::Map<String, Value>>(),
+                    )
+                } else {
+                    Value::Null
+                }
+            }
+            None => Value::Null,
         };
 
         Ok(ClientEventRequest {
