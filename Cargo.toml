@@ -23,7 +23,7 @@ thiserror = "^2.0.9"
 dashmap = "^6.1.0"
 futures = "0.3.18"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "json"] }
 regex = "1.11.1"
 hmac = "0.13.0-pre.4"
 sha2 = "0.11.0-pre.4"

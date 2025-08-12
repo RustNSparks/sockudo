@@ -134,6 +134,13 @@ Key variables (see `.env.example` for complete list):
 - `ENVIRONMENT` - Mode (production/development)
 - `REDIS_URL` - Override all Redis configurations with single URL
 
+#### Logging Configuration (Optional)
+Configure log output format and behavior for external log parsing:
+- `LOG_OUTPUT_FORMAT` - Log format (human|json, default: human)
+- `LOG_COLORS_ENABLED` - Enable/disable colors in human format (true|false, default: true) 
+- `LOG_INCLUDE_TARGET` - Include module target in logs (true|false, default: true)
+- `LOG_INCLUDE_TIMESTAMP` - Include timestamps in logs (true|false, default: true)
+
 ### Redis/NATS Configuration
 - Redis: Set `DATABASE_REDIS_HOST`, `DATABASE_REDIS_PORT`, `DATABASE_REDIS_PASSWORD`
 - Redis Cluster: Set `REDIS_CLUSTER_NODES` as comma-separated list
@@ -170,6 +177,33 @@ Key variables (see `.env.example` for complete list):
 3. Enable rate limiting (`RATE_LIMITER_ENABLED=true`, `RATE_LIMITER_DRIVER`)
 4. Configure webhooks if needed (`WEBHOOK_BATCHING_ENABLED`, `WEBHOOK_BATCHING_DURATION`)
 5. Set appropriate limits via app configuration
+6. Configure structured logging for external systems (see [Production Logging](#production-logging))
+
+### Production Logging
+For production environments with external log aggregation systems (Fluentd, Logstash, etc.):
+
+```bash
+# JSON output with no colors for parsing-friendly logs
+LOG_OUTPUT_FORMAT=json LOG_COLORS_ENABLED=false ./target/release/sockudo
+```
+
+**Configuration file example:**
+```json
+{
+  "logging": {
+    "output_format": "json",
+    "colors_enabled": false,
+    "include_target": true,
+    "include_timestamp": true
+  }
+}
+```
+
+**Benefits of JSON logging:**
+- Single-line JSON objects per log entry
+- No color codes that interfere with log parsing
+- Structured data for better filtering and analysis
+- Compatible with log aggregation tools
 
 ### Monitoring
 - Health endpoint: `GET /up/{app_id}` (WebSocket health check)

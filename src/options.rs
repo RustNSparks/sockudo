@@ -191,6 +191,25 @@ pub enum MetricsDriver {
     Prometheus,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum LogOutputFormat {
+    #[default]
+    Human,
+    Json,
+}
+
+impl FromStr for LogOutputFormat {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "human" => Ok(LogOutputFormat::Human),
+            "json" => Ok(LogOutputFormat::Json),
+            _ => Err(format!("Unknown log output format: {s}")),
+        }
+    }
+}
+
 impl FromStr for MetricsDriver {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -226,6 +245,7 @@ pub struct ServerOptions {
     pub host: String,
     pub http_api: HttpApiConfig,
     pub instance: InstanceConfig,
+    pub logging: Option<LoggingConfig>,
     pub metrics: MetricsConfig,
     pub mode: String,
     pub port: u16,
@@ -465,6 +485,15 @@ pub struct PrometheusConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+pub struct LoggingConfig {
+    pub output_format: LogOutputFormat,
+    pub colors_enabled: bool,
+    pub include_target: bool,
+    pub include_timestamp: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PresenceConfig {
     pub max_members_per_channel: u32,
     pub max_member_size_in_kb: u32,
@@ -550,6 +579,7 @@ impl Default for ServerOptions {
             host: "0.0.0.0".to_string(),
             http_api: HttpApiConfig::default(),
             instance: InstanceConfig::default(),
+            logging: None, // Optional - maintains backward compatibility
             metrics: MetricsConfig::default(),
             mode: "production".to_string(),
             port: 6001,
@@ -771,6 +801,17 @@ impl Default for InstanceConfig {
     fn default() -> Self {
         Self {
             process_id: uuid::Uuid::new_v4().to_string(),
+        }
+    }
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            output_format: LogOutputFormat::Human,
+            colors_enabled: true,    // Current default behavior
+            include_target: true,    // Current default behavior
+            include_timestamp: true, // Current default behavior
         }
     }
 }
@@ -1247,6 +1288,40 @@ impl ServerOptions {
             self.cache.redis.url_override = Some(redis_url_env.clone());
             self.queue.redis.url_override = Some(redis_url_env.clone());
             self.rate_limiter.redis.url_override = Some(redis_url_env);
+        }
+
+        // --- Logging Configuration ---
+        // Only create logging config if any logging env vars are set to maintain backward compatibility
+        let mut has_logging_env_vars = false;
+        let mut logging_config = LoggingConfig::default();
+
+        if let Ok(format_str) = std::env::var("LOG_OUTPUT_FORMAT") {
+            logging_config.output_format =
+                parse_driver_enum(format_str, LogOutputFormat::Human, "log output format");
+            has_logging_env_vars = true;
+        }
+
+        if let Ok(_colors_str) = std::env::var("LOG_COLORS_ENABLED") {
+            logging_config.colors_enabled =
+                parse_bool_env("LOG_COLORS_ENABLED", logging_config.colors_enabled);
+            has_logging_env_vars = true;
+        }
+
+        if let Ok(_target_str) = std::env::var("LOG_INCLUDE_TARGET") {
+            logging_config.include_target =
+                parse_bool_env("LOG_INCLUDE_TARGET", logging_config.include_target);
+            has_logging_env_vars = true;
+        }
+
+        if let Ok(_timestamp_str) = std::env::var("LOG_INCLUDE_TIMESTAMP") {
+            logging_config.include_timestamp =
+                parse_bool_env("LOG_INCLUDE_TIMESTAMP", logging_config.include_timestamp);
+            has_logging_env_vars = true;
+        }
+
+        // Only set logging config if environment variables were provided
+        if has_logging_env_vars {
+            self.logging = Some(logging_config);
         }
 
         Ok(())
