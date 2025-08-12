@@ -63,6 +63,20 @@ make health
 
 ### Key Design Patterns
 
+**Origin Validation**: Per-app origin validation provides additional WebSocket security by restricting which domains can connect:
+```rust
+// Example: App config with allowed origins
+App {
+    id: "my-app".to_string(),
+    allowed_origins: Some(vec![
+        "https://app.example.com".to_string(),
+        "*.staging.example.com".to_string(),
+        "http://localhost:3000".to_string()
+    ]),
+    // ... other fields
+}
+```
+
 **Adapter Pattern**: All major components (connection management, caching, queuing) use an adapter pattern for backend flexibility:
 ```rust
 // Example: adapter/mod.rs defines trait, implementations in adapter/{local,redis,nats}.rs
@@ -126,13 +140,14 @@ Key variables (see `.env.example` for complete list):
 - `PORT` - Server port (default: 6001)
 - `HOST` - Server host (default: 0.0.0.0)
 - `ADAPTER_DRIVER` - Connection adapter (local|redis|redis-cluster|nats)
-- `APP_MANAGER_DRIVER` - App storage (memory|mysql|dynamodb) - Note: PostgreSQL code exists but not in driver enum yet
+- `APP_MANAGER_DRIVER` - App storage (memory|mysql|postgresql|dynamodb)
 - `CACHE_DRIVER` - Cache backend (memory|redis|redis-cluster|none)
 - `QUEUE_DRIVER` - Queue backend (memory|redis|redis-cluster|sqs|none)
 - `RATE_LIMITER_DRIVER` - Rate limiter backend (memory|redis|redis-cluster|none)
 - `DEBUG` or `DEBUG_MODE` - Enable debug logging (DEBUG takes precedence)
 - `ENVIRONMENT` - Mode (production/development)
 - `REDIS_URL` - Override all Redis configurations with single URL
+- `SOCKUDO_DEFAULT_APP_ALLOWED_ORIGINS` - Comma-separated list of allowed origins for default app
 
 #### Logging Configuration
 **Environment Variables:**

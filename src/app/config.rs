@@ -36,6 +36,8 @@ pub struct App {
     pub webhooks: Option<Vec<Webhook>>,
     #[serde(default)]
     pub enable_watchlist_events: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_and_validate_origins")]
+    pub allowed_origins: Option<Vec<String>>,
 }
 
 // Helper functions to deserialize numbers from strings or numbers
@@ -103,6 +105,30 @@ where
         Some(s) => Ok(Some(s.parse::<u32>().map_err(D::Error::custom)?)),
         None => Ok(None),
     }
+}
+
+fn deserialize_and_validate_origins<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    let value = Option::<Vec<String>>::deserialize(deserializer)?;
+
+    if let Some(ref origins) = value {
+        // Validate origin patterns at configuration load time
+        if let Err(validation_error) =
+            crate::adapter::handler::origin_validation::OriginValidator::validate_patterns(origins)
+        {
+            return Err(D::Error::custom(format!(
+                "Origin pattern validation failed: {}",
+                validation_error
+            )));
+        }
+    }
+
+    Ok(value)
 }
 
 // Implementation with default values

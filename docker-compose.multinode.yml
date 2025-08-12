@@ -45,7 +45,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    command: /app/target/debug/sockudo
+    command: ${SOCKUDO_COMMAND:-/app/target/debug/sockudo}
     stdin_open: true
     tty: true
 
@@ -79,7 +79,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    command: /app/target/debug/sockudo
+    command: ${SOCKUDO_COMMAND:-/app/target/debug/sockudo}
     stdin_open: true
     tty: true
 
