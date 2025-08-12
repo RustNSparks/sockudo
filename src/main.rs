@@ -1188,7 +1188,7 @@ async fn main() -> Result<()> {
     // --- Update logging configuration if needed ---
     // For JSON format (env var only), no runtime updates needed as it was initialized early
     // For human format, we can update colors and target settings
-    if filter_reload_handle.is_some() {
+    if let (Some(filter_handle), Some(fmt_handle)) = (filter_reload_handle, fmt_reload_handle) {
         // Human format - use reload for updates
         let needs_logging_update =
             config.debug != initial_debug_from_env || config.logging.is_some();
@@ -1205,24 +1205,18 @@ async fn main() -> Result<()> {
                 info!("Custom logging configuration detected, updating logger format");
             }
 
-            let filter_handle = filter_reload_handle.as_ref().unwrap();
-            let fmt_handle = fmt_reload_handle.as_ref().unwrap();
-
             let new_log_directive = get_log_directive(config.debug);
             let new_env_filter = EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new(new_log_directive));
 
             // Reload the filter with the new configuration
-            match filter_handle.reload(new_env_filter) {
-                Ok(()) => {
-                    debug!(
-                        "Successfully updated logging filter for debug={}",
-                        config.debug
-                    );
-                }
-                Err(e) => {
-                    error!("Failed to reload logging filter: {}", e);
-                }
+            if let Err(e) = filter_handle.reload(new_env_filter) {
+                error!("Failed to reload logging filter: {}", e);
+            } else {
+                debug!(
+                    "Successfully updated logging filter for debug={}",
+                    config.debug
+                );
             }
 
             // Create new fmt layer based on logging configuration (human format only)
@@ -1247,13 +1241,10 @@ async fn main() -> Result<()> {
                 }
             };
 
-            match fmt_handle.reload(new_fmt_layer) {
-                Ok(()) => {
-                    debug!("Successfully updated fmt layer");
-                }
-                Err(e) => {
-                    error!("Failed to reload fmt layer: {}", e);
-                }
+            if let Err(e) = fmt_handle.reload(new_fmt_layer) {
+                error!("Failed to reload fmt layer: {}", e);
+            } else {
+                debug!("Successfully updated fmt layer");
             }
         }
     } else if use_json_format {

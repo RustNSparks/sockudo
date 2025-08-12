@@ -1287,25 +1287,19 @@ impl ServerOptions {
         }
 
         // --- Logging Configuration ---
-        // Only create logging config if any logging env vars are set to maintain backward compatibility
-        let mut has_logging_env_vars = false;
-        let mut logging_config = LoggingConfig::default();
-
-        if let Ok(_colors_str) = std::env::var("LOG_COLORS_ENABLED") {
-            logging_config.colors_enabled =
-                parse_bool_env("LOG_COLORS_ENABLED", logging_config.colors_enabled);
-            has_logging_env_vars = true;
-        }
-
-        if let Ok(_target_str) = std::env::var("LOG_INCLUDE_TARGET") {
-            logging_config.include_target =
-                parse_bool_env("LOG_INCLUDE_TARGET", logging_config.include_target);
-            has_logging_env_vars = true;
-        }
-
-        // Only set logging config if environment variables were provided
-        if has_logging_env_vars {
-            self.logging = Some(logging_config);
+        // Override existing config values or create new ones if env vars are set
+        let has_colors_env = std::env::var("LOG_COLORS_ENABLED").is_ok();
+        let has_target_env = std::env::var("LOG_INCLUDE_TARGET").is_ok();
+        if has_colors_env || has_target_env {
+            let logging_config = self.logging.get_or_insert_with(Default::default);
+            if has_colors_env {
+                logging_config.colors_enabled =
+                    parse_bool_env("LOG_COLORS_ENABLED", logging_config.colors_enabled);
+            }
+            if has_target_env {
+                logging_config.include_target =
+                    parse_bool_env("LOG_INCLUDE_TARGET", logging_config.include_target);
+            }
         }
 
         Ok(())
