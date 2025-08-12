@@ -213,10 +213,8 @@
   },
 
   "logging": {
-    "output_format": "human",
-    "colors_enabled": false,
-    "include_target": false,
-    "include_timestamp": true
+    "colors_enabled": true,
+    "include_target": true
   },
 
   "database_pooling": {

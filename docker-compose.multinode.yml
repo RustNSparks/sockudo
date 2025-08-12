@@ -36,6 +36,7 @@ services:
       - SSL_ENABLED=true
       - SSL_CERT_PATH=/etc/ssl/certs/sockudo.crt
       - SSL_KEY_PATH=/etc/ssl/private/sockudo.key
+      - LOG_OUTPUT_FORMAT=json
     ports:
       - "6002:6002"
       - "9602:9602"

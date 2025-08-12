@@ -56,7 +56,7 @@ use crate::http_handler::{
 };
 
 use crate::metrics::MetricsFactory;
-use crate::options::{AdapterDriver, QueueDriver, ServerOptions}; // Added QueueDriver
+use crate::options::{AdapterDriver, QueueDriver, ServerOptions};
 use crate::queue::manager::{QueueManager, QueueManagerFactory};
 use crate::rate_limiter::RateLimiter;
 use crate::rate_limiter::factory::RateLimiterFactory;
@@ -1089,10 +1089,29 @@ async fn main() -> Result<()> {
         utils::parse_bool_env("DEBUG_MODE", false)
     };
 
-    // Initialize tracing
-    let (filter_reload_handle, fmt_reload_handle) = {
-        let initial_log_directive = get_log_directive(initial_debug_from_env);
+    // Check for early JSON format request from environment variables only
+    let use_json_format = std::env::var("LOG_OUTPUT_FORMAT").as_deref() == Ok("json");
 
+    // Initialize tracing
+    let (filter_reload_handle, fmt_reload_handle) = if use_json_format {
+        // JSON format - initialize directly without reload capability
+        let initial_log_directive = get_log_directive(initial_debug_from_env);
+        let initial_env_filter = EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| EnvFilter::new(initial_log_directive));
+
+        tracing_subscriber::fmt()
+            .json()
+            .with_target(utils::parse_bool_env("LOG_INCLUDE_TARGET", true))
+            .with_file(initial_debug_from_env)
+            .with_line_number(initial_debug_from_env)
+            .with_env_filter(initial_env_filter)
+            .init();
+
+        info!("Initial logging initialized: JSON format");
+        (None, None) // No reload handles for JSON format
+    } else {
+        // Human format - use reload system
+        let initial_log_directive = get_log_directive(initial_debug_from_env);
         let initial_env_filter = EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| EnvFilter::new(initial_log_directive));
 
@@ -1114,11 +1133,11 @@ async fn main() -> Result<()> {
             .init();
 
         info!(
-            "Initial logging initialized with DEBUG={}",
+            "Initial logging initialized: Human format with DEBUG={}",
             initial_debug_from_env
         );
 
-        (filter_reload_handle, fmt_reload_handle)
+        (Some(filter_reload_handle), Some(fmt_reload_handle))
     };
 
     // --- Configuration Loading Order ---
@@ -1167,47 +1186,78 @@ async fn main() -> Result<()> {
     }
 
     // --- Update logging configuration if needed ---
-    // Now that we have the final configuration, update both the logging filter and fmt layer
-    // if config.debug differs from the initial setting. This ensures config.debug from files
-    // is fully respected, including file/line number display.
-    if config.debug != initial_debug_from_env {
-        info!(
-            "Debug mode changed from {} to {} after loading configuration, updating logger",
-            initial_debug_from_env, config.debug
-        );
+    // For JSON format (env var only), no runtime updates needed as it was initialized early
+    // For human format, we can update colors and target settings
+    if filter_reload_handle.is_some() {
+        // Human format - use reload for updates
+        let needs_logging_update =
+            config.debug != initial_debug_from_env || config.logging.is_some();
 
-        let new_log_directive = get_log_directive(config.debug);
-
-        let new_env_filter =
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(new_log_directive));
-
-        // Reload the filter with the new configuration
-        match filter_reload_handle.reload(new_env_filter) {
-            Ok(()) => {
-                debug!(
-                    "Successfully updated logging filter for debug={}",
-                    config.debug
+        if needs_logging_update {
+            if config.debug != initial_debug_from_env {
+                info!(
+                    "Debug mode changed from {} to {} after loading configuration, updating logger",
+                    initial_debug_from_env, config.debug
                 );
             }
-            Err(e) => {
-                error!("Failed to reload logging filter: {}", e);
+
+            if config.logging.is_some() {
+                info!("Custom logging configuration detected, updating logger format");
+            }
+
+            let filter_handle = filter_reload_handle.as_ref().unwrap();
+            let fmt_handle = fmt_reload_handle.as_ref().unwrap();
+
+            let new_log_directive = get_log_directive(config.debug);
+            let new_env_filter = EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new(new_log_directive));
+
+            // Reload the filter with the new configuration
+            match filter_handle.reload(new_env_filter) {
+                Ok(()) => {
+                    debug!(
+                        "Successfully updated logging filter for debug={}",
+                        config.debug
+                    );
+                }
+                Err(e) => {
+                    error!("Failed to reload logging filter: {}", e);
+                }
+            }
+
+            // Create new fmt layer based on logging configuration (human format only)
+            let new_fmt_layer = match &config.logging {
+                Some(logging_config) => {
+                    info!(
+                        "Using human-readable log format with colors_enabled={}",
+                        logging_config.colors_enabled
+                    );
+                    fmt::layer()
+                        .with_ansi(logging_config.colors_enabled)
+                        .with_target(logging_config.include_target)
+                        .with_file(config.debug)
+                        .with_line_number(config.debug)
+                }
+                None => {
+                    // Backward compatibility: use existing behavior exactly
+                    fmt::layer()
+                        .with_target(true)
+                        .with_file(config.debug)
+                        .with_line_number(config.debug)
+                }
+            };
+
+            match fmt_handle.reload(new_fmt_layer) {
+                Ok(()) => {
+                    debug!("Successfully updated fmt layer");
+                }
+                Err(e) => {
+                    error!("Failed to reload fmt layer: {}", e);
+                }
             }
         }
-
-        // Update the fmt layer to enable/disable file and line numbers based on debug mode
-        let new_fmt_layer = fmt::layer()
-            .with_target(true)
-            .with_file(config.debug)
-            .with_line_number(config.debug);
-
-        match fmt_reload_handle.reload(new_fmt_layer) {
-            Ok(()) => {
-                debug!("Successfully updated fmt layer for debug={}", config.debug);
-            }
-            Err(e) => {
-                error!("Failed to reload fmt layer: {}", e);
-            }
-        }
+    } else if use_json_format {
+        info!("Logging was initialized with JSON format via environment variable");
     }
 
     info!(

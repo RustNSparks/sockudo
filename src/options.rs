@@ -486,10 +486,8 @@ pub struct PrometheusConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LoggingConfig {
-    pub output_format: LogOutputFormat,
     pub colors_enabled: bool,
     pub include_target: bool,
-    pub include_timestamp: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -808,10 +806,8 @@ impl Default for InstanceConfig {
 impl Default for LoggingConfig {
     fn default() -> Self {
         Self {
-            output_format: LogOutputFormat::Human,
-            colors_enabled: true,    // Current default behavior
-            include_target: true,    // Current default behavior
-            include_timestamp: true, // Current default behavior
+            colors_enabled: true, // Current default behavior
+            include_target: true, // Current default behavior
         }
     }
 }
@@ -1295,12 +1291,6 @@ impl ServerOptions {
         let mut has_logging_env_vars = false;
         let mut logging_config = LoggingConfig::default();
 
-        if let Ok(format_str) = std::env::var("LOG_OUTPUT_FORMAT") {
-            logging_config.output_format =
-                parse_driver_enum(format_str, LogOutputFormat::Human, "log output format");
-            has_logging_env_vars = true;
-        }
-
         if let Ok(_colors_str) = std::env::var("LOG_COLORS_ENABLED") {
             logging_config.colors_enabled =
                 parse_bool_env("LOG_COLORS_ENABLED", logging_config.colors_enabled);
@@ -1310,12 +1300,6 @@ impl ServerOptions {
         if let Ok(_target_str) = std::env::var("LOG_INCLUDE_TARGET") {
             logging_config.include_target =
                 parse_bool_env("LOG_INCLUDE_TARGET", logging_config.include_target);
-            has_logging_env_vars = true;
-        }
-
-        if let Ok(_timestamp_str) = std::env::var("LOG_INCLUDE_TIMESTAMP") {
-            logging_config.include_timestamp =
-                parse_bool_env("LOG_INCLUDE_TIMESTAMP", logging_config.include_timestamp);
             has_logging_env_vars = true;
         }
 
