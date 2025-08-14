@@ -147,33 +147,13 @@ impl CleanupWorker {
             channel_operations.len()
         );
 
-        // Process each app's channels together
-        let mut apps_channels: HashMap<String, Vec<(String, Vec<SocketId>)>> = HashMap::new();
-        for ((app_id, channel), socket_ids) in channel_operations {
-            apps_channels
-                .entry(app_id)
-                .or_insert_with(Vec::new)
-                .push((channel, socket_ids));
-        }
-
-        for (app_id, channels) in apps_channels {
-            if let Err(e) = self.process_app_channel_cleanup(&app_id, channels).await {
-                error!("Failed to cleanup channels for app {}: {}", app_id, e);
-            }
-        }
-    }
-
-    async fn process_app_channel_cleanup(
-        &self,
-        app_id: &str,
-        channels: Vec<(String, Vec<SocketId>)>,
-    ) -> crate::error::Result<()> {
+        // Process channel cleanups directly - already grouped by (app_id, channel)
         let channel_manager = self.channel_manager.write().await;
 
-        for (channel, socket_ids) in channels {
+        for ((app_id, channel), socket_ids) in channel_operations {
             for socket_id in socket_ids {
                 if let Err(e) = channel_manager
-                    .unsubscribe(&socket_id.0, &channel, app_id, None)
+                    .unsubscribe(&socket_id.0, &channel, &app_id, None)
                     .await
                 {
                     warn!(
@@ -183,8 +163,6 @@ impl CleanupWorker {
                 }
             }
         }
-
-        Ok(())
     }
 
     async fn batch_connection_removal(&self, connections: Vec<(SocketId, String)>) {
@@ -334,10 +312,21 @@ impl CleanupWorker {
 
     async fn update_cleanup_metrics(&self, batch_size: usize, duration: Duration) {
         if let Some(metrics) = &self.metrics {
-            if let Ok(_metrics_guard) = metrics.try_lock() {
-                // Update cleanup metrics
-                // Note: This would need to integrate with the existing metrics system
-                debug!("Processed batch of {} in {:?}", batch_size, duration);
+            if let Ok(metrics_guard) = metrics.try_lock() {
+                // Track cleanup performance metrics
+                // These would be custom metrics for the cleanup system
+                // For now, mark disconnections for each processed task
+                for _ in 0..batch_size {
+                    metrics_guard
+                        .mark_disconnection("cleanup_batch", &SocketId("batch".to_string()));
+                }
+
+                info!(
+                    "Cleanup batch completed: {} tasks in {:?} ({:.2} tasks/sec)",
+                    batch_size,
+                    duration,
+                    batch_size as f64 / duration.as_secs_f64()
+                );
             }
         }
     }
