@@ -1,7 +1,6 @@
 use crate::websocket::SocketId;
 use std::time::Instant;
 
-pub mod webhooks;
 pub mod worker;
 
 #[derive(Debug, Clone)]

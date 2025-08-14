@@ -1,5 +1,6 @@
 use super::{CleanupConfig, ConnectionCleanupInfo, DisconnectTask, WebhookEvent};
 use crate::adapter::connection_manager::ConnectionManager;
+use crate::app::manager::AppManager;
 use crate::channel::manager::ChannelManager;
 use crate::metrics::MetricsInterface;
 use crate::webhook::integration::WebhookIntegration;
@@ -14,6 +15,7 @@ use tracing::{debug, error, info, warn};
 pub struct CleanupWorker {
     connection_manager: Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
     channel_manager: Arc<RwLock<ChannelManager>>,
+    app_manager: Arc<dyn AppManager + Send + Sync>,
     webhook_integration: Option<Arc<WebhookIntegration>>,
     metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
     config: CleanupConfig,
@@ -23,6 +25,7 @@ impl CleanupWorker {
     pub fn new(
         connection_manager: Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
         channel_manager: Arc<RwLock<ChannelManager>>,
+        app_manager: Arc<dyn AppManager + Send + Sync>,
         webhook_integration: Option<Arc<WebhookIntegration>>,
         metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
         config: CleanupConfig,
@@ -30,6 +33,7 @@ impl CleanupWorker {
         Self {
             connection_manager,
             channel_manager,
+            app_manager,
             webhook_integration,
             metrics,
             config,
@@ -225,46 +229,112 @@ impl CleanupWorker {
             }
         }
 
-        // Generate channel_vacated events if needed
-        // Note: This would require checking if channel is empty, which we'll do in the worker
+        // Check if channels are now empty for channel_vacated events
+        let mut connection_manager = self.connection_manager.lock().await;
+        for channel in &task.subscribed_channels {
+            let socket_count = connection_manager
+                .get_channel_socket_count(&task.app_id, channel)
+                .await;
+            if socket_count == 0 {
+                events.push(WebhookEvent {
+                    event_type: "channel_vacated".to_string(),
+                    app_id: task.app_id.clone(),
+                    channel: channel.clone(),
+                    user_id: None,
+                    data: serde_json::json!({
+                        "channel": channel
+                    }),
+                });
+            }
+        }
 
         events
     }
 
-    async fn process_webhooks_async(&self, events: Vec<WebhookEvent>) {
+    async fn process_webhooks_async(&self, webhook_events: Vec<WebhookEvent>) {
         if let Some(webhook_integration) = &self.webhook_integration {
-            debug!("Processing {} webhook events", events.len());
+            debug!("Processing {} webhook events", webhook_events.len());
 
-            let webhook_tasks: Vec<_> = events
-                .into_iter()
-                .map(|event| {
-                    let webhook = webhook_integration.clone();
-                    tokio::spawn(async move {
-                        // Note: This is a simplified webhook sending - actual implementation
-                        // would need to match the existing webhook integration interface
-                        debug!(
-                            "Sending webhook event: {} for channel: {}",
-                            event.event_type, event.channel
-                        );
-                        // webhook.send_event(event).await
-                    })
-                })
-                .collect();
+            // Group events by app_id to get app configs efficiently
+            let mut events_by_app: HashMap<String, Vec<WebhookEvent>> = HashMap::new();
+            for event in webhook_events {
+                events_by_app
+                    .entry(event.app_id.clone())
+                    .or_insert_with(Vec::new)
+                    .push(event);
+            }
 
-            // Let webhooks run in background - don't await to avoid blocking cleanup
-            tokio::spawn(async move {
-                for task in webhook_tasks {
-                    if let Err(e) = task.await {
-                        error!("Webhook task failed: {}", e);
+            for (app_id, events) in events_by_app {
+                let webhook_integration = webhook_integration.clone();
+                let app_manager = self.app_manager.clone();
+
+                tokio::spawn(async move {
+                    // Get app config once for all events
+                    let app_config = match app_manager.find_by_id(&app_id).await {
+                        Ok(Some(app)) => app,
+                        Ok(None) => {
+                            warn!("App {} not found for webhook events", app_id);
+                            return;
+                        }
+                        Err(e) => {
+                            error!("Failed to get app config for {}: {}", app_id, e);
+                            return;
+                        }
+                    };
+
+                    // Process all events for this app
+                    for event in events {
+                        if let Err(e) =
+                            Self::send_webhook_event(&webhook_integration, &app_config, &event)
+                                .await
+                        {
+                            error!("Failed to send webhook event {}: {}", event.event_type, e);
+                        }
                     }
-                }
-            });
+                });
+            }
         }
+    }
+
+    async fn send_webhook_event(
+        webhook_integration: &WebhookIntegration,
+        app_config: &crate::app::config::App,
+        event: &WebhookEvent,
+    ) -> crate::error::Result<()> {
+        debug!(
+            "Sending {} webhook for app {} channel {}",
+            event.event_type, app_config.id, event.channel
+        );
+
+        match event.event_type.as_str() {
+            "member_removed" => {
+                if let Some(user_id) = &event.user_id {
+                    webhook_integration
+                        .send_member_removed(app_config, &event.channel, user_id)
+                        .await?;
+                    debug!(
+                        "Sent member_removed webhook for user {} in channel {}",
+                        user_id, event.channel
+                    );
+                }
+            }
+            "channel_vacated" => {
+                webhook_integration
+                    .send_channel_vacated(app_config, &event.channel)
+                    .await?;
+                debug!("Sent channel_vacated webhook for channel {}", event.channel);
+            }
+            _ => {
+                warn!("Unknown webhook event type: {}", event.event_type);
+            }
+        }
+
+        Ok(())
     }
 
     async fn update_cleanup_metrics(&self, batch_size: usize, duration: Duration) {
         if let Some(metrics) = &self.metrics {
-            if let Ok(metrics_guard) = metrics.try_lock() {
+            if let Ok(_metrics_guard) = metrics.try_lock() {
                 // Update cleanup metrics
                 // Note: This would need to integrate with the existing metrics system
                 debug!("Processed batch of {} in {:?}", batch_size, duration);

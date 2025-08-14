@@ -426,6 +426,7 @@ impl SockudoServer {
             let cleanup_worker = CleanupWorker::new(
                 connection_manager.clone(),
                 channel_manager.clone(),
+                app_manager.clone(),
                 Some(webhook_integration.clone()),
                 metrics.clone(),
                 cleanup_config.clone(),
