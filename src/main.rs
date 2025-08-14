@@ -6,6 +6,7 @@ mod adapter;
 mod app;
 mod cache;
 mod channel;
+pub mod cleanup;
 mod error;
 mod http_handler;
 mod metrics;
@@ -83,6 +84,8 @@ use crate::app::manager::AppManager;
 use crate::cache::manager::CacheManager;
 use crate::cache::memory_cache_manager::MemoryCacheManager; // Import for fallback
 // MetricsInterface trait
+use crate::cleanup::worker::CleanupWorker;
+use crate::cleanup::{CleanupConfig, DisconnectTask};
 use crate::metrics::MetricsInterface;
 use crate::middleware::pusher_api_auth_middleware;
 use crate::websocket::WebSocketRef;
@@ -100,6 +103,9 @@ struct ServerState {
     running: AtomicBool,
     http_api_rate_limiter: Option<Arc<dyn RateLimiter + Send + Sync>>,
     debug_enabled: bool,
+    cleanup_queue: Option<tokio::sync::mpsc::UnboundedSender<DisconnectTask>>,
+    cleanup_worker_handle: Option<tokio::task::JoinHandle<()>>,
+    cleanup_config: CleanupConfig,
 }
 
 /// Main server struct
@@ -412,6 +418,28 @@ impl SockudoServer {
             }
         };
 
+        // Initialize cleanup queue if enabled
+        let cleanup_config = CleanupConfig::default(); // TODO: Load from config
+        let (cleanup_queue, cleanup_worker_handle) = if cleanup_config.async_enabled {
+            let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+
+            let cleanup_worker = CleanupWorker::new(
+                connection_manager.clone(),
+                channel_manager.clone(),
+                Some(webhook_integration.clone()),
+                metrics.clone(),
+                cleanup_config.clone(),
+            );
+
+            let handle = tokio::spawn(async move {
+                cleanup_worker.run(receiver).await;
+            });
+
+            (Some(sender), Some(handle))
+        } else {
+            (None, None)
+        };
+
         let state = ServerState {
             app_manager: app_manager.clone(),
             channel_manager: channel_manager.clone(),
@@ -424,6 +452,9 @@ impl SockudoServer {
             running: AtomicBool::new(true),
             http_api_rate_limiter: Some(http_api_rate_limiter_instance.clone()),
             debug_enabled,
+            cleanup_queue,
+            cleanup_worker_handle,
+            cleanup_config,
         };
 
         let handler = Arc::new(ConnectionHandler::new(
@@ -434,6 +465,7 @@ impl SockudoServer {
             state.metrics.clone(),
             Some(webhook_integration), // Pass the (potentially disabled) webhook_integration
             config.clone(),
+            state.cleanup_queue.clone(),
         ));
 
         // Set metrics for adapters
