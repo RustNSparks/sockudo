@@ -34,7 +34,7 @@ CLEANUP_FALLBACK_TO_SYNC=true
 CLEANUP_QUEUE_BUFFER_SIZE=2000
 CLEANUP_BATCH_SIZE=25
 CLEANUP_BATCH_TIMEOUT_MS=50
-CLEANUP_WORKER_THREADS=1
+CLEANUP_WORKER_THREADS=auto  # or specific number like "2"
 CLEANUP_MAX_RETRY_ATTEMPTS=2
 ```
 
@@ -47,8 +47,37 @@ CLEANUP_MAX_RETRY_ATTEMPTS=2
 | `queue_buffer_size` | `2000` | Maximum queued disconnect tasks |
 | `batch_size` | `25` | Tasks processed per batch |
 | `batch_timeout_ms` | `50` | Max wait time to fill batch |
-| `worker_threads` | `1` | Number of cleanup worker threads |
+| `worker_threads` | `1` | Number of cleanup worker threads (or "auto") |
 | `max_retry_attempts` | `2` | Retries before giving up |
+
+### Worker Threads Configuration
+
+The `worker_threads` setting supports two formats:
+
+**Fixed Number**: Specify exact number of workers
+```json
+"worker_threads": 2
+```
+```bash
+CLEANUP_WORKER_THREADS=2
+```
+
+**Auto-Detection**: Use "auto" to automatically scale based on CPU cores
+```json
+"worker_threads": "auto"
+```
+```bash
+CLEANUP_WORKER_THREADS=auto
+```
+
+When using "auto", the system uses **25% of available CPU cores** (minimum 1, maximum 4):
+- 1-3 CPUs → 1 worker
+- 4-7 CPUs → 1 worker  
+- 8-11 CPUs → 2 workers
+- 12-15 CPUs → 3 workers
+- 16+ CPUs → 4 workers
+
+**Multiple Workers**: When using multiple workers, the total `batch_size` is distributed among workers, and work is distributed using round-robin scheduling for optimal load balancing.
 
 ## Deployment Scenario Configurations
 
