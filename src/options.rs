@@ -258,6 +258,7 @@ pub struct ServerOptions {
     pub user_authentication_timeout: u64,
     pub webhooks: WebhooksConfig,
     pub websocket_max_payload_kb: u32,
+    pub cleanup: crate::cleanup::CleanupConfig,
 }
 
 // --- Configuration Sub-Structs ---
@@ -590,6 +591,7 @@ impl Default for ServerOptions {
             user_authentication_timeout: 3600,
             webhooks: WebhooksConfig::default(),
             websocket_max_payload_kb: 64,
+            cleanup: crate::cleanup::CleanupConfig::default(),
         }
     }
 }
@@ -1301,6 +1303,23 @@ impl ServerOptions {
                     parse_bool_env("LOG_INCLUDE_TARGET", logging_config.include_target);
             }
         }
+
+        // --- Cleanup Configuration ---
+        self.cleanup.async_enabled =
+            parse_bool_env("CLEANUP_ASYNC_ENABLED", self.cleanup.async_enabled);
+        self.cleanup.fallback_to_sync =
+            parse_bool_env("CLEANUP_FALLBACK_TO_SYNC", self.cleanup.fallback_to_sync);
+        self.cleanup.queue_buffer_size =
+            parse_env::<usize>("CLEANUP_QUEUE_BUFFER_SIZE", self.cleanup.queue_buffer_size);
+        self.cleanup.batch_size = parse_env::<usize>("CLEANUP_BATCH_SIZE", self.cleanup.batch_size);
+        self.cleanup.batch_timeout_ms =
+            parse_env::<u64>("CLEANUP_BATCH_TIMEOUT_MS", self.cleanup.batch_timeout_ms);
+        self.cleanup.worker_threads =
+            parse_env::<usize>("CLEANUP_WORKER_THREADS", self.cleanup.worker_threads);
+        self.cleanup.max_retry_attempts = parse_env::<u32>(
+            "CLEANUP_MAX_RETRY_ATTEMPTS",
+            self.cleanup.max_retry_attempts,
+        );
 
         Ok(())
     }

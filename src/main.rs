@@ -419,7 +419,7 @@ impl SockudoServer {
         };
 
         // Initialize cleanup queue if enabled
-        let cleanup_config = CleanupConfig::default(); // TODO: Load from config
+        let cleanup_config = config.cleanup.clone();
         let (cleanup_queue, cleanup_worker_handle) = if cleanup_config.async_enabled {
             let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
 
