@@ -229,7 +229,7 @@
     "queue_buffer_size": 2000,
     "batch_size": 25,
     "batch_timeout_ms": 50,
-    "worker_threads": 1,
+    "worker_threads": "auto",
     "max_retry_attempts": 2
   }
 }
