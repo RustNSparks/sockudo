@@ -1314,8 +1314,20 @@ impl ServerOptions {
         self.cleanup.batch_size = parse_env::<usize>("CLEANUP_BATCH_SIZE", self.cleanup.batch_size);
         self.cleanup.batch_timeout_ms =
             parse_env::<u64>("CLEANUP_BATCH_TIMEOUT_MS", self.cleanup.batch_timeout_ms);
-        self.cleanup.worker_threads =
-            parse_env::<usize>("CLEANUP_WORKER_THREADS", self.cleanup.worker_threads);
+        // Handle worker_threads which can be "auto" or a number
+        if let Ok(worker_threads_str) = std::env::var("CLEANUP_WORKER_THREADS") {
+            self.cleanup.worker_threads = if worker_threads_str.to_lowercase() == "auto" {
+                crate::cleanup::WorkerThreadsConfig::Auto
+            } else if let Ok(n) = worker_threads_str.parse::<usize>() {
+                crate::cleanup::WorkerThreadsConfig::Fixed(n)
+            } else {
+                warn!(
+                    "Invalid CLEANUP_WORKER_THREADS value '{}', keeping current setting",
+                    worker_threads_str
+                );
+                self.cleanup.worker_threads.clone()
+            };
+        }
         self.cleanup.max_retry_attempts = parse_env::<u32>(
             "CLEANUP_MAX_RETRY_ATTEMPTS",
             self.cleanup.max_retry_attempts,

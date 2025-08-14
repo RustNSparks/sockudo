@@ -40,6 +40,10 @@ impl CleanupWorker {
         }
     }
 
+    pub fn get_config(&self) -> &CleanupConfig {
+        &self.config
+    }
+
     pub async fn run(&self, mut receiver: mpsc::UnboundedReceiver<DisconnectTask>) {
         info!("Cleanup worker started with config: {:?}", self.config);
 

@@ -84,7 +84,7 @@ use crate::app::manager::AppManager;
 use crate::cache::manager::CacheManager;
 use crate::cache::memory_cache_manager::MemoryCacheManager; // Import for fallback
 // MetricsInterface trait
-use crate::cleanup::worker::CleanupWorker;
+use crate::cleanup::multi_worker::MultiWorkerCleanupSystem;
 use crate::cleanup::{CleanupConfig, DisconnectTask};
 use crate::metrics::MetricsInterface;
 use crate::middleware::pusher_api_auth_middleware;
@@ -104,7 +104,7 @@ struct ServerState {
     http_api_rate_limiter: Option<Arc<dyn RateLimiter + Send + Sync>>,
     debug_enabled: bool,
     cleanup_queue: Option<tokio::sync::mpsc::UnboundedSender<DisconnectTask>>,
-    cleanup_worker_handle: Option<tokio::task::JoinHandle<()>>,
+    cleanup_worker_handles: Option<Vec<tokio::task::JoinHandle<()>>>,
     cleanup_config: CleanupConfig,
 }
 
@@ -420,10 +420,8 @@ impl SockudoServer {
 
         // Initialize cleanup queue if enabled
         let cleanup_config = config.cleanup.clone();
-        let (cleanup_queue, cleanup_worker_handle) = if cleanup_config.async_enabled {
-            let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
-
-            let cleanup_worker = CleanupWorker::new(
+        let (cleanup_queue, cleanup_worker_handles) = if cleanup_config.async_enabled {
+            let multi_worker_system = MultiWorkerCleanupSystem::new(
                 connection_manager.clone(),
                 channel_manager.clone(),
                 app_manager.clone(),
@@ -432,11 +430,46 @@ impl SockudoServer {
                 cleanup_config.clone(),
             );
 
-            let handle = tokio::spawn(async move {
-                cleanup_worker.run(receiver).await;
-            });
+            // Check if single worker for optimization
+            let direct_sender = multi_worker_system.get_direct_sender();
+            let multi_sender = if direct_sender.is_none() {
+                Some(multi_worker_system.get_sender())
+            } else {
+                None
+            };
+            let worker_handles = multi_worker_system.get_worker_handles();
 
-            (Some(sender), Some(handle))
+            // For single worker, use direct sender (no overhead)
+            // For multiple workers, use wrapper for compatibility
+            let cleanup_sender = if let Some(direct_sender) = direct_sender {
+                info!("Using direct sender for single worker (optimized)");
+                direct_sender
+            } else {
+                info!("Using multi-worker sender with forwarder");
+                let sender = multi_sender.unwrap();
+
+                // Create wrapper sender for compatibility
+                let (wrapper_sender, mut wrapper_receiver) = tokio::sync::mpsc::unbounded_channel();
+
+                let multi_sender_clone = sender.clone();
+                tokio::spawn(async move {
+                    while let Some(task) = wrapper_receiver.recv().await {
+                        if let Err(e) = multi_sender_clone.send(task) {
+                            error!(
+                                "Failed to forward disconnect task to multi-worker system: {:?}",
+                                e
+                            );
+                            break;
+                        }
+                    }
+                    info!("Cleanup task forwarder shutdown");
+                });
+
+                wrapper_sender
+            };
+
+            info!("Multi-worker cleanup system initialized");
+            (Some(cleanup_sender), Some(worker_handles))
         } else {
             (None, None)
         };
@@ -454,7 +487,7 @@ impl SockudoServer {
             http_api_rate_limiter: Some(http_api_rate_limiter_instance.clone()),
             debug_enabled,
             cleanup_queue,
-            cleanup_worker_handle,
+            cleanup_worker_handles,
             cleanup_config,
         };
 
@@ -1060,6 +1093,13 @@ impl SockudoServer {
             info!("All connection cleanup tasks have been processed.");
         } else {
             info!("No connections to cleanup.");
+        }
+
+        // Shutdown cleanup workers
+        // Note: We can't shutdown workers here because we can't move handles out of self.state
+        // The cleanup workers will be shutdown when the server process ends
+        if self.state.cleanup_worker_handles.is_some() {
+            info!("Cleanup system will shutdown when server process ends");
         }
 
         // Disconnect from backend services
