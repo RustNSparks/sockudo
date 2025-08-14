@@ -52,7 +52,7 @@ impl ConnectionHandler {
 
         // Perform unsubscription through channel manager
         {
-            let channel_manager = self.channel_manager.write().await;
+            let channel_manager = self.channel_manager.read().await;
             channel_manager
                 .unsubscribe(
                     socket_id.as_ref(),
@@ -443,7 +443,7 @@ impl ConnectionHandler {
         subscribed_channels: &HashSet<String>,
         user_id: &Option<String>,
     ) -> Result<()> {
-        let channel_manager = self.channel_manager.write().await;
+        let channel_manager = self.channel_manager.read().await;
 
         for channel_str in subscribed_channels {
             debug!(
