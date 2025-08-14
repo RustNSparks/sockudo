@@ -151,22 +151,38 @@ impl CleanupWorker {
             channel_operations.len()
         );
 
-        // Process channel cleanups directly - already grouped by (app_id, channel)
-        let channel_manager = self.channel_manager.write().await;
+        let mut total_success = 0;
+        let mut total_errors = 0;
 
+        // Process each operation individually with atomic locks (1 lock per operation)
         for ((app_id, channel), socket_ids) in channel_operations {
             for socket_id in socket_ids {
-                if let Err(e) = channel_manager
-                    .unsubscribe(&socket_id.0, &channel, &app_id, None)
-                    .await
+                // Each operation gets exactly 1 lock, held for ~1ms, then released
                 {
-                    warn!(
-                        "Failed to remove socket {} from channel {}: {}",
-                        socket_id, channel, e
-                    );
-                }
+                    let channel_manager = self.channel_manager.read().await;
+                    match channel_manager
+                        .unsubscribe(&socket_id.0, &channel, &app_id, None)
+                        .await
+                    {
+                        Ok(_) => {
+                            total_success += 1;
+                        }
+                        Err(e) => {
+                            total_errors += 1;
+                            warn!(
+                                "Failed to remove socket {} from channel {}/{}: {}",
+                                socket_id, app_id, channel, e
+                            );
+                        }
+                    }
+                } // Lock released here automatically between each operation
             }
         }
+
+        debug!(
+            "Individual channel cleanup completed: {} successful, {} errors",
+            total_success, total_errors
+        );
     }
 
     async fn batch_connection_removal(&self, connections: Vec<(SocketId, String)>) {
