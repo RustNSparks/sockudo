@@ -39,10 +39,10 @@
           "id": "app-id",
           "key": "app-key",
           "secret": "app-secret",
-          "max_connections": 10000,
+          "max_connections": 1000,
           "enable_client_messages": true,
           "enabled": true,
-          "max_client_events_per_second": 1000
+          "max_client_events_per_second": 100
         }
       ]
     },
@@ -221,5 +221,15 @@
     "enabled": true,
     "min": 2,
     "max": 10
+  },
+
+  "cleanup": {
+    "async_enabled": true,
+    "fallback_to_sync": true,
+    "queue_buffer_size": 2000,
+    "batch_size": 25,
+    "batch_timeout_ms": 50,
+    "worker_threads": "auto",
+    "max_retry_attempts": 2
   }
 }

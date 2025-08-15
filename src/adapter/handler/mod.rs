@@ -47,6 +47,7 @@ pub struct ConnectionHandler {
     client_event_limiters: Arc<DashMap<SocketId, Arc<dyn RateLimiter + Send + Sync>>>,
     watchlist_manager: Arc<WatchlistManager>,
     server_options: Arc<ServerOptions>,
+    cleanup_queue: Option<tokio::sync::mpsc::UnboundedSender<crate::cleanup::DisconnectTask>>,
 }
 
 impl ConnectionHandler {
@@ -58,6 +59,7 @@ impl ConnectionHandler {
         metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
         webhook_integration: Option<Arc<WebhookIntegration>>,
         server_options: ServerOptions,
+        cleanup_queue: Option<tokio::sync::mpsc::UnboundedSender<crate::cleanup::DisconnectTask>>,
     ) -> Self {
         Self {
             app_manager,
@@ -69,6 +71,7 @@ impl ConnectionHandler {
             client_event_limiters: Arc::new(DashMap::new()),
             watchlist_manager: Arc::new(WatchlistManager::new()),
             server_options: Arc::new(server_options),
+            cleanup_queue,
         }
     }
 
