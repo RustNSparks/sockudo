@@ -44,11 +44,11 @@ CLEANUP_MAX_RETRY_ATTEMPTS=2
 |-----------|---------|-------------|
 | `async_enabled` | `true` | Enable/disable async cleanup globally |
 | `fallback_to_sync` | `true` | Fall back to sync cleanup if queue fails |
-| `queue_buffer_size` | `2000` | Maximum queued disconnect tasks |
-| `batch_size` | `25` | Tasks processed per batch |
-| `batch_timeout_ms` | `50` | Max wait time to fill batch |
+| `queue_buffer_size` | `2000` | Maximum queued disconnect tasks per worker |
+| `batch_size` | `25` | Tasks processed per batch per worker |
+| `batch_timeout_ms` | `50` | Max wait time to fill batch per worker |
 | `worker_threads` | `1` | Number of cleanup worker threads (or "auto") |
-| `max_retry_attempts` | `2` | Retries before giving up |
+| `max_retry_attempts` | `2` | Retries before giving up per worker |
 
 ### Worker Threads Configuration
 
@@ -77,7 +77,22 @@ When using "auto", the system uses **25% of available CPU cores** (minimum 1, ma
 - 12-15 CPUs → 3 workers
 - 16+ CPUs → 4 workers
 
-**Multiple Workers**: When using multiple workers, the total `batch_size` is distributed among workers, and work is distributed using round-robin scheduling for optimal load balancing.
+**Multiple Workers**: When using multiple workers, each worker operates with the configured `batch_size` independently. Work is distributed among workers using round-robin scheduling for optimal load balancing.
+
+### Per-Worker Configuration
+
+**Important**: All configuration values (except `worker_threads`) are applied **per worker**, not as total system capacity.
+
+**Example**: With `worker_threads: 2` and `batch_size: 50`:
+- **Each worker** processes batches of 50 tasks
+- **Total system capacity** = 2 workers × 50 tasks = 100 tasks per batch round
+- **Queue capacity per worker** = `queue_buffer_size` value
+- **Total queue capacity** = 2 workers × `queue_buffer_size` value
+
+This design allows for:
+- **Predictable scaling**: Adding workers increases total capacity proportionally
+- **Consistent performance**: Each worker maintains the same performance characteristics
+- **Easy tuning**: Configuration directly reflects individual worker behavior
 
 ## Deployment Scenario Configurations
 
@@ -95,9 +110,9 @@ When using "auto", the system uses **25% of available CPU cores** (minimum 1, ma
   }
 }
 ```
-- **Memory Usage**: ~4KB queue buffer
+- **Memory Usage**: ~4KB queue buffer per worker (total: ~4KB with 1 worker)
 - **CPU Impact**: Minimal (1 worker thread)
-- **Latency**: 100ms max cleanup delay
+- **Latency**: 100ms max cleanup delay per worker
 
 ### 2. Standard Deployment (2vCPU/2GB RAM) ⭐ **RECOMMENDED DEFAULT**
 **Use Case**: Most common production deployments
@@ -113,9 +128,9 @@ When using "auto", the system uses **25% of available CPU cores** (minimum 1, ma
   }
 }
 ```
-- **Memory Usage**: ~16KB queue buffer
+- **Memory Usage**: ~16KB queue buffer per worker (total: ~16KB with 1 worker)
 - **CPU Impact**: Low (1 worker, leaves CPU for main server)
-- **Latency**: 50ms max cleanup delay
+- **Latency**: 50ms max cleanup delay per worker
 
 ### 3. High-Traffic Deployment (4vCPU/4GB+ RAM)
 **Use Case**: High concurrent connection loads (>10K connections)
@@ -131,9 +146,9 @@ When using "auto", the system uses **25% of available CPU cores** (minimum 1, ma
   }
 }
 ```
-- **Memory Usage**: ~80KB queue buffer
+- **Memory Usage**: ~80KB queue buffer per worker (total: ~160KB with 2 workers)
 - **CPU Impact**: Moderate (2 workers)
-- **Latency**: 25ms max cleanup delay
+- **Latency**: 25ms max cleanup delay per worker
 
 ### 4. Ultra High-Traffic Deployment (8vCPU/8GB+ RAM)
 **Use Case**: Massive scale deployments (>50K connections)
@@ -149,9 +164,9 @@ When using "auto", the system uses **25% of available CPU cores** (minimum 1, ma
   }
 }
 ```
-- **Memory Usage**: ~400KB queue buffer
+- **Memory Usage**: ~400KB queue buffer per worker (total: ~1.6MB with 4 workers)
 - **CPU Impact**: High (4 workers)
-- **Latency**: 10ms max cleanup delay
+- **Latency**: 10ms max cleanup delay per worker
 
 ### 5. Real-time Critical Applications
 **Use Case**: Applications requiring immediate presence updates
@@ -167,9 +182,9 @@ When using "auto", the system uses **25% of available CPU cores** (minimum 1, ma
   }
 }
 ```
-- **Memory Usage**: ~8KB queue buffer
-- **CPU Impact**: Moderate (frequent small batches)
-- **Latency**: 5ms max cleanup delay
+- **Memory Usage**: ~8KB queue buffer per worker (total: ~16KB with 2 workers)
+- **CPU Impact**: Moderate (2 workers, frequent small batches)
+- **Latency**: 5ms max cleanup delay per worker
 
 ### 6. Memory-Constrained Deployment
 **Use Case**: Limited memory environments
@@ -185,9 +200,9 @@ When using "auto", the system uses **25% of available CPU cores** (minimum 1, ma
   }
 }
 ```
-- **Memory Usage**: ~800B queue buffer
-- **CPU Impact**: Minimal
-- **Latency**: 200ms max cleanup delay
+- **Memory Usage**: ~800B queue buffer per worker (total: ~800B with 1 worker)
+- **CPU Impact**: Minimal (1 worker)
+- **Latency**: 200ms max cleanup delay per worker
 
 ## Measuring Configuration Effectiveness
 

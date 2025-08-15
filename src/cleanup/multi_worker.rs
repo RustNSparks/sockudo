@@ -40,17 +40,8 @@ impl MultiWorkerCleanupSystem {
         for worker_id in 0..num_workers {
             let (sender, receiver) = mpsc::unbounded_channel();
 
-            // Create worker config with adjusted batch size for multiple workers
-            // Distribute the total batch processing capacity across workers
-            let worker_config = CleanupConfig {
-                batch_size: (config.batch_size / num_workers).max(5), // Minimum 5 per worker
-                batch_timeout_ms: config.batch_timeout_ms,
-                queue_buffer_size: config.queue_buffer_size / num_workers, // Split buffer across workers
-                worker_threads: config.worker_threads.clone(), // Keep original for reference
-                max_retry_attempts: config.max_retry_attempts,
-                async_enabled: config.async_enabled,
-                fallback_to_sync: config.fallback_to_sync,
-            };
+            // Use per-worker configuration directly (no division across workers)
+            let worker_config = config.clone();
 
             let worker = CleanupWorker::new(
                 connection_manager.clone(),
@@ -72,10 +63,9 @@ impl MultiWorkerCleanupSystem {
             worker_handles.push(handle);
         }
 
-        let batch_size_per_worker = (config.batch_size / num_workers).max(5);
         info!(
             "Multi-worker cleanup system initialized with {} workers, batch_size={} per worker",
-            num_workers, batch_size_per_worker
+            num_workers, config.batch_size
         );
 
         Self {
