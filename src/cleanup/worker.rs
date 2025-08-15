@@ -2,7 +2,6 @@ use super::{CleanupConfig, ConnectionCleanupInfo, DisconnectTask, WebhookEvent};
 use crate::adapter::connection_manager::ConnectionManager;
 use crate::app::manager::AppManager;
 use crate::channel::manager::ChannelManager;
-use crate::metrics::MetricsInterface;
 use crate::webhook::integration::WebhookIntegration;
 use crate::websocket::SocketId;
 use std::collections::HashMap;
@@ -17,7 +16,6 @@ pub struct CleanupWorker {
     channel_manager: Arc<RwLock<ChannelManager>>,
     app_manager: Arc<dyn AppManager + Send + Sync>,
     webhook_integration: Option<Arc<WebhookIntegration>>,
-    metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
     config: CleanupConfig,
 }
 
@@ -27,7 +25,6 @@ impl CleanupWorker {
         channel_manager: Arc<RwLock<ChannelManager>>,
         app_manager: Arc<dyn AppManager + Send + Sync>,
         webhook_integration: Option<Arc<WebhookIntegration>>,
-        metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
         config: CleanupConfig,
     ) -> Self {
         Self {
@@ -35,7 +32,6 @@ impl CleanupWorker {
             channel_manager,
             app_manager,
             webhook_integration,
-            metrics,
             config,
         }
     }
@@ -128,10 +124,6 @@ impl CleanupWorker {
         if !webhook_events.is_empty() {
             self.process_webhooks_async(webhook_events).await;
         }
-
-        // Update metrics
-        self.update_cleanup_metrics(batch_size, batch_start.elapsed())
-            .await;
 
         batch.clear();
 
@@ -328,26 +320,5 @@ impl CleanupWorker {
         }
 
         Ok(())
-    }
-
-    async fn update_cleanup_metrics(&self, batch_size: usize, duration: Duration) {
-        if let Some(metrics) = &self.metrics {
-            if let Ok(metrics_guard) = metrics.try_lock() {
-                // Track cleanup performance metrics
-                // These would be custom metrics for the cleanup system
-                // For now, mark disconnections for each processed task
-                for _ in 0..batch_size {
-                    metrics_guard
-                        .mark_disconnection("cleanup_batch", &SocketId("batch".to_string()));
-                }
-
-                info!(
-                    "Cleanup batch completed: {} tasks in {:?} ({:.2} tasks/sec)",
-                    batch_size,
-                    duration,
-                    batch_size as f64 / duration.as_secs_f64()
-                );
-            }
-        }
     }
 }

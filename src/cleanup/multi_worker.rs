@@ -2,7 +2,6 @@ use super::{CleanupConfig, DisconnectTask, worker::CleanupWorker};
 use crate::adapter::connection_manager::ConnectionManager;
 use crate::app::manager::AppManager;
 use crate::channel::manager::ChannelManager;
-use crate::metrics::MetricsInterface;
 use crate::webhook::integration::WebhookIntegration;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -23,7 +22,6 @@ impl MultiWorkerCleanupSystem {
         channel_manager: Arc<RwLock<ChannelManager>>,
         app_manager: Arc<dyn AppManager + Send + Sync>,
         webhook_integration: Option<Arc<WebhookIntegration>>,
-        metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
         config: CleanupConfig,
     ) -> Self {
         let num_workers = config.worker_threads.resolve();
@@ -48,7 +46,6 @@ impl MultiWorkerCleanupSystem {
                 channel_manager.clone(),
                 app_manager.clone(),
                 webhook_integration.clone(),
-                metrics.clone(),
                 worker_config.clone(),
             );
 

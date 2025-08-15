@@ -426,7 +426,6 @@ impl SockudoServer {
                 channel_manager.clone(),
                 app_manager.clone(),
                 Some(webhook_integration.clone()),
-                metrics.clone(),
                 cleanup_config.clone(),
             );
 
