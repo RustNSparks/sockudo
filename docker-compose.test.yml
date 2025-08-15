@@ -34,7 +34,7 @@ services:
 
     volumes:
       - mysql-test-data:/var/lib/mysql
-      - ./sql/init-sql.sql:/docker-entrypoint-initdb.d/01-init-sql.sql:ro
+      - ./sql/init-sql-docker.sql:/docker-entrypoint-initdb.d/01-init-sql.sql:ro
       - ./sql/init-test.sql:/docker-entrypoint-initdb.d/02-init-test.sql:ro
 
     networks:
