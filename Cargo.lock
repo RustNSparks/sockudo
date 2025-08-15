@@ -3462,7 +3462,7 @@ dependencies = [
 
 [[package]]
 name = "sockudo"
-version = "2.5.4"
+version = "2.5.5"
 dependencies = [
  "ahash",
  "async-nats",
