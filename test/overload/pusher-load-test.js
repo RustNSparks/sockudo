@@ -19,7 +19,7 @@ const CONFIG = {
     enableLogging: process.env.ENABLE_LOGGING === 'true',
     connectionTimeout: parseInt(process.env.CONNECTION_TIMEOUT) || 10000,
     useTLS: process.env.USE_TLS === 'true',
-    keepAlive: process.env.KEEP_ALIVE === 'true', // Keep connections alive after test
+    keepAlive: process.env.KEEP_ALIVE === 'true' || false, // Keep connections alive after test
     keepAliveTime: parseInt(process.env.KEEP_ALIVE_TIME) || 5000, // How long to keep connections alive (ms)
 };
 
