@@ -23,7 +23,7 @@ mod webhook;
 mod websocket;
 mod ws_handler;
 
-use axum::extract::Request;
+use axum::extract::{DefaultBodyLimit, Request};
 use axum::http::Method;
 use axum::http::header::HeaderName;
 use axum::http::uri::Authority;
@@ -750,6 +750,13 @@ impl SockudoServer {
             None
         };
 
+        let body_limit_bytes =
+            (self.config.http_api.request_limit_in_mb as usize).saturating_mul(1024 * 1024);
+        debug!(
+            "Configuring Axum DefaultBodyLimit to {} MB ({} bytes)",
+            self.config.http_api.request_limit_in_mb, body_limit_bytes
+        );
+
         let mut router = Router::new()
             .route("/app/{appKey}", get(handle_ws_upgrade)) // Corrected Axum path param syntax
             .route(
@@ -797,6 +804,7 @@ impl SockudoServer {
             .route("/usage", get(usage))
             .route("/up", get(up)) // General health check
             .route("/up/{appId}", get(up)) // App-specific health check
+            .layer(DefaultBodyLimit::max(body_limit_bytes))
             .layer(cors); // Apply CORS layer
 
         // Apply rate limiter middleware if it was created
