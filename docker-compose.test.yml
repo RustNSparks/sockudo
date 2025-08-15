@@ -1,0 +1,49 @@
+# =============================================================================
+# Sockudo Test Run Services
+# =============================================================================
+
+name: sockudo-test
+
+services:
+  redis-test:
+    image: redis:7-alpine
+    # Keep external port for development access
+    ports:
+      - "6379:6379"
+    # Relaxed health check
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 15s
+      timeout: 5s
+      retries: 2
+      start_period: 5s
+
+  # Development MySQL with sample data
+  mysql-test:
+    image: mysql:8.0
+
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=sockudo
+
+    command: --bind-address=0.0.0.0 --default-authentication-plugin=mysql_native_password
+
+    # Keep external port for development access
+    ports:
+      - "3306:3306"
+
+    volumes:
+      - mysql-test-data:/var/lib/mysql
+      - ./sql/init-sql.sql:/docker-entrypoint-initdb.d/01-init-sql.sql:ro
+      - ./sql/init-test.sql:/docker-entrypoint-initdb.d/02-init-test.sql:ro
+
+    networks:
+      - sockudo-network
+
+networks:
+  sockudo-network:
+    driver: bridge
+
+volumes:
+  mysql-test-data:
+    driver: local
