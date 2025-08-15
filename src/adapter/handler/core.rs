@@ -192,24 +192,15 @@ impl ConnectionHandler {
             let connection = connection_manager.get_connection(socket_id, app_id).await;
 
             if let Some(conn_ref) = connection {
-                let conn_locked = if let Ok(guard) = conn_ref.0.try_lock() {
-                    guard
-                } else {
-                    debug!(
-                        "Connection {} is busy, assuming disconnect already in progress",
-                        socket_id
-                    );
-                    return Ok(());
-                };
+                // Atomic check-and-set for disconnecting flag to ensure idempotency
+                let mut conn_locked = conn_ref.0.lock().await;
 
                 if conn_locked.state.disconnecting {
                     debug!("Connection {} already disconnecting, skipping", socket_id);
                     return Ok(());
                 }
 
-                // Mark as disconnected immediately to prevent new operations
-                drop(conn_locked);
-                let mut conn_locked = conn_ref.0.lock().await;
+                // Set disconnecting flag atomically
                 conn_locked.state.disconnecting = true;
 
                 let channels: Vec<String> = conn_locked
@@ -249,7 +240,7 @@ impl ConnectionHandler {
             } else {
                 // Connection doesn't exist - might have been cleaned up already
                 debug!("Connection {} not found during disconnect", socket_id);
-                None
+                return Ok(());
             }
         }; // Lock released immediately
 
@@ -281,11 +272,11 @@ impl ConnectionHandler {
             debug!("Queued async cleanup for socket: {}", socket_id);
         }
 
-        // Step 5: Update metrics immediately (optional)
+        // Step 5: Update metrics immediately (outside connection lock to minimize contention)
         if let Some(ref metrics) = self.metrics {
-            if let Ok(metrics_locked) = metrics.try_lock() {
-                metrics_locked.mark_disconnection(app_id, socket_id);
-            }
+            // Use regular lock instead of try_lock to ensure metrics are always updated
+            let metrics_locked = metrics.lock().await;
+            metrics_locked.mark_disconnection(app_id, socket_id);
         }
 
         debug!(
