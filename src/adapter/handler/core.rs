@@ -260,14 +260,29 @@ impl ConnectionHandler {
 
         // Step 4: Queue cleanup work (non-blocking)
         if let Some(task) = disconnect_info {
-            if let Err(_) = cleanup_queue.send(task) {
-                error!(
-                    "Failed to queue disconnect cleanup for socket: {}",
+            if let Err(_send_error) = cleanup_queue.send(task) {
+                // Queue is full or closed - don't return error, fall back to sync cleanup
+                warn!(
+                    "Failed to queue async cleanup for socket {} (queue full/closed), falling back to sync cleanup",
                     socket_id
                 );
-                return Err(crate::error::Error::Internal(
-                    "Cleanup queue full".to_string(),
-                ));
+
+                // Reset the disconnecting flag since we're going to fall back to sync
+                // This ensures the sync cleanup can proceed properly
+                {
+                    let mut connection_manager = self.connection_manager.lock().await;
+                    if let Some(conn_ref) =
+                        connection_manager.get_connection(socket_id, app_id).await
+                    {
+                        if let Ok(mut conn_locked) = conn_ref.0.try_lock() {
+                            conn_locked.state.disconnecting = false;
+                        }
+                    }
+                }
+
+                // Fall back to synchronous cleanup immediately
+                // We already have the disconnect task info, so use sync cleanup
+                return self.handle_disconnect_sync(app_id, socket_id).await;
             }
             debug!("Queued async cleanup for socket: {}", socket_id);
         }
