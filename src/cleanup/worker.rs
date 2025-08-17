@@ -184,13 +184,17 @@ impl CleanupWorker {
 
         debug!("Removing {} connections", connections.len());
 
-        let mut connection_manager = self.connection_manager.lock().await;
-
+        // Process each connection removal with minimal lock duration
         for (socket_id, app_id) in connections {
-            if let Err(e) = connection_manager
-                .remove_connection(&socket_id, &app_id)
-                .await
-            {
+            // Acquire lock for each individual removal to minimize contention
+            let result = {
+                let mut connection_manager = self.connection_manager.lock().await;
+                connection_manager
+                    .remove_connection(&socket_id, &app_id)
+                    .await
+            }; // Lock released here after each removal
+
+            if let Err(e) = result {
                 warn!("Failed to remove connection {}: {}", socket_id, e);
             }
         }
@@ -220,11 +224,16 @@ impl CleanupWorker {
         }
 
         // Check if channels are now empty for channel_vacated events
-        let mut connection_manager = self.connection_manager.lock().await;
+        // IMPORTANT: Acquire and release lock for each channel to minimize lock contention
         for channel in &task.subscribed_channels {
-            let socket_count = connection_manager
-                .get_channel_socket_count(&task.app_id, channel)
-                .await;
+            // Acquire lock for minimal duration - just for this single channel check
+            let socket_count = {
+                let mut connection_manager = self.connection_manager.lock().await;
+                connection_manager
+                    .get_channel_socket_count(&task.app_id, channel)
+                    .await
+            }; // Lock released here immediately after getting the count
+
             if socket_count == 0 {
                 events.push(WebhookEvent {
                     event_type: "channel_vacated".to_string(),
