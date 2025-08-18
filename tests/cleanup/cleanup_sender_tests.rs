@@ -48,7 +48,7 @@ mod tests {
         let result = sender.try_send(create_test_task("socket3"));
         assert!(result.is_err());
 
-        match result.unwrap_err() {
+        match *result.unwrap_err() {
             mpsc::error::TrySendError::Full(_) => {
                 // Expected: channel is full
             }
@@ -122,12 +122,12 @@ mod tests {
         let result = sender.try_send(task2.clone());
         assert!(result.is_err());
 
-        match result.unwrap_err() {
+        match *result.unwrap_err() {
             mpsc::error::TrySendError::Full(returned_task) => {
                 assert_eq!(returned_task.socket_id.0, task2.socket_id.0);
                 assert_eq!(returned_task.app_id, task2.app_id);
             }
-            other => panic!("Expected Full error, got: {:?}", other),
+            ref other => panic!("Expected Full error, got: {:?}", other),
         }
 
         // Close receiver to test Closed error
@@ -138,12 +138,12 @@ mod tests {
         let result = sender.try_send(task3.clone());
         assert!(result.is_err());
 
-        match result.unwrap_err() {
+        match *result.unwrap_err() {
             mpsc::error::TrySendError::Closed(returned_task) => {
                 assert_eq!(returned_task.socket_id.0, task3.socket_id.0);
                 assert_eq!(returned_task.app_id, task3.app_id);
             }
-            other => panic!("Expected Closed error, got: {:?}", other),
+            ref other => panic!("Expected Closed error, got: {:?}", other),
         }
     }
 }

@@ -26,7 +26,7 @@ mod tests {
 
         // Should be 25% of CPU count, min 1, max 4
         let cpu_count = num_cpus::get();
-        let expected = (cpu_count / 4).max(1).min(4);
+        let expected = (cpu_count / 4).clamp(1, 4);
         assert_eq!(resolved, expected);
 
         // Test Fixed resolution

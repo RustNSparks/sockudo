@@ -41,15 +41,18 @@ mod tests {
 
         assert!(result.is_err());
         match result {
-            Err(mpsc::error::TrySendError::Full(returned_task)) => {
-                // Verify we get the same task back for fallback processing
-                assert_eq!(returned_task.socket_id.0, task2.socket_id.0);
-                assert_eq!(returned_task.app_id, task2.app_id);
+            Err(boxed_error) => match *boxed_error {
+                mpsc::error::TrySendError::Full(returned_task) => {
+                    // Verify we get the same task back for fallback processing
+                    assert_eq!(returned_task.socket_id.0, task2.socket_id.0);
+                    assert_eq!(returned_task.app_id, task2.app_id);
 
-                // In real code, this would trigger sync cleanup
-                // The ConnectionHandler would call handle_disconnect_sync
-            }
-            _ => panic!("Expected Full error for fallback trigger"),
+                    // In real code, this would trigger sync cleanup
+                    // The ConnectionHandler would call handle_disconnect_sync
+                }
+                _ => panic!("Expected Full error for fallback trigger"),
+            },
+            _ => panic!("Expected error"),
         }
 
         // Verify first task is still in queue
@@ -103,11 +106,13 @@ mod tests {
 
         for task in failed_tasks {
             match sender.try_send(task.clone()) {
-                Err(mpsc::error::TrySendError::Full(returned_task)) => {
-                    fallback_tasks.push(returned_task);
-                }
+                Err(boxed_error) => match *boxed_error {
+                    mpsc::error::TrySendError::Full(returned_task) => {
+                        fallback_tasks.push(returned_task);
+                    }
+                    other => panic!("Unexpected error: {:?}", other),
+                },
                 Ok(()) => panic!("Task should have failed due to full queue"),
-                Err(other) => panic!("Unexpected error: {:?}", other),
             }
         }
 

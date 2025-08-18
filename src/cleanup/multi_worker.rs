@@ -141,9 +141,12 @@ pub struct MultiWorkerSender {
 impl MultiWorkerSender {
     /// Send a disconnect task to the next worker in round-robin fashion
     /// Uses try_send for non-blocking operation with backpressure handling
-    pub fn send(&self, task: DisconnectTask) -> Result<(), mpsc::error::SendError<DisconnectTask>> {
+    pub fn send(
+        &self,
+        task: DisconnectTask,
+    ) -> Result<(), Box<mpsc::error::SendError<DisconnectTask>>> {
         if self.senders.is_empty() {
-            return Err(mpsc::error::SendError(task));
+            return Err(Box::new(mpsc::error::SendError(task)));
         }
 
         // Use round-robin distribution
@@ -168,7 +171,7 @@ impl MultiWorkerSender {
 
                 // All workers are either full or closed - return error for backpressure
                 error!("All cleanup worker queues are full or closed");
-                Err(mpsc::error::SendError(task))
+                Err(Box::new(mpsc::error::SendError(task)))
             }
             Err(mpsc::error::TrySendError::Closed(task)) => {
                 // Worker channel is closed, try the next available one
@@ -186,7 +189,7 @@ impl MultiWorkerSender {
 
                 // All workers are unavailable
                 error!("All cleanup workers are unavailable");
-                Err(mpsc::error::SendError(task))
+                Err(Box::new(mpsc::error::SendError(task)))
             }
         }
     }
@@ -196,7 +199,7 @@ impl MultiWorkerSender {
     pub fn send_with_fallback(
         &self,
         task: DisconnectTask,
-    ) -> Result<(), mpsc::error::SendError<DisconnectTask>> {
+    ) -> Result<(), Box<mpsc::error::SendError<DisconnectTask>>> {
         // This is the same implementation as send() - UnboundedSender doesn't block
         self.send(task)
     }

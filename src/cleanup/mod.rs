@@ -19,15 +19,15 @@ impl CleanupSender {
     pub fn try_send(
         &self,
         task: DisconnectTask,
-    ) -> Result<(), mpsc::error::TrySendError<DisconnectTask>> {
+    ) -> Result<(), Box<mpsc::error::TrySendError<DisconnectTask>>> {
         match self {
-            CleanupSender::Direct(sender) => sender.try_send(task),
+            CleanupSender::Direct(sender) => sender.try_send(task).map_err(Box::new),
             CleanupSender::Multi(sender) => {
                 // Convert MultiWorkerSender's SendError to TrySendError
                 sender.send(task).map_err(|e| {
                     // MultiWorkerSender returns SendError when all queues are full or closed
                     // We treat this as "Full" for backpressure handling
-                    mpsc::error::TrySendError::Full(e.0)
+                    Box::new(mpsc::error::TrySendError::Full(e.0))
                 })
             }
         }
@@ -156,7 +156,7 @@ impl WorkerThreadsConfig {
             WorkerThreadsConfig::Auto => {
                 // Use 25% of available CPUs, minimum 1, maximum 4
                 let cpu_count = num_cpus::get();
-                let auto_threads = (cpu_count / 4).max(1).min(4);
+                let auto_threads = (cpu_count / 4).clamp(1, 4);
                 tracing::info!(
                     "Auto-detected {} CPUs, using {} cleanup worker threads",
                     cpu_count,
