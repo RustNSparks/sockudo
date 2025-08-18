@@ -227,7 +227,6 @@ impl ConnectionHandler {
                     connection_info: if !presence_channels.is_empty() {
                         Some(ConnectionCleanupInfo {
                             presence_channels,
-                            client_events_enabled: true, // TODO: Extract from connection state
                             auth_info: user_id.map(|uid| AuthInfo {
                                 user_id: uid,
                                 user_info: None,

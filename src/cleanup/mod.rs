@@ -17,7 +17,6 @@ pub struct DisconnectTask {
 #[derive(Debug, Clone)]
 pub struct ConnectionCleanupInfo {
     pub presence_channels: Vec<String>,
-    pub client_events_enabled: bool,
     pub auth_info: Option<AuthInfo>,
 }
 
