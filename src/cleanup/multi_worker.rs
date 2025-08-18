@@ -259,9 +259,9 @@ impl Clone for MultiWorkerSender {
 unsafe impl Send for MultiWorkerSender {}
 unsafe impl Sync for MultiWorkerSender {}
 
-#[cfg(test)]
 impl MultiWorkerSender {
     /// Test helper to create MultiWorkerSender directly
+    #[cfg(test)]
     pub fn new_for_test(senders: Vec<mpsc::Sender<DisconnectTask>>) -> Self {
         Self {
             senders,
