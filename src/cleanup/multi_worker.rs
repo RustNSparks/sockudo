@@ -246,6 +246,12 @@ impl Clone for MultiWorkerSender {
     }
 }
 
-// Make the sender safe to send across threads
+// SAFETY: MultiWorkerSender is safe to send across threads and share between threads because:
+// 1. `senders: Vec<mpsc::Sender<DisconnectTask>>` - mpsc::Sender is already Send + Sync
+// 2. `round_robin_counter: Arc<AtomicUsize>` - Arc provides thread-safe shared ownership,
+//    and AtomicUsize provides atomic operations safe for concurrent access
+// 3. All fields are immutable after construction (no interior mutability except the atomic counter)
+// 4. The Vec itself is never modified after construction, only read from
+// 5. All operations (clone, send) are thread-safe due to the underlying types' guarantees
 unsafe impl Send for MultiWorkerSender {}
 unsafe impl Sync for MultiWorkerSender {}
