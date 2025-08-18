@@ -40,7 +40,7 @@ impl CleanupWorker {
         &self.config
     }
 
-    pub async fn run(&self, mut receiver: mpsc::UnboundedReceiver<DisconnectTask>) {
+    pub async fn run(&self, mut receiver: mpsc::Receiver<DisconnectTask>) {
         info!("Cleanup worker started with config: {:?}", self.config);
 
         let mut batch = Vec::with_capacity(self.config.batch_size);

@@ -103,7 +103,7 @@ struct ServerState {
     running: AtomicBool,
     http_api_rate_limiter: Option<Arc<dyn RateLimiter + Send + Sync>>,
     debug_enabled: bool,
-    cleanup_queue: Option<tokio::sync::mpsc::UnboundedSender<DisconnectTask>>,
+    cleanup_queue: Option<tokio::sync::mpsc::Sender<DisconnectTask>>,
     cleanup_worker_handles: Option<Vec<tokio::task::JoinHandle<()>>>,
     cleanup_config: CleanupConfig,
 }
@@ -448,7 +448,8 @@ impl SockudoServer {
                 let sender = multi_sender.unwrap();
 
                 // Create wrapper sender for compatibility
-                let (wrapper_sender, mut wrapper_receiver) = tokio::sync::mpsc::unbounded_channel();
+                let (wrapper_sender, mut wrapper_receiver) =
+                    tokio::sync::mpsc::channel(config.cleanup.queue_buffer_size);
 
                 let multi_sender_clone = sender.clone();
                 tokio::spawn(async move {

@@ -180,7 +180,7 @@ impl ConnectionHandler {
         &self,
         app_id: &str,
         socket_id: &SocketId,
-        cleanup_queue: &tokio::sync::mpsc::UnboundedSender<DisconnectTask>,
+        cleanup_queue: &tokio::sync::mpsc::Sender<DisconnectTask>,
     ) -> Result<()> {
         use std::time::Instant;
 
@@ -260,7 +260,7 @@ impl ConnectionHandler {
 
         // Step 4: Queue cleanup work (non-blocking)
         if let Some(task) = disconnect_info {
-            if let Err(_send_error) = cleanup_queue.send(task) {
+            if let Err(_send_error) = cleanup_queue.try_send(task) {
                 // Queue is full or closed - don't return error, fall back to sync cleanup
                 warn!(
                     "Failed to queue async cleanup for socket {} (queue full/closed), falling back to sync cleanup",

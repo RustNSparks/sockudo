@@ -84,7 +84,7 @@ impl MultiWorkerCleanupSystem {
     /// Get a direct sender for single worker optimization (avoids wrapper overhead)
     pub fn get_direct_sender(
         &self,
-    ) -> Option<tokio::sync::mpsc::UnboundedSender<crate::cleanup::DisconnectTask>> {
+    ) -> Option<tokio::sync::mpsc::Sender<crate::cleanup::DisconnectTask>> {
         if self.senders.len() == 1 {
             self.senders.get(0).cloned()
         } else {
@@ -134,12 +134,13 @@ impl MultiWorkerCleanupSystem {
 
 /// Sender wrapper that distributes tasks across multiple worker threads
 pub struct MultiWorkerSender {
-    senders: Vec<mpsc::UnboundedSender<DisconnectTask>>,
+    senders: Vec<mpsc::Sender<DisconnectTask>>,
     round_robin_counter: Arc<AtomicUsize>,
 }
 
 impl MultiWorkerSender {
     /// Send a disconnect task to the next worker in round-robin fashion
+    /// Uses try_send for non-blocking operation with backpressure handling
     pub fn send(&self, task: DisconnectTask) -> Result<(), mpsc::error::SendError<DisconnectTask>> {
         if self.senders.is_empty() {
             return Err(mpsc::error::SendError(task));
@@ -149,23 +150,43 @@ impl MultiWorkerSender {
         let worker_index =
             self.round_robin_counter.fetch_add(1, Ordering::Relaxed) % self.senders.len();
 
-        match self.senders[worker_index].send(task) {
+        match self.senders[worker_index].try_send(task) {
             Ok(()) => Ok(()),
-            Err(send_error) => {
-                // If the selected worker's channel is closed, try the next available one
+            Err(mpsc::error::TrySendError::Full(task)) => {
+                // Queue is full - try other workers before giving up
+                warn!("Worker {} queue is full, trying next worker", worker_index);
+
+                // Try all other workers in sequence
+                for offset in 1..self.senders.len() {
+                    let next_index = (worker_index + offset) % self.senders.len();
+                    match self.senders[next_index].try_send(task.clone()) {
+                        Ok(()) => return Ok(()),
+                        Err(mpsc::error::TrySendError::Full(_)) => continue,
+                        Err(mpsc::error::TrySendError::Closed(_)) => continue,
+                    }
+                }
+
+                // All workers are either full or closed - return error for backpressure
+                error!("All cleanup worker queues are full or closed");
+                Err(mpsc::error::SendError(task))
+            }
+            Err(mpsc::error::TrySendError::Closed(task)) => {
+                // Worker channel is closed, try the next available one
                 warn!("Worker {} channel closed, trying next worker", worker_index);
 
                 // Try all other workers in sequence
                 for offset in 1..self.senders.len() {
                     let next_index = (worker_index + offset) % self.senders.len();
-                    if let Ok(()) = self.senders[next_index].send(send_error.0.clone()) {
-                        return Ok(());
+                    match self.senders[next_index].try_send(task.clone()) {
+                        Ok(()) => return Ok(()),
+                        Err(mpsc::error::TrySendError::Full(_)) => continue,
+                        Err(mpsc::error::TrySendError::Closed(_)) => continue,
                     }
                 }
 
                 // All workers are unavailable
                 error!("All cleanup workers are unavailable");
-                Err(send_error)
+                Err(mpsc::error::SendError(task))
             }
         }
     }
