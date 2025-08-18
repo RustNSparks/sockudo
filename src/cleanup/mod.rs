@@ -1,8 +1,46 @@
 use crate::websocket::SocketId;
 use std::time::Instant;
+use tokio::sync::mpsc;
 
 pub mod multi_worker;
 pub mod worker;
+
+/// Unified cleanup sender that abstracts over single vs multi-worker implementations
+#[derive(Clone)]
+pub enum CleanupSender {
+    /// Direct sender for single worker (optimized path)
+    Direct(mpsc::Sender<DisconnectTask>),
+    /// Multi-worker sender with round-robin distribution
+    Multi(multi_worker::MultiWorkerSender),
+}
+
+impl CleanupSender {
+    /// Send a disconnect task to the cleanup system
+    pub fn try_send(
+        &self,
+        task: DisconnectTask,
+    ) -> Result<(), mpsc::error::TrySendError<DisconnectTask>> {
+        match self {
+            CleanupSender::Direct(sender) => sender.try_send(task),
+            CleanupSender::Multi(sender) => {
+                // Convert MultiWorkerSender's SendError to TrySendError
+                sender.send(task).map_err(|e| {
+                    // MultiWorkerSender returns SendError when all queues are full or closed
+                    // We treat this as "Full" for backpressure handling
+                    mpsc::error::TrySendError::Full(e.0)
+                })
+            }
+        }
+    }
+
+    /// Check if the sender is still operational
+    pub fn is_closed(&self) -> bool {
+        match self {
+            CleanupSender::Direct(sender) => sender.is_closed(),
+            CleanupSender::Multi(sender) => !sender.is_available(),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct DisconnectTask {

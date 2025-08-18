@@ -180,7 +180,7 @@ impl ConnectionHandler {
         &self,
         app_id: &str,
         socket_id: &SocketId,
-        cleanup_queue: &tokio::sync::mpsc::Sender<DisconnectTask>,
+        cleanup_queue: &crate::cleanup::CleanupSender,
     ) -> Result<()> {
         use std::time::Instant;
 

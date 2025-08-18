@@ -50,6 +50,7 @@ use crate::adapter::factory::AdapterFactory;
 use crate::app::factory::AppManagerFactory;
 use crate::cache::factory::CacheManagerFactory;
 use crate::channel::ChannelManager;
+use crate::cleanup::{CleanupConfig, CleanupSender};
 use crate::error::Result;
 use crate::http_handler::{
     batch_events, channel, channel_users, channels, events, metrics, terminate_user_connections,
@@ -85,7 +86,6 @@ use crate::cache::manager::CacheManager;
 use crate::cache::memory_cache_manager::MemoryCacheManager; // Import for fallback
 // MetricsInterface trait
 use crate::cleanup::multi_worker::MultiWorkerCleanupSystem;
-use crate::cleanup::{CleanupConfig, DisconnectTask};
 use crate::metrics::MetricsInterface;
 use crate::middleware::pusher_api_auth_middleware;
 use crate::websocket::WebSocketRef;
@@ -103,7 +103,7 @@ struct ServerState {
     running: AtomicBool,
     http_api_rate_limiter: Option<Arc<dyn RateLimiter + Send + Sync>>,
     debug_enabled: bool,
-    cleanup_queue: Option<tokio::sync::mpsc::Sender<DisconnectTask>>,
+    cleanup_queue: Option<CleanupSender>,
     cleanup_worker_handles: Option<Vec<tokio::task::JoinHandle<()>>>,
     cleanup_config: CleanupConfig,
 }
@@ -429,44 +429,17 @@ impl SockudoServer {
                 cleanup_config.clone(),
             );
 
-            // Check if single worker for optimization
-            let direct_sender = multi_worker_system.get_direct_sender();
-            let multi_sender = if direct_sender.is_none() {
-                Some(multi_worker_system.get_sender())
-            } else {
-                None
-            };
+            // Create unified cleanup sender based on worker configuration
+            let cleanup_sender =
+                if let Some(direct_sender) = multi_worker_system.get_direct_sender() {
+                    info!("Using direct sender for single worker (optimized)");
+                    CleanupSender::Direct(direct_sender)
+                } else {
+                    info!("Using multi-worker sender with round-robin distribution");
+                    CleanupSender::Multi(multi_worker_system.get_sender())
+                };
+
             let worker_handles = multi_worker_system.get_worker_handles();
-
-            // For single worker, use direct sender (no overhead)
-            // For multiple workers, use wrapper for compatibility
-            let cleanup_sender = if let Some(direct_sender) = direct_sender {
-                info!("Using direct sender for single worker (optimized)");
-                direct_sender
-            } else {
-                info!("Using multi-worker sender with forwarder");
-                let sender = multi_sender.unwrap();
-
-                // Create wrapper sender for compatibility
-                let (wrapper_sender, mut wrapper_receiver) =
-                    tokio::sync::mpsc::channel(config.cleanup.queue_buffer_size);
-
-                let multi_sender_clone = sender.clone();
-                tokio::spawn(async move {
-                    while let Some(task) = wrapper_receiver.recv().await {
-                        if let Err(e) = multi_sender_clone.send(task) {
-                            error!(
-                                "Failed to forward disconnect task to multi-worker system: {:?}",
-                                e
-                            );
-                            break;
-                        }
-                    }
-                    info!("Cleanup task forwarder shutdown");
-                });
-
-                wrapper_sender
-            };
 
             info!("Multi-worker cleanup system initialized");
             (Some(cleanup_sender), Some(worker_handles))
