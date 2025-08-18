@@ -103,7 +103,7 @@ impl CleanupWorker {
             for channel in &task.subscribed_channels {
                 channel_operations
                     .entry((task.app_id.clone(), channel.clone()))
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(task.socket_id.clone());
             }
 
@@ -259,7 +259,7 @@ impl CleanupWorker {
             for event in webhook_events {
                 events_by_app
                     .entry(event.app_id.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(event);
             }
 

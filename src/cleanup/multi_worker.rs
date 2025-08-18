@@ -86,7 +86,7 @@ impl MultiWorkerCleanupSystem {
         &self,
     ) -> Option<tokio::sync::mpsc::Sender<crate::cleanup::DisconnectTask>> {
         if self.senders.len() == 1 {
-            self.senders.get(0).cloned()
+            self.senders.first().cloned()
         } else {
             None
         }

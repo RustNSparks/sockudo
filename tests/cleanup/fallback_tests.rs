@@ -75,65 +75,55 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_non_presence_channel_no_cleanup_info() {
-        // Test that non-presence channels don't create unnecessary cleanup info
-        let task = DisconnectTask {
-            socket_id: SocketId("socket1".to_string()),
-            app_id: "test-app".to_string(),
-            subscribed_channels: vec!["public-channel".to_string(), "private-channel".to_string()],
-            user_id: Some("user123".to_string()),
-            timestamp: Instant::now(),
-            connection_info: None, // No presence channels, so no cleanup info
-        };
-
-        // Verify no cleanup info for non-presence channels
-        assert!(task.connection_info.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_cleanup_task_cloneable() {
-        // Test that DisconnectTask can be cloned (needed for retry/fallback)
-        let original = create_disconnect_task_with_presence("socket1");
-        let cloned = original.clone();
-
-        assert_eq!(original.socket_id.0, cloned.socket_id.0);
-        assert_eq!(original.app_id, cloned.app_id);
-        assert_eq!(original.subscribed_channels, cloned.subscribed_channels);
-        assert_eq!(original.user_id, cloned.user_id);
-
-        // Connection info should also be cloned
-        assert!(cloned.connection_info.is_some());
-        let original_info = original.connection_info.unwrap();
-        let cloned_info = cloned.connection_info.unwrap();
-        assert_eq!(
-            original_info.presence_channels,
-            cloned_info.presence_channels
-        );
-    }
-
-    #[tokio::test]
-    async fn test_fallback_preserves_disconnecting_flag_reset() {
-        // This tests that when falling back to sync, we need to reset
-        // the disconnecting flag (as implemented in handle_disconnect_async)
-
-        // Simulate the scenario where async cleanup fails
-        let (tx, _rx) = mpsc::channel::<DisconnectTask>(1);
+    async fn test_fallback_queue_full_with_multiple_tasks() {
+        // Test behavior when queue becomes full with multiple tasks in rapid succession
+        let (tx, mut rx) = mpsc::channel::<DisconnectTask>(2); // Small buffer
         let sender = CleanupSender::Direct(tx);
 
-        // Fill channel
-        sender
-            .try_send(create_disconnect_task_with_presence("filler"))
-            .ok();
+        // Fill the queue completely
+        assert!(
+            sender
+                .try_send(create_disconnect_task_with_presence("socket1"))
+                .is_ok()
+        );
+        assert!(
+            sender
+                .try_send(create_disconnect_task_with_presence("socket2"))
+                .is_ok()
+        );
 
-        // Try to send task that will fail
-        let task = create_disconnect_task_with_presence("socket1");
-        let result = sender.try_send(task);
+        // Try to send multiple additional tasks that should all fail
+        let failed_tasks = vec![
+            create_disconnect_task_with_presence("socket3"),
+            create_disconnect_task_with_presence("socket4"),
+            create_disconnect_task_with_presence("socket5"),
+        ];
 
-        assert!(result.is_err());
+        let mut fallback_tasks = Vec::new();
 
-        // In the actual code (handle_disconnect_async), when this fails:
-        // 1. The disconnecting flag is reset
-        // 2. handle_disconnect_sync is called
-        // This ensures the connection can be properly cleaned up
+        for task in failed_tasks {
+            match sender.try_send(task.clone()) {
+                Err(mpsc::error::TrySendError::Full(returned_task)) => {
+                    fallback_tasks.push(returned_task);
+                }
+                Ok(()) => panic!("Task should have failed due to full queue"),
+                Err(other) => panic!("Unexpected error: {:?}", other),
+            }
+        }
+
+        // All three tasks should have been returned for fallback
+        assert_eq!(fallback_tasks.len(), 3);
+        assert_eq!(fallback_tasks[0].socket_id.0, "socket3");
+        assert_eq!(fallback_tasks[1].socket_id.0, "socket4");
+        assert_eq!(fallback_tasks[2].socket_id.0, "socket5");
+
+        // Verify original tasks are still in queue
+        let task1 = rx.recv().await.unwrap();
+        let task2 = rx.recv().await.unwrap();
+        assert_eq!(task1.socket_id.0, "socket1");
+        assert_eq!(task2.socket_id.0, "socket2");
+
+        // Queue should now be empty
+        assert!(rx.try_recv().is_err());
     }
 }
