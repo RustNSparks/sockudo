@@ -116,7 +116,7 @@ This document tracks the comprehensive fixes needed for PR #61 based on my code 
 
 ## Important Issues (Priority 2)
 
-### ✅ Issue 4: Hardcoded client_events_enabled
+### ✅ Issue 4: Hardcoded client_events_enabled [RESOLVED - FIELD REMOVED]
 **File**: `src/adapter/handler/core.rs:230`  
 **Severity**: Medium - Incorrect behavior
 
@@ -125,20 +125,32 @@ This document tracks the comprehensive fixes needed for PR #61 based on my code 
 - Should use actual app configuration
 
 **Solution**:
-- [ ] Extract value from connection's app configuration
-- [ ] Access `conn_locked.app_config.enable_client_messages`
-- [ ] Use `.unwrap_or(false)` for safety
+- [x] ~~Extract value from connection's app configuration~~ Field removed entirely
+- [x] ~~Access `conn_locked.app_config.enable_client_messages`~~ Not needed
+- [x] ~~Use `.unwrap_or(false)` for safety~~ Not needed
 
 **Implementation Steps**:
-1. [ ] Replace hardcoded true with app config access
-2. [ ] Add null safety with default false
-3. [ ] Remove TODO comment
-4. [ ] Test with apps that have client messages disabled
+1. [x] ~~Replace hardcoded true with app config access~~ Removed field instead
+2. [x] ~~Add null safety with default false~~ Not needed
+3. [x] Remove TODO comment
+4. [x] ~~Test with apps that have client messages disabled~~ Field unused, removal verified
 
 **Verification**:
-- [ ] Client events respect app configuration
-- [ ] No panics on missing config
-- [ ] Behavior matches app settings
+- [x] ~~Client events respect app configuration~~ Field was never used
+- [x] No compilation errors after removal
+- [x] ~~Behavior matches app settings~~ No behavior change (field was unused)
+
+**Resolution**: 
+After analysis, discovered that `client_events_enabled` field in `ConnectionCleanupInfo` was never used anywhere in the codebase. Instead of fixing the TODO to extract the correct value, removed the unused field entirely. This is a better solution as it:
+- Eliminates dead code
+- Removes unnecessary complexity
+- Saves memory in DisconnectTask structs
+- Removes misleading hardcoded value
+
+**Changes Made**:
+- Removed `client_events_enabled` field from `ConnectionCleanupInfo` struct
+- Removed TODO comment and hardcoded value assignment
+- Code compiles and functions correctly without this unused field
 
 ---
 
