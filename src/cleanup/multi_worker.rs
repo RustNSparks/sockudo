@@ -10,7 +10,7 @@ use tracing::{error, info, warn};
 
 /// Multi-worker cleanup system that distributes work across multiple worker threads
 pub struct MultiWorkerCleanupSystem {
-    senders: Vec<mpsc::UnboundedSender<DisconnectTask>>,
+    senders: Vec<mpsc::Sender<DisconnectTask>>,
     worker_handles: Vec<tokio::task::JoinHandle<()>>,
     round_robin_counter: Arc<AtomicUsize>,
     config: CleanupConfig,
@@ -36,7 +36,7 @@ impl MultiWorkerCleanupSystem {
 
         // Create individual workers with their own channels
         for worker_id in 0..num_workers {
-            let (sender, receiver) = mpsc::unbounded_channel();
+            let (sender, receiver) = mpsc::channel(config.queue_buffer_size);
 
             // Use per-worker configuration directly (no division across workers)
             let worker_config = config.clone();

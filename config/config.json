@@ -226,7 +226,7 @@
   "cleanup": {
     "async_enabled": true,
     "fallback_to_sync": true,
-    "queue_buffer_size": 2000,
+    "queue_buffer_size": 50000,
     "batch_size": 25,
     "batch_timeout_ms": 50,
     "worker_threads": "auto",

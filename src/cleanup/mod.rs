@@ -137,9 +137,9 @@ impl Default for CleanupConfig {
         // Defaults optimized for 2vCPU/2GB RAM servers
         // Conservative settings to avoid overwhelming smaller instances
         Self {
-            queue_buffer_size: 2000,                       // ~16KB at 8 bytes per pointer
-            batch_size: 25,                                // Process 25 disconnects at once
-            batch_timeout_ms: 50,                          // 50ms max wait for batch fill
+            queue_buffer_size: 50000, // ~30MB (each DisconnectTask ~625 bytes)
+            batch_size: 25,           // Process 25 disconnects at once
+            batch_timeout_ms: 50,     // 50ms max wait for batch fill
             worker_threads: WorkerThreadsConfig::Fixed(1), // Single worker (leave CPU for main server)
             max_retry_attempts: 2,                         // Don't retry too much
             async_enabled: true,                           // Enable by default
