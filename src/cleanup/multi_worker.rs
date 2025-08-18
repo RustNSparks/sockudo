@@ -255,3 +255,14 @@ impl Clone for MultiWorkerSender {
 // 5. All operations (clone, send) are thread-safe due to the underlying types' guarantees
 unsafe impl Send for MultiWorkerSender {}
 unsafe impl Sync for MultiWorkerSender {}
+
+#[cfg(test)]
+impl MultiWorkerSender {
+    /// Test helper to create MultiWorkerSender directly
+    pub fn new_for_test(senders: Vec<mpsc::Sender<DisconnectTask>>) -> Self {
+        Self {
+            senders,
+            round_robin_counter: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+}
