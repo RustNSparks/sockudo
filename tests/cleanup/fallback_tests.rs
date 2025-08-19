@@ -38,21 +38,20 @@ mod tests {
         // Try to send another task - should fail with Full
         let task2 = create_disconnect_task_with_presence("socket2");
         let result = sender.try_send(task2.clone());
-
-        assert!(result.is_err());
         match result {
-            Err(boxed_error) => match *boxed_error {
+            Err(boxed_err) => match boxed_err.as_ref() {
                 mpsc::error::TrySendError::Full(returned_task) => {
-                    // Verify we get the same task back for fallback processing
+                    println!(
+                        "[TEST VALIDATION] Queue full, falling back to sync processing for task: {:?}",
+                        returned_task
+                    );
+                    // Note: returned_task is now a reference, so you might need to clone or dereference
                     assert_eq!(returned_task.socket_id.0, task2.socket_id.0);
                     assert_eq!(returned_task.app_id, task2.app_id);
-
-                    // In real code, this would trigger sync cleanup
-                    // The ConnectionHandler would call handle_disconnect_sync
                 }
                 _ => panic!("Expected Full error for fallback trigger"),
             },
-            _ => panic!("Expected error"),
+            Ok(_) => panic!("Expected error, but send succeeded"),
         }
 
         // Verify first task is still in queue

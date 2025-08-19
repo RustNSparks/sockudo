@@ -10,7 +10,6 @@ mod tests {
     use sockudo::cleanup::{
         AuthInfo, CleanupConfig, ConnectionCleanupInfo, DisconnectTask, WorkerThreadsConfig,
     };
-    use sockudo::webhook::integration::{BatchingConfig, WebhookConfig, WebhookIntegration};
     use sockudo::webhook::types::Webhook;
     use sockudo::websocket::SocketId;
     use std::sync::Arc;
@@ -74,32 +73,6 @@ mod tests {
         );
 
         (cleanup_system, local_adapter, channel_manager, app_manager)
-    }
-
-    /// Helper to create a real webhook integration that can actually be tested
-    async fn create_testable_webhook_integration(
-        app_manager: Arc<MemoryAppManager>,
-    ) -> Result<Arc<WebhookIntegration>, Box<dyn std::error::Error + Send + Sync>> {
-        // Use a disabled webhook configuration for testing
-        let webhook_config = WebhookConfig {
-            enabled: false, // Disabled to avoid queue processing issues in tests
-            batching: BatchingConfig {
-                enabled: false,
-                duration: 10, // Very short duration
-            },
-            queue_driver: "memory".to_string(),
-            redis_url: None,
-            redis_prefix: None,
-            redis_concurrency: Some(1), // Minimal concurrency
-            process_id: "test-process".to_string(),
-            debug: true,
-        };
-
-        let webhook_integration = WebhookIntegration::new(webhook_config, app_manager)
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-
-        Ok(Arc::new(webhook_integration))
     }
 
     /// Helper to create a cleanup system with webhook app configuration
@@ -914,101 +887,5 @@ mod tests {
 
         // VERIFY: Test exercises both webhook preparation paths (member_removed + channel_vacated)
         // This tests the cleanup worker's ability to handle mixed channel types in a single task
-    }
-
-    /// Helper to create a cleanup system with ENABLED webhook integration for testing actual webhook triggering
-    async fn create_cleanup_system_with_enabled_webhooks() -> (
-        MultiWorkerCleanupSystem,
-        Arc<Mutex<LocalAdapter>>,
-        Arc<RwLock<ChannelManager>>,
-        Arc<MemoryAppManager>,
-        Arc<WebhookIntegration>,
-    ) {
-        let config = CleanupConfig {
-            queue_buffer_size: 100,
-            batch_size: 2,
-            batch_timeout_ms: 50,
-            worker_threads: WorkerThreadsConfig::Fixed(1),
-            max_retry_attempts: 2,
-            async_enabled: true,
-            fallback_to_sync: true,
-        };
-
-        let local_adapter = Arc::new(Mutex::new(LocalAdapter::new()));
-        let connection_manager = local_adapter.clone();
-        let channel_manager =
-            Arc::new(RwLock::new(ChannelManager::new(connection_manager.clone())));
-        let app_manager = Arc::new(MemoryAppManager::new());
-
-        // Create test app with webhook configuration
-        let webhook_config = Webhook {
-            url: Some("http://localhost:3000/webhook".parse().unwrap()),
-            lambda_function: None,
-            lambda: None,
-            event_types: vec!["member_removed".to_string(), "channel_vacated".to_string()],
-            filter: None,
-            headers: None,
-        };
-
-        let test_app = App {
-            id: "test-app".to_string(),
-            key: "test-key".to_string(),
-            secret: "test-secret".to_string(),
-            enabled: true,
-            max_connections: 100,
-            enable_client_messages: true,
-            max_backend_events_per_second: None,
-            max_client_events_per_second: 100,
-            max_read_requests_per_second: None,
-            max_presence_members_per_channel: Some(100),
-            max_presence_member_size_in_kb: Some(32),
-            max_channel_name_length: Some(200),
-            max_event_channels_at_once: Some(100),
-            max_event_name_length: Some(200),
-            max_event_payload_in_kb: Some(32),
-            max_event_batch_size: Some(10),
-            enable_user_authentication: Some(true),
-            webhooks: Some(vec![webhook_config]),
-            enable_watchlist_events: None,
-        };
-
-        app_manager.create_app(test_app).await.unwrap();
-
-        // Create webhook integration with ENABLED and FAST processing for testing
-        let webhook_config = WebhookConfig {
-            enabled: true, // ENABLED for this test
-            batching: BatchingConfig {
-                enabled: false, // Disable batching for immediate processing
-                duration: 10,
-            },
-            queue_driver: "memory".to_string(),
-            redis_url: None,
-            redis_prefix: None,
-            redis_concurrency: Some(1),
-            process_id: "test-process".to_string(),
-            debug: true,
-        };
-
-        let webhook_integration = Arc::new(
-            WebhookIntegration::new(webhook_config, app_manager.clone())
-                .await
-                .unwrap(),
-        );
-
-        let cleanup_system = MultiWorkerCleanupSystem::new(
-            connection_manager.clone(),
-            channel_manager.clone(),
-            app_manager.clone(),
-            Some(webhook_integration.clone()),
-            config,
-        );
-
-        (
-            cleanup_system,
-            local_adapter,
-            channel_manager,
-            app_manager,
-            webhook_integration,
-        )
     }
 }
