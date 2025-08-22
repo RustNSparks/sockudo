@@ -10,6 +10,7 @@
 
   "adapter": {
     "driver": "local",
+    "broadcast_streaming_threshold": 1500,
     "redis": {
       "requests_timeout": 5000,
       "prefix": "sockudo_adapter:",
@@ -39,10 +40,10 @@
           "id": "app-id",
           "key": "app-key",
           "secret": "app-secret",
-          "max_connections": 1000,
+          "max_connections": 10000,
           "enable_client_messages": true,
           "enabled": true,
-          "max_client_events_per_second": 100
+          "max_client_events_per_second": 1000
         }
       ]
     },
