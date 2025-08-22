@@ -16,6 +16,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::WriteHalf;
+use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 
@@ -35,6 +36,53 @@ impl LocalAdapter {
         Self {
             namespaces: DashMap::new(),
         }
+    }
+
+    /// Send messages to sockets in batches with controlled concurrency
+    async fn send_batched_messages(
+        &self,
+        target_socket_refs: Vec<WebSocketRef>,
+        message_bytes: Arc<Vec<u8>>,
+    ) -> Vec<std::result::Result<Vec<Result<()>>, tokio::task::JoinError>> {
+        // Determine optimal batch size and concurrency based on socket count
+        let socket_count = target_socket_refs.len();
+        let (batch_size, max_concurrent_batches) = if socket_count <= 100 {
+            (socket_count, 1) // Small broadcasts: no batching needed
+        } else if socket_count <= 1000 {
+            (50, 4) // Medium broadcasts: small batches, limited concurrency
+        } else {
+            (100, 8) // Large broadcasts: larger batches, more concurrency
+        };
+
+        // Create semaphore to limit concurrent batch processing
+        let semaphore = Arc::new(Semaphore::new(max_concurrent_batches));
+
+        // Split sockets into batches and spawn tasks
+        let batch_tasks: Vec<JoinHandle<Vec<Result<()>>>> = target_socket_refs
+            .chunks(batch_size)
+            .map(|batch| {
+                let batch = batch.to_vec();
+                let bytes = message_bytes.clone();
+                let permit = semaphore.clone();
+
+                tokio::spawn(async move {
+                    let _permit = permit.acquire().await.expect("Semaphore closed");
+                    let mut batch_results = Vec::with_capacity(batch.len());
+
+                    // Process all sockets in this batch sequentially to reduce task overhead
+                    for socket_ref in batch {
+                        let result = socket_ref.send_raw_message(bytes.clone()).await;
+                        batch_results.push(result);
+                    }
+
+                    batch_results
+                })
+            })
+            .collect();
+
+        // Wait for all batch tasks to complete and flatten results
+        let batch_results = join_all(batch_tasks).await;
+        batch_results
     }
 
     // Helper function to get or create namespace
@@ -142,17 +190,10 @@ impl ConnectionManager for LocalAdapter {
                     Error::InvalidMessageFormat(format!("Serialization failed: {e}"))
                 })?);
 
-            // Send messages in parallel using shared serialized bytes
-            let send_tasks: Vec<JoinHandle<Result<()>>> = target_socket_refs
-                .into_iter()
-                .map(|socket_ref| {
-                    let bytes = message_bytes.clone();
-                    tokio::spawn(async move { socket_ref.send_raw_message(bytes).await })
-                })
-                .collect();
-
-            // Wait for all sends to complete and collect results
-            let results = join_all(send_tasks).await;
+            // Send messages using batched processing to reduce task overhead
+            let results = self
+                .send_batched_messages(target_socket_refs, message_bytes)
+                .await;
 
             let elapsed = start_time.elapsed();
             info!(
@@ -163,16 +204,21 @@ impl ConnectionManager for LocalAdapter {
                 elapsed.as_secs_f64() * 1000.0
             );
 
-            // Handle any errors from the spawned tasks
-            for result in results {
-                match result {
-                    Ok(send_result) => {
-                        if let Err(e) = send_result {
-                            error!("Failed to send message to user socket: {}", e);
+            // Handle any errors from the batched tasks
+            for batch_result in results {
+                match batch_result {
+                    Ok(send_results) => {
+                        for send_result in send_results {
+                            if let Err(e) = send_result {
+                                error!("Failed to send message to user socket: {}", e);
+                            }
                         }
                     }
                     Err(join_error) => {
-                        error!("Task join error while sending to user: {}", join_error);
+                        error!(
+                            "Batch task join error while sending to user: {}",
+                            join_error
+                        );
                     }
                 }
             }
@@ -194,17 +240,10 @@ impl ConnectionManager for LocalAdapter {
                     Error::InvalidMessageFormat(format!("Serialization failed: {e}"))
                 })?);
 
-            // Send messages in parallel using shared serialized bytes
-            let send_tasks: Vec<JoinHandle<Result<()>>> = target_socket_refs
-                .into_iter()
-                .map(|socket_ref| {
-                    let bytes = message_bytes.clone();
-                    tokio::spawn(async move { socket_ref.send_raw_message(bytes).await })
-                })
-                .collect();
-
-            // Wait for all sends to complete and collect results
-            let results = join_all(send_tasks).await;
+            // Send messages using batched processing to reduce task overhead
+            let results = self
+                .send_batched_messages(target_socket_refs, message_bytes)
+                .await;
 
             let elapsed = start_time.elapsed();
             info!(
@@ -215,16 +254,21 @@ impl ConnectionManager for LocalAdapter {
                 elapsed.as_secs_f64() * 1000.0
             );
 
-            // Handle any errors from the spawned tasks
-            for result in results {
-                match result {
-                    Ok(send_result) => {
-                        if let Err(e) = send_result {
-                            error!("Failed to send message to channel socket: {}", e);
+            // Handle any errors from the batched tasks
+            for batch_result in results {
+                match batch_result {
+                    Ok(send_results) => {
+                        for send_result in send_results {
+                            if let Err(e) = send_result {
+                                error!("Failed to send message to channel socket: {}", e);
+                            }
                         }
                     }
                     Err(join_error) => {
-                        error!("Task join error while sending to channel: {}", join_error);
+                        error!(
+                            "Batch task join error while sending to channel: {}",
+                            join_error
+                        );
                     }
                 }
             }
