@@ -54,6 +54,7 @@ class PusherTestClient {
         this.id = id;
         this.pusher = null;
         this.connected = false;
+        this.fullyReady = false;
         this.connectionStartTime = null;
         this.connectionTime = null;
         this.channel = null;
@@ -64,7 +65,7 @@ class PusherTestClient {
     async connect() {
         return new Promise((resolve, reject) => {
             const connectionTimeout = setTimeout(() => {
-                if (!this.connected) {
+                if (!this.connected || !this.fullyReady) {
                     this.cleanup();
                     reject(new Error(`Connection timeout after ${CONFIG.connectionTimeout}ms`));
                 }
@@ -72,6 +73,7 @@ class PusherTestClient {
 
             try {
                 this.connectionStartTime = performance.now();
+                this.fullyReady = false;
                 
                 // Create Pusher client with realistic options
                 this.pusher = new Pusher(CONFIG.appKey, {
@@ -92,7 +94,6 @@ class PusherTestClient {
                 this.pusher.connection.bind('connected', () => {
                     this.connectionTime = performance.now() - this.connectionStartTime;
                     this.connected = true;
-                    clearTimeout(connectionTimeout);
                     
                     // Record statistics
                     stats.connectionTimes.push(this.connectionTime);
@@ -103,20 +104,24 @@ class PusherTestClient {
                     }
                     stats.lastConnectionTime = performance.now();
                     
-                    // Subscribe to channel if configured
+                    // Subscribe to channel if configured, then mark as ready
                     if (CONFIG.numChannels > 0) {
                         // Distribute clients across channels
                         const channelIndex = this.id % CONFIG.numChannels;
                         this.channelName = `${CONFIG.channelPrefix}${channelIndex}`;
-                        this.subscribeToChannel();
+                        this.subscribeToChannelAndResolve(resolve, connectionTimeout);
+                    } else {
+                        // No channels, so we're ready immediately
+                        this.fullyReady = true;
+                        clearTimeout(connectionTimeout);
+                        
+                        // Update progress
+                        if (progressBar) {
+                            progressBar.increment();
+                        }
+                        
+                        resolve(this.connectionTime);
                     }
-                    
-                    // Update progress
-                    if (progressBar) {
-                        progressBar.increment();
-                    }
-                    
-                    resolve(this.connectionTime);
                 });
 
                 this.pusher.connection.bind('error', (error) => {
@@ -164,7 +169,65 @@ class PusherTestClient {
         });
     }
 
+    subscribeToChannelAndResolve(resolve, connectionTimeout) {
+        if (!this.channelName || !this.pusher) {
+            this.fullyReady = true;
+            clearTimeout(connectionTimeout);
+            if (progressBar) progressBar.increment();
+            resolve(this.connectionTime);
+            return;
+        }
+        
+        this.channel = this.pusher.subscribe(this.channelName);
+        
+        // Wait for successful subscription
+        this.channel.bind('pusher:subscription_succeeded', () => {
+            // Track channel subscription
+            if (!stats.channelSubscriptions.has(this.channelName)) {
+                stats.channelSubscriptions.set(this.channelName, new Set());
+            }
+            stats.channelSubscriptions.get(this.channelName).add(this.id);
+            
+            // Listen for broadcast test messages
+            if (CONFIG.broadcastTest) {
+                this.channel.bind('test-event', (data) => {
+                    if (stats.broadcastStartTime) {
+                        const latency = performance.now() - stats.broadcastStartTime;
+                        stats.broadcastLatencies.push(latency);
+                        stats.messagesReceived++;
+                        
+                        if (CONFIG.enableLogging) {
+                            console.log(`Client ${this.id} received message in ${latency.toFixed(2)}ms`);
+                        }
+                    }
+                });
+            }
+            
+            // Now we're fully ready
+            this.fullyReady = true;
+            clearTimeout(connectionTimeout);
+            
+            // Update progress
+            if (progressBar) {
+                progressBar.increment();
+            }
+            
+            resolve(this.connectionTime);
+        });
+        
+        // Handle subscription errors
+        this.channel.bind('pusher:subscription_error', (error) => {
+            clearTimeout(connectionTimeout);
+            this.fullyReady = false;
+            console.error(`Channel subscription failed for ${this.channelName}: ${error?.error || 'Unknown error'}`);
+            // Still resolve, but mark as partially failed
+            stats.failed++;
+            resolve(this.connectionTime);
+        });
+    }
+    
     subscribeToChannel() {
+        // Keep this method for compatibility, but it's unused in sequential mode
         if (!this.channelName || !this.pusher) return;
         
         this.channel = this.pusher.subscribe(this.channelName);
@@ -220,15 +283,16 @@ function calculatePercentiles(times) {
 
 function printHeader() {
     console.log('\n' + chalk.cyan('═'.repeat(60)));
-    console.log(chalk.cyan.bold('     Pusher.js Realistic Load Test'));
+    console.log(chalk.cyan.bold('  Pusher.js Sequential Load Test'));
     console.log(chalk.cyan('═'.repeat(60)));
     console.log(chalk.yellow('Configuration:'));
     console.log(`  App ID: ${chalk.white.bold(CONFIG.appId)}`);
     console.log(`  App Key: ${chalk.white.bold(CONFIG.appKey)}`);
     console.log(`  Server: ${chalk.white.bold(`${CONFIG.useTLS ? 'wss' : 'ws'}://${CONFIG.wsHost}:${CONFIG.wsPort}`)}`);
-    console.log(`  Clients: ${chalk.white.bold(CONFIG.numClients)}`);
+    console.log(`  Clients: ${chalk.white.bold(CONFIG.numClients)} (sequential)`);
     console.log(`  Channels: ${chalk.white.bold(CONFIG.numChannels || 'No channels')}`);
     console.log(`  Broadcast Test: ${chalk.white.bold(CONFIG.broadcastTest ? 'Enabled' : 'Disabled')}`);
+    console.log(`  Connection Delay: ${chalk.white.bold((parseInt(process.env.CONNECTION_DELAY_MS) || 0) + 'ms')}`);
     console.log(`  Timeout: ${chalk.white.bold(CONFIG.connectionTimeout + 'ms')}`);
     console.log(`  Logging: ${chalk.white.bold(CONFIG.enableLogging)}`);
     console.log(chalk.cyan('═'.repeat(60)) + '\n');
@@ -449,21 +513,33 @@ async function runTest() {
     
     progressBar.start(CONFIG.numClients, 0);
     
-    console.log(chalk.blue(`\nConnecting ${CONFIG.numClients} clients simultaneously...\n`));
+    console.log(chalk.blue(`\nConnecting ${CONFIG.numClients} clients sequentially...\n`));
     
     // Start timing
     stats.startTime = performance.now();
     
-    // Connect all clients simultaneously (no artificial batching)
-    const promises = clients.map(client => 
-        client.connect().catch(error => {
-            // Error already tracked in client, just return null
-            return null;
-        })
-    );
-    
-    // Wait for all connections to complete
-    await Promise.allSettled(promises);
+    // Connect clients one by one, waiting for each to fully connect and subscribe
+    for (let i = 0; i < clients.length; i++) {
+        const client = clients[i];
+        try {
+            if (CONFIG.enableLogging) {
+                console.log(`Connecting client ${i + 1}/${clients.length}...`);
+            }
+            await client.connect();
+            if (CONFIG.enableLogging) {
+                console.log(`Client ${i + 1} fully connected and subscribed (${client.connectionTime.toFixed(2)}ms)`);
+            }
+        } catch (error) {
+            console.error(`Client ${i + 1} failed to connect: ${error.message}`);
+            // Error already tracked in client stats
+        }
+        
+        // Small delay between connections if requested
+        const delayMs = parseInt(process.env.CONNECTION_DELAY_MS) || 0;
+        if (delayMs > 0) {
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+    }
     
     // Stop progress bar
     progressBar.stop();
