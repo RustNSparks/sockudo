@@ -136,12 +136,18 @@ impl ConnectionManager for LocalAdapter {
                 channel, subscriber_count
             );
 
-            // Send messages in parallel using WebSocketRef
+            // Pre-serialize message once for all subscribers
+            let message_bytes =
+                Arc::new(serde_json::to_vec(&message).map_err(|e| {
+                    Error::InvalidMessageFormat(format!("Serialization failed: {e}"))
+                })?);
+
+            // Send messages in parallel using pre-serialized bytes
             let send_tasks: Vec<JoinHandle<Result<()>>> = target_socket_refs
                 .into_iter()
                 .map(|socket_ref| {
-                    let message_clone = message.clone();
-                    tokio::spawn(async move { socket_ref.send_message(&message_clone).await })
+                    let bytes = message_bytes.clone();
+                    tokio::spawn(async move { socket_ref.send_raw_message(bytes).await })
                 })
                 .collect();
 
@@ -191,12 +197,18 @@ impl ConnectionManager for LocalAdapter {
                 channel, subscriber_count
             );
 
-            // Send messages in parallel using WebSocketRef
+            // Pre-serialize message once for all subscribers
+            let message_bytes =
+                Arc::new(serde_json::to_vec(&message).map_err(|e| {
+                    Error::InvalidMessageFormat(format!("Serialization failed: {e}"))
+                })?);
+
+            // Send messages in parallel using pre-serialized bytes
             let send_tasks: Vec<JoinHandle<Result<()>>> = target_socket_refs
                 .into_iter()
                 .map(|socket_ref| {
-                    let message_clone = message.clone();
-                    tokio::spawn(async move { socket_ref.send_message(&message_clone).await })
+                    let bytes = message_bytes.clone();
+                    tokio::spawn(async move { socket_ref.send_raw_message(bytes).await })
                 })
                 .collect();
 

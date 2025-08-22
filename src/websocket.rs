@@ -353,6 +353,11 @@ impl MessageSender {
         self.send(frame)
     }
 
+    pub fn send_raw_bytes(&self, bytes: Arc<Vec<u8>>) -> Result<()> {
+        let frame = Frame::text(Payload::from(bytes.as_ref().clone()));
+        self.send(frame)
+    }
+
     pub fn send_text(&self, text: String) -> Result<()> {
         let frame = Frame::text(Payload::from(text.into_bytes()));
         self.send(frame)
@@ -419,6 +424,18 @@ impl WebSocket {
         match self.state.status {
             ConnectionStatus::Active | ConnectionStatus::PingSent(_) => {
                 self.message_sender.send_json(message)
+            }
+            ConnectionStatus::Closing | ConnectionStatus::Closed => Err(Error::ConnectionClosed(
+                "Cannot send message on closed connection".to_string(),
+            )),
+        }
+    }
+
+    pub fn send_raw_bytes(&self, bytes: Arc<Vec<u8>>) -> Result<()> {
+        // Check if connection is in a valid state to send messages
+        match self.state.status {
+            ConnectionStatus::Active | ConnectionStatus::PingSent(_) => {
+                self.message_sender.send_raw_bytes(bytes)
             }
             ConnectionStatus::Closing | ConnectionStatus::Closed => Err(Error::ConnectionClosed(
                 "Cannot send message on closed connection".to_string(),
@@ -509,6 +526,11 @@ impl WebSocketRef {
     pub async fn send_message(&self, message: &PusherMessage) -> Result<()> {
         let ws = self.0.lock().await;
         ws.send_message(message)
+    }
+
+    pub async fn send_raw_message(&self, bytes: Arc<Vec<u8>>) -> Result<()> {
+        let ws = self.0.lock().await;
+        ws.send_raw_bytes(bytes)
     }
 
     pub async fn close(&self, code: u16, reason: String) -> Result<()> {
