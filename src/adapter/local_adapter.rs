@@ -136,13 +136,13 @@ impl ConnectionManager for LocalAdapter {
                 channel, subscriber_count
             );
 
-            // Pre-serialize message once for all subscribers
+            // Serialize message once to avoid repeated serialization overhead
             let message_bytes =
                 Arc::new(serde_json::to_vec(&message).map_err(|e| {
                     Error::InvalidMessageFormat(format!("Serialization failed: {e}"))
                 })?);
 
-            // Send messages in parallel using pre-serialized bytes
+            // Send messages in parallel using shared serialized bytes
             let send_tasks: Vec<JoinHandle<Result<()>>> = target_socket_refs
                 .into_iter()
                 .map(|socket_ref| {
@@ -178,18 +178,9 @@ impl ConnectionManager for LocalAdapter {
             }
         } else {
             let namespace = self.get_namespace(app_id).await.unwrap();
-            let sockets = namespace.get_channel_sockets(channel);
 
-            // Collect socket refs that should receive the message
-            let mut target_socket_refs = Vec::new();
-            for socket_id_entry in sockets.iter() {
-                let socket_id = socket_id_entry.key();
-                if except != Some(socket_id)
-                    && let Some(socket_ref) = namespace.get_connection(socket_id)
-                {
-                    target_socket_refs.push(socket_ref);
-                }
-            }
+            // Get socket references with exclusion handled efficiently during collection
+            let target_socket_refs = namespace.get_channel_socket_refs_except(channel, except);
 
             let subscriber_count = target_socket_refs.len();
             info!(
@@ -197,13 +188,13 @@ impl ConnectionManager for LocalAdapter {
                 channel, subscriber_count
             );
 
-            // Pre-serialize message once for all subscribers
+            // Serialize message once to avoid repeated serialization overhead
             let message_bytes =
                 Arc::new(serde_json::to_vec(&message).map_err(|e| {
                     Error::InvalidMessageFormat(format!("Serialization failed: {e}"))
                 })?);
 
-            // Send messages in parallel using pre-serialized bytes
+            // Send messages in parallel using shared serialized bytes
             let send_tasks: Vec<JoinHandle<Result<()>>> = target_socket_refs
                 .into_iter()
                 .map(|socket_ref| {
