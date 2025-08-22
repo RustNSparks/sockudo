@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use dashmap::{DashMap, DashSet};
 use fastwebsockets::WebSocketWrite;
 use futures_util::future::join_all;
+use futures_util::stream::{self, StreamExt};
 use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use std::any::Any;
@@ -23,6 +24,7 @@ use tracing::{debug, error, info};
 #[derive(Clone)]
 pub struct LocalAdapter {
     pub namespaces: DashMap<String, Arc<Namespace>>,
+    pub broadcast_streaming_threshold: usize,
 }
 
 impl Default for LocalAdapter {
@@ -35,6 +37,14 @@ impl LocalAdapter {
     pub fn new() -> Self {
         Self {
             namespaces: DashMap::new(),
+            broadcast_streaming_threshold: 1500, // Default value
+        }
+    }
+
+    pub fn new_with_threshold(threshold: usize) -> Self {
+        Self {
+            namespaces: DashMap::new(),
+            broadcast_streaming_threshold: threshold,
         }
     }
 
@@ -83,6 +93,72 @@ impl LocalAdapter {
         // Wait for all batch tasks to complete and flatten results
         let batch_results = join_all(batch_tasks).await;
         batch_results
+    }
+
+    /// Send messages using streaming pipeline with buffer_unordered for optimal throughput
+    async fn send_streaming_messages(
+        &self,
+        target_socket_refs: Vec<WebSocketRef>,
+        message_bytes: Arc<Vec<u8>>,
+    ) -> Vec<Result<()>> {
+        let socket_count = target_socket_refs.len();
+
+        // Determine optimal buffer size based on socket count and system capabilities
+        let buffer_size = if socket_count <= 100 {
+            socket_count.min(16) // Small broadcasts: limited buffering
+        } else if socket_count <= 1000 {
+            64 // Medium broadcasts: moderate buffering
+        } else {
+            128 // Large broadcasts: high buffering for maximum throughput
+        };
+
+        // Create streaming pipeline using buffer_unordered for concurrent processing
+        let results: Vec<Result<()>> =
+            stream::iter(target_socket_refs.into_iter().map(|socket_ref| {
+                let bytes = message_bytes.clone();
+                async move { socket_ref.send_raw_message(bytes).await }
+            }))
+            .buffer_unordered(buffer_size)
+            .collect()
+            .await;
+
+        results
+    }
+
+    /// Hybrid approach: choose between streaming and batching based on subscriber count and threshold
+    async fn send_hybrid_messages(
+        &self,
+        target_socket_refs: Vec<WebSocketRef>,
+        message_bytes: Arc<Vec<u8>>,
+    ) -> Vec<Result<()>> {
+        let subscriber_count = target_socket_refs.len();
+
+        if subscriber_count <= self.broadcast_streaming_threshold {
+            // Use streaming pipeline for smaller broadcasts
+            self.send_streaming_messages(target_socket_refs, message_bytes)
+                .await
+        } else {
+            // Use batched processing for larger broadcasts
+            let batch_results = self
+                .send_batched_messages(target_socket_refs, message_bytes)
+                .await;
+
+            // Flatten batched results to match streaming format
+            let mut flattened_results = Vec::new();
+            for batch_result in batch_results {
+                match batch_result {
+                    Ok(results) => flattened_results.extend(results),
+                    Err(_) => {
+                        // If batch task failed, assume all sends in that batch failed
+                        // This is a simplification - in practice we'd want better error handling
+                        flattened_results.push(Err(crate::error::Error::Connection(
+                            "Batch task failed".to_string(),
+                        )));
+                    }
+                }
+            }
+            flattened_results
+        }
     }
 
     // Helper function to get or create namespace
@@ -190,9 +266,9 @@ impl ConnectionManager for LocalAdapter {
                     Error::InvalidMessageFormat(format!("Serialization failed: {e}"))
                 })?);
 
-            // Send messages using batched processing to reduce task overhead
+            // Send messages using hybrid approach (streaming for small, batching for large)
             let results = self
-                .send_batched_messages(target_socket_refs, message_bytes)
+                .send_hybrid_messages(target_socket_refs, message_bytes)
                 .await;
 
             let elapsed = start_time.elapsed();
@@ -204,22 +280,10 @@ impl ConnectionManager for LocalAdapter {
                 elapsed.as_secs_f64() * 1000.0
             );
 
-            // Handle any errors from the batched tasks
-            for batch_result in results {
-                match batch_result {
-                    Ok(send_results) => {
-                        for send_result in send_results {
-                            if let Err(e) = send_result {
-                                error!("Failed to send message to user socket: {}", e);
-                            }
-                        }
-                    }
-                    Err(join_error) => {
-                        error!(
-                            "Batch task join error while sending to user: {}",
-                            join_error
-                        );
-                    }
+            // Handle any errors from the hybrid messaging
+            for send_result in results {
+                if let Err(e) = send_result {
+                    error!("Failed to send message to user socket: {}", e);
                 }
             }
         } else {
@@ -240,9 +304,9 @@ impl ConnectionManager for LocalAdapter {
                     Error::InvalidMessageFormat(format!("Serialization failed: {e}"))
                 })?);
 
-            // Send messages using batched processing to reduce task overhead
+            // Send messages using hybrid approach (streaming for small, batching for large)
             let results = self
-                .send_batched_messages(target_socket_refs, message_bytes)
+                .send_hybrid_messages(target_socket_refs, message_bytes)
                 .await;
 
             let elapsed = start_time.elapsed();
@@ -254,22 +318,10 @@ impl ConnectionManager for LocalAdapter {
                 elapsed.as_secs_f64() * 1000.0
             );
 
-            // Handle any errors from the batched tasks
-            for batch_result in results {
-                match batch_result {
-                    Ok(send_results) => {
-                        for send_result in send_results {
-                            if let Err(e) = send_result {
-                                error!("Failed to send message to channel socket: {}", e);
-                            }
-                        }
-                    }
-                    Err(join_error) => {
-                        error!(
-                            "Batch task join error while sending to channel: {}",
-                            join_error
-                        );
-                    }
+            // Handle any errors from the hybrid messaging
+            for send_result in results {
+                if let Err(e) = send_result {
+                    error!("Failed to send message to channel socket: {}", e);
                 }
             }
         }

@@ -277,13 +277,31 @@ pub struct SqsQueueConfig {
     pub message_group_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AdapterConfig {
     pub driver: AdapterDriver,
     pub redis: RedisAdapterConfig,
     pub cluster: RedisClusterAdapterConfig,
     pub nats: NatsAdapterConfig,
+    #[serde(default = "default_broadcast_streaming_threshold")]
+    pub broadcast_streaming_threshold: usize,
+}
+
+fn default_broadcast_streaming_threshold() -> usize {
+    1500
+}
+
+impl Default for AdapterConfig {
+    fn default() -> Self {
+        Self {
+            driver: AdapterDriver::default(),
+            redis: RedisAdapterConfig::default(),
+            cluster: RedisClusterAdapterConfig::default(),
+            nats: NatsAdapterConfig::default(),
+            broadcast_streaming_threshold: default_broadcast_streaming_threshold(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -956,6 +974,10 @@ impl ServerOptions {
             self.adapter.driver =
                 parse_driver_enum(driver_str, self.adapter.driver.clone(), "Adapter");
         }
+        self.adapter.broadcast_streaming_threshold = parse_env::<usize>(
+            "ADAPTER_BROADCAST_STREAMING_THRESHOLD",
+            self.adapter.broadcast_streaming_threshold,
+        );
         if let Ok(driver_str) = std::env::var("CACHE_DRIVER") {
             self.cache.driver = parse_driver_enum(driver_str, self.cache.driver.clone(), "Cache");
         }
