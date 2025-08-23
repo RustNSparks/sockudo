@@ -483,6 +483,14 @@ impl sockudo::adapter::ConnectionManager for FailingAdapter {
     ) -> sockudo::error::Result<bool> {
         Ok(false)
     }
+    async fn batch_remove_from_channel(
+        &mut self,
+        _app_id: &str,
+        _channel: &str,
+        _socket_ids: &[sockudo::websocket::SocketId],
+    ) -> sockudo::error::Result<usize> {
+        Ok(0)
+    }
     async fn get_presence_member(
         &mut self,
         _app_id: &str,
