@@ -143,37 +143,46 @@ impl CleanupWorker {
             channel_operations.len()
         );
 
-        let mut total_success = 0;
-        let mut total_errors = 0;
+        let mut total_removed = 0;
+        let mut total_channels_processed = 0;
 
-        // Process each operation individually with atomic locks (1 lock per operation)
+        // Process each channel with batch removal - single lock per channel
         for ((app_id, channel), socket_ids) in channel_operations {
-            for socket_id in socket_ids {
-                // Each operation gets exactly 1 lock, held for ~1ms, then released
-                {
-                    let channel_manager = self.channel_manager.read().await;
-                    match channel_manager
-                        .unsubscribe(&socket_id.0, &channel, &app_id, None)
-                        .await
-                    {
-                        Ok(_) => {
-                            total_success += 1;
-                        }
-                        Err(e) => {
-                            total_errors += 1;
-                            warn!(
-                                "Failed to remove socket {} from channel {}/{}: {}",
-                                socket_id, app_id, channel, e
-                            );
-                        }
+            let socket_count = socket_ids.len();
+            debug!(
+                "Batch removing {} sockets from channel {}/{}",
+                socket_count, app_id, channel
+            );
+
+            // Single lock acquisition for all sockets in this channel
+            let mut connection_manager = self.connection_manager.lock().await;
+            match connection_manager
+                .batch_remove_from_channel(&app_id, &channel, &socket_ids)
+                .await
+            {
+                Ok(removed_count) => {
+                    total_removed += removed_count;
+                    total_channels_processed += 1;
+                    if removed_count < socket_count {
+                        debug!(
+                            "Channel {}/{}: removed {}/{} sockets (some may have been already removed)",
+                            app_id, channel, removed_count, socket_count
+                        );
                     }
-                } // Lock released here automatically between each operation
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to batch remove {} sockets from channel {}/{}: {}",
+                        socket_count, app_id, channel, e
+                    );
+                }
             }
+            // Lock released here before processing next channel
         }
 
         debug!(
-            "Individual channel cleanup completed: {} successful, {} errors",
-            total_success, total_errors
+            "Batch channel cleanup completed: {} sockets removed from {} channels",
+            total_removed, total_channels_processed
         );
     }
 

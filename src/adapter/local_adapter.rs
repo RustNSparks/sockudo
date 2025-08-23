@@ -414,6 +414,16 @@ impl ConnectionManager for LocalAdapter {
         Ok(namespace.remove_channel_from_socket(channel, socket_id))
     }
 
+    async fn batch_remove_from_channel(
+        &mut self,
+        app_id: &str,
+        channel: &str,
+        socket_ids: &[SocketId],
+    ) -> Result<usize> {
+        let namespace = self.get_or_create_namespace(app_id).await;
+        Ok(namespace.batch_remove_from_channel(channel, socket_ids))
+    }
+
     async fn get_presence_member(
         &mut self,
         app_id: &str,

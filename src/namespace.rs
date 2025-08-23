@@ -279,6 +279,39 @@ impl Namespace {
         false
     }
 
+    // Batch remove multiple sockets from a channel efficiently
+    pub fn batch_remove_from_channel(&self, channel: &str, socket_ids: &[SocketId]) -> usize {
+        if socket_ids.is_empty() {
+            return 0;
+        }
+
+        let mut removed_count = 0;
+
+        if let Some(channel_sockets_ref) = self.channels.get_mut(channel) {
+            // Remove all socket IDs in a single lock acquisition
+            for socket_id in socket_ids {
+                if channel_sockets_ref.remove(socket_id).is_some() {
+                    removed_count += 1;
+                }
+            }
+
+            let is_empty = channel_sockets_ref.is_empty();
+            drop(channel_sockets_ref); // Release the lock before potentially removing the channel
+
+            if is_empty {
+                self.channels.remove(channel);
+                debug!("Removed empty channel entry: {}", channel);
+            }
+        } else {
+            debug!(
+                "batch_remove_from_channel called on non-existent channel: {}",
+                channel
+            );
+        }
+
+        removed_count
+    }
+
     // Removes a connection entirely from the main socket map.
     pub fn remove_connection(&self, socket_id: &SocketId) {
         if self.sockets.remove(socket_id).is_some() {
