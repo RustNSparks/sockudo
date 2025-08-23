@@ -159,6 +159,14 @@ impl ConnectionManager for MockAdapter {
     ) -> Result<bool> {
         Ok(false)
     }
+    async fn batch_remove_from_channel(
+        &mut self,
+        _app_id: &str,
+        _channel: &str,
+        _socket_ids: &[SocketId],
+    ) -> Result<usize> {
+        Ok(0)
+    }
     async fn get_presence_member(
         &mut self,
         _app_id: &str,
@@ -420,6 +428,8 @@ impl MetricsInterface for MockMetricsInterface {
     ) {
     }
     fn mark_ws_message_sent(&self, _app_id: &str, _sent_message_size: usize) {}
+    fn mark_ws_messages_sent_batch(&self, _app_id: &str, _sent_message_size: usize, _count: usize) {
+    }
     fn mark_ws_message_received(&self, _app_id: &str, _message_size: usize) {}
     fn track_horizontal_adapter_resolve_time(&self, _app_id: &str, _time_ms: f64) {}
     fn track_horizontal_adapter_resolved_promises(&self, _app_id: &str, _resolved: bool) {}
@@ -489,6 +499,7 @@ pub fn create_test_connection_handler() -> (ConnectionHandler, MockAppManager, M
         Some(Arc::new(Mutex::new(MockMetricsInterface::new()))),
         None,
         ServerOptions::default(),
+        None,
     );
 
     (handler, app_manager, channel_manager)
@@ -507,5 +518,6 @@ pub fn create_test_connection_handler_with_app_manager(
         Some(Arc::new(Mutex::new(MockMetricsInterface::new()))),
         None,
         ServerOptions::default(),
+        None,
     )
 }

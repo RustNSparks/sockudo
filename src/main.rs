@@ -6,6 +6,7 @@ mod adapter;
 mod app;
 mod cache;
 mod channel;
+pub mod cleanup;
 mod error;
 mod http_handler;
 mod metrics;
@@ -49,6 +50,7 @@ use crate::adapter::factory::AdapterFactory;
 use crate::app::factory::AppManagerFactory;
 use crate::cache::factory::CacheManagerFactory;
 use crate::channel::ChannelManager;
+use crate::cleanup::{CleanupConfig, CleanupSender};
 use crate::error::Result;
 use crate::http_handler::{
     batch_events, channel, channel_users, channels, events, metrics, terminate_user_connections,
@@ -83,6 +85,7 @@ use crate::app::manager::AppManager;
 use crate::cache::manager::CacheManager;
 use crate::cache::memory_cache_manager::MemoryCacheManager; // Import for fallback
 // MetricsInterface trait
+use crate::cleanup::multi_worker::MultiWorkerCleanupSystem;
 use crate::metrics::MetricsInterface;
 use crate::middleware::pusher_api_auth_middleware;
 use crate::websocket::WebSocketRef;
@@ -100,6 +103,9 @@ struct ServerState {
     running: AtomicBool,
     http_api_rate_limiter: Option<Arc<dyn RateLimiter + Send + Sync>>,
     debug_enabled: bool,
+    cleanup_queue: Option<CleanupSender>,
+    cleanup_worker_handles: Option<Vec<tokio::task::JoinHandle<()>>>,
+    cleanup_config: CleanupConfig,
 }
 
 /// Main server struct
@@ -412,6 +418,35 @@ impl SockudoServer {
             }
         };
 
+        // Initialize cleanup queue if enabled
+        let cleanup_config = config.cleanup.clone();
+        let (cleanup_queue, cleanup_worker_handles) = if cleanup_config.async_enabled {
+            let multi_worker_system = MultiWorkerCleanupSystem::new(
+                connection_manager.clone(),
+                channel_manager.clone(),
+                app_manager.clone(),
+                Some(webhook_integration.clone()),
+                cleanup_config.clone(),
+            );
+
+            // Create unified cleanup sender based on worker configuration
+            let cleanup_sender =
+                if let Some(direct_sender) = multi_worker_system.get_direct_sender() {
+                    info!("Using direct sender for single worker (optimized)");
+                    CleanupSender::Direct(direct_sender)
+                } else {
+                    info!("Using multi-worker sender with round-robin distribution");
+                    CleanupSender::Multi(multi_worker_system.get_sender())
+                };
+
+            let worker_handles = multi_worker_system.get_worker_handles();
+
+            info!("Multi-worker cleanup system initialized");
+            (Some(cleanup_sender), Some(worker_handles))
+        } else {
+            (None, None)
+        };
+
         let state = ServerState {
             app_manager: app_manager.clone(),
             channel_manager: channel_manager.clone(),
@@ -424,6 +459,9 @@ impl SockudoServer {
             running: AtomicBool::new(true),
             http_api_rate_limiter: Some(http_api_rate_limiter_instance.clone()),
             debug_enabled,
+            cleanup_queue,
+            cleanup_worker_handles,
+            cleanup_config,
         };
 
         let handler = Arc::new(ConnectionHandler::new(
@@ -434,6 +472,7 @@ impl SockudoServer {
             state.metrics.clone(),
             Some(webhook_integration), // Pass the (potentially disabled) webhook_integration
             config.clone(),
+            state.cleanup_queue.clone(),
         ));
 
         // Set metrics for adapters
@@ -1035,6 +1074,13 @@ impl SockudoServer {
             info!("All connection cleanup tasks have been processed.");
         } else {
             info!("No connections to cleanup.");
+        }
+
+        // Shutdown cleanup workers
+        // Note: We can't shutdown workers here because we can't move handles out of self.state
+        // The cleanup workers will be shutdown when the server process ends
+        if self.state.cleanup_worker_handles.is_some() {
+            info!("Cleanup system will shutdown when server process ends");
         }
 
         // Disconnect from backend services

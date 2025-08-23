@@ -86,6 +86,12 @@ pub trait ConnectionManager: Send + Sync {
         channel: &str,
         socket_id: &SocketId,
     ) -> Result<bool>;
+    async fn batch_remove_from_channel(
+        &mut self,
+        app_id: &str,
+        channel: &str,
+        socket_ids: &[SocketId],
+    ) -> Result<usize>;
     async fn get_presence_member(
         &mut self,
         app_id: &str,

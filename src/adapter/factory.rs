@@ -54,7 +54,9 @@ impl AdapterFactory {
                                 e
                             )
                         );
-                        Ok(Arc::new(Mutex::new(LocalAdapter::new())))
+                        Ok(Arc::new(Mutex::new(LocalAdapter::new_with_threshold(
+                            config.broadcast_streaming_threshold,
+                        ))))
                     }
                 }
             }
@@ -73,7 +75,9 @@ impl AdapterFactory {
 
                 if nodes.is_empty() {
                     warn!("{}", "Redis Cluster Adapter selected, but no nodes configured. Falling back to local adapter.".to_string());
-                    return Ok(Arc::new(Mutex::new(LocalAdapter::new())));
+                    return Ok(Arc::new(Mutex::new(LocalAdapter::new_with_threshold(
+                        config.broadcast_streaming_threshold,
+                    ))));
                 }
 
                 let cluster_adapter_config = RedisClusterAdapterConfig {
@@ -93,7 +97,9 @@ impl AdapterFactory {
                                 e
                             )
                         );
-                        Ok(Arc::new(Mutex::new(LocalAdapter::new())))
+                        Ok(Arc::new(Mutex::new(LocalAdapter::new_with_threshold(
+                            config.broadcast_streaming_threshold,
+                        ))))
                     }
                 }
             }
@@ -119,14 +125,18 @@ impl AdapterFactory {
                                 e
                             )
                         );
-                        Ok(Arc::new(Mutex::new(LocalAdapter::new())))
+                        Ok(Arc::new(Mutex::new(LocalAdapter::new_with_threshold(
+                            config.broadcast_streaming_threshold,
+                        ))))
                     }
                 }
             }
             AdapterDriver::Local => {
                 // Handle unknown as Local or make it an error
                 info!("{}", "Using local adapter.".to_string());
-                Ok(Arc::new(Mutex::new(LocalAdapter::new())))
+                Ok(Arc::new(Mutex::new(LocalAdapter::new_with_threshold(
+                    config.broadcast_streaming_threshold,
+                ))))
             }
         }
     }

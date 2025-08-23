@@ -10,7 +10,7 @@ use fastwebsockets::{Frame, Payload, WebSocketWrite};
 use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use tokio::io::WriteHalf;
-use tracing::warn;
+use tracing::{info, warn};
 
 impl ConnectionHandler {
     pub async fn send_message_to_socket(
@@ -47,6 +47,7 @@ impl ConnectionHandler {
         message: PusherMessage,
         exclude_socket: Option<&SocketId>,
     ) -> Result<()> {
+        let broadcast_start = std::time::Instant::now();
         // Calculate message size for metrics
         let message_size = serde_json::to_string(&message).unwrap_or_default().len();
 
@@ -78,10 +79,22 @@ impl ConnectionHandler {
             && let Some(ref metrics) = self.metrics
         {
             let metrics_locked = metrics.lock().await;
-            for _ in 0..target_socket_count {
-                metrics_locked.mark_ws_message_sent(&app_config.id, message_size);
-            }
+            // Batch metrics update instead of loop for performance
+            metrics_locked.mark_ws_messages_sent_batch(
+                &app_config.id,
+                message_size,
+                target_socket_count,
+            );
         }
+
+        let broadcast_elapsed = broadcast_start.elapsed();
+        info!(
+            "End-to-end broadcast to '{}': {} subscribers in {:?} ({:.2}ms)",
+            channel,
+            target_socket_count,
+            broadcast_elapsed,
+            broadcast_elapsed.as_secs_f64() * 1000.0
+        );
 
         result
     }

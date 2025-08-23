@@ -258,6 +258,7 @@ pub struct ServerOptions {
     pub user_authentication_timeout: u64,
     pub webhooks: WebhooksConfig,
     pub websocket_max_payload_kb: u32,
+    pub cleanup: crate::cleanup::CleanupConfig,
 }
 
 // --- Configuration Sub-Structs ---
@@ -276,13 +277,31 @@ pub struct SqsQueueConfig {
     pub message_group_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AdapterConfig {
     pub driver: AdapterDriver,
     pub redis: RedisAdapterConfig,
     pub cluster: RedisClusterAdapterConfig,
     pub nats: NatsAdapterConfig,
+    #[serde(default = "default_broadcast_streaming_threshold")]
+    pub broadcast_streaming_threshold: usize,
+}
+
+fn default_broadcast_streaming_threshold() -> usize {
+    1500
+}
+
+impl Default for AdapterConfig {
+    fn default() -> Self {
+        Self {
+            driver: AdapterDriver::default(),
+            redis: RedisAdapterConfig::default(),
+            cluster: RedisClusterAdapterConfig::default(),
+            nats: NatsAdapterConfig::default(),
+            broadcast_streaming_threshold: default_broadcast_streaming_threshold(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -590,6 +609,7 @@ impl Default for ServerOptions {
             user_authentication_timeout: 3600,
             webhooks: WebhooksConfig::default(),
             websocket_max_payload_kb: 64,
+            cleanup: crate::cleanup::CleanupConfig::default(),
         }
     }
 }
@@ -954,6 +974,10 @@ impl ServerOptions {
             self.adapter.driver =
                 parse_driver_enum(driver_str, self.adapter.driver.clone(), "Adapter");
         }
+        self.adapter.broadcast_streaming_threshold = parse_env::<usize>(
+            "ADAPTER_BROADCAST_STREAMING_THRESHOLD",
+            self.adapter.broadcast_streaming_threshold,
+        );
         if let Ok(driver_str) = std::env::var("CACHE_DRIVER") {
             self.cache.driver = parse_driver_enum(driver_str, self.cache.driver.clone(), "Cache");
         }
@@ -1317,6 +1341,35 @@ impl ServerOptions {
                     parse_bool_env("LOG_INCLUDE_TARGET", logging_config.include_target);
             }
         }
+
+        // --- Cleanup Configuration ---
+        self.cleanup.async_enabled =
+            parse_bool_env("CLEANUP_ASYNC_ENABLED", self.cleanup.async_enabled);
+        self.cleanup.fallback_to_sync =
+            parse_bool_env("CLEANUP_FALLBACK_TO_SYNC", self.cleanup.fallback_to_sync);
+        self.cleanup.queue_buffer_size =
+            parse_env::<usize>("CLEANUP_QUEUE_BUFFER_SIZE", self.cleanup.queue_buffer_size);
+        self.cleanup.batch_size = parse_env::<usize>("CLEANUP_BATCH_SIZE", self.cleanup.batch_size);
+        self.cleanup.batch_timeout_ms =
+            parse_env::<u64>("CLEANUP_BATCH_TIMEOUT_MS", self.cleanup.batch_timeout_ms);
+        // Handle worker_threads which can be "auto" or a number
+        if let Ok(worker_threads_str) = std::env::var("CLEANUP_WORKER_THREADS") {
+            self.cleanup.worker_threads = if worker_threads_str.to_lowercase() == "auto" {
+                crate::cleanup::WorkerThreadsConfig::Auto
+            } else if let Ok(n) = worker_threads_str.parse::<usize>() {
+                crate::cleanup::WorkerThreadsConfig::Fixed(n)
+            } else {
+                warn!(
+                    "Invalid CLEANUP_WORKER_THREADS value '{}', keeping current setting",
+                    worker_threads_str
+                );
+                self.cleanup.worker_threads.clone()
+            };
+        }
+        self.cleanup.max_retry_attempts = parse_env::<u32>(
+            "CLEANUP_MAX_RETRY_ATTEMPTS",
+            self.cleanup.max_retry_attempts,
+        );
 
         Ok(())
     }

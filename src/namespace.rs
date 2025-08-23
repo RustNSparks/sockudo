@@ -144,6 +144,48 @@ impl Namespace {
         sockets_in_channel
     }
 
+    // Get socket references for a channel with optional exclusion, minimizing lock contention
+    pub fn get_channel_socket_refs_except(
+        &self,
+        channel: &str,
+        except: Option<&SocketId>,
+    ) -> Vec<WebSocketRef> {
+        let mut socket_refs = Vec::new();
+
+        if let Some(channel_sockets_ref) = self.channels.get(channel) {
+            // Take snapshot of socket IDs, filtering out excluded socket
+            let socket_ids: Vec<SocketId> = channel_sockets_ref
+                .value()
+                .iter()
+                .filter_map(|entry| {
+                    let socket_id = entry.key();
+                    if except == Some(socket_id) {
+                        None // Skip excluded socket
+                    } else {
+                        Some(socket_id.clone())
+                    }
+                })
+                .collect();
+
+            // Release the channel lock by dropping the reference
+            drop(channel_sockets_ref);
+
+            // Now get socket references without holding channel lock
+            for socket_id in socket_ids {
+                if let Some(socket_ref) = self.get_connection(&socket_id) {
+                    socket_refs.push(socket_ref);
+                }
+            }
+        } else {
+            debug!(
+                "get_channel_socket_refs_except called on non-existent channel: {}",
+                channel
+            );
+        }
+
+        socket_refs
+    }
+
     // Retrieves references to WebSockets associated with a specific user ID.
     pub async fn get_user_sockets(&self, user_id: &str) -> Result<DashSet<WebSocketRef>> {
         match self.users.get(user_id) {
@@ -235,6 +277,39 @@ impl Namespace {
             return removed.is_some();
         }
         false
+    }
+
+    // Batch remove multiple sockets from a channel efficiently
+    pub fn batch_remove_from_channel(&self, channel: &str, socket_ids: &[SocketId]) -> usize {
+        if socket_ids.is_empty() {
+            return 0;
+        }
+
+        let mut removed_count = 0;
+
+        if let Some(channel_sockets_ref) = self.channels.get_mut(channel) {
+            // Remove all socket IDs in a single lock acquisition
+            for socket_id in socket_ids {
+                if channel_sockets_ref.remove(socket_id).is_some() {
+                    removed_count += 1;
+                }
+            }
+
+            let is_empty = channel_sockets_ref.is_empty();
+            drop(channel_sockets_ref); // Release the lock before potentially removing the channel
+
+            if is_empty {
+                self.channels.remove(channel);
+                debug!("Removed empty channel entry: {}", channel);
+            }
+        } else {
+            debug!(
+                "batch_remove_from_channel called on non-existent channel: {}",
+                channel
+            );
+        }
+
+        removed_count
     }
 
     // Removes a connection entirely from the main socket map.

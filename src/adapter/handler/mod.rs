@@ -48,9 +48,11 @@ pub struct ConnectionHandler {
     client_event_limiters: Arc<DashMap<SocketId, Arc<dyn RateLimiter + Send + Sync>>>,
     watchlist_manager: Arc<WatchlistManager>,
     server_options: Arc<ServerOptions>,
+    cleanup_queue: Option<crate::cleanup::CleanupSender>,
 }
 
 impl ConnectionHandler {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         app_manager: Arc<dyn AppManager + Send + Sync>,
         channel_manager: Arc<RwLock<ChannelManager>>,
@@ -59,6 +61,7 @@ impl ConnectionHandler {
         metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
         webhook_integration: Option<Arc<WebhookIntegration>>,
         server_options: ServerOptions,
+        cleanup_queue: Option<crate::cleanup::CleanupSender>,
     ) -> Self {
         Self {
             app_manager,
@@ -70,6 +73,7 @@ impl ConnectionHandler {
             client_event_limiters: Arc::new(DashMap::new()),
             watchlist_manager: Arc::new(WatchlistManager::new()),
             server_options: Arc::new(server_options),
+            cleanup_queue,
         }
     }
 

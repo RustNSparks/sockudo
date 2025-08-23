@@ -67,6 +67,9 @@ pub trait MetricsInterface: Send + Sync {
     /// Handle a new WS client message event being sent
     fn mark_ws_message_sent(&self, app_id: &str, sent_message_size: usize);
 
+    /// Handle multiple WS client messages being sent (batch update for performance)
+    fn mark_ws_messages_sent_batch(&self, app_id: &str, sent_message_size: usize, count: usize);
+
     /// Handle a new WS client message being received
     fn mark_ws_message_received(&self, app_id: &str, message_size: usize);
 

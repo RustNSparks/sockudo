@@ -36,7 +36,6 @@ services:
       - SSL_ENABLED=true
       - SSL_CERT_PATH=/etc/ssl/certs/sockudo.crt
       - SSL_KEY_PATH=/etc/ssl/private/sockudo.key
-      - LOG_OUTPUT_FORMAT=json
     ports:
       - "6002:6002"
       - "9602:9602"
@@ -57,7 +56,7 @@ services:
       - ./target:/app/target:ro
       - ./config:/app/config:ro
     environment:
-      - DEBUG=true
+      - DEBUG=false
       - ADAPTER_DRIVER=redis
       - ADAPTER_REDIS_URL=redis://redis:6380/0
       - ADAPTER_REDIS_PREFIX="test:"

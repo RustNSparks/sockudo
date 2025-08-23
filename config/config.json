@@ -10,6 +10,7 @@
 
   "adapter": {
     "driver": "local",
+    "broadcast_streaming_threshold": 1500,
     "redis": {
       "requests_timeout": 5000,
       "prefix": "sockudo_adapter:",
@@ -222,5 +223,15 @@
     "enabled": true,
     "min": 2,
     "max": 10
+  },
+
+  "cleanup": {
+    "async_enabled": true,
+    "fallback_to_sync": true,
+    "queue_buffer_size": 50000,
+    "batch_size": 25,
+    "batch_timeout_ms": 50,
+    "worker_threads": "auto",
+    "max_retry_attempts": 2
   }
 }

@@ -810,6 +810,19 @@ impl ConnectionManager for RedisClusterAdapter {
             .await
     }
 
+    async fn batch_remove_from_channel(
+        &mut self,
+        app_id: &str,
+        channel: &str,
+        socket_ids: &[SocketId],
+    ) -> Result<usize> {
+        let mut horizontal = self.horizontal.lock().await;
+        horizontal
+            .local_adapter
+            .batch_remove_from_channel(app_id, channel, socket_ids)
+            .await
+    }
+
     async fn get_presence_member(
         &mut self,
         app_id: &str,

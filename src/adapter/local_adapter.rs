@@ -10,18 +10,21 @@ use async_trait::async_trait;
 use dashmap::{DashMap, DashSet};
 use fastwebsockets::WebSocketWrite;
 use futures_util::future::join_all;
+use futures_util::stream::{self, StreamExt};
 use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::WriteHalf;
+use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 
 #[derive(Clone)]
 pub struct LocalAdapter {
     pub namespaces: DashMap<String, Arc<Namespace>>,
+    pub broadcast_streaming_threshold: usize,
 }
 
 impl Default for LocalAdapter {
@@ -34,6 +37,127 @@ impl LocalAdapter {
     pub fn new() -> Self {
         Self {
             namespaces: DashMap::new(),
+            broadcast_streaming_threshold: 1500, // Default value
+        }
+    }
+
+    pub fn new_with_threshold(threshold: usize) -> Self {
+        Self {
+            namespaces: DashMap::new(),
+            broadcast_streaming_threshold: threshold,
+        }
+    }
+
+    /// Send messages to sockets in batches with controlled concurrency
+    async fn send_batched_messages(
+        &self,
+        target_socket_refs: Vec<WebSocketRef>,
+        message_bytes: Arc<Vec<u8>>,
+    ) -> Vec<std::result::Result<Vec<Result<()>>, tokio::task::JoinError>> {
+        // Determine optimal batch size and concurrency based on socket count
+        let socket_count = target_socket_refs.len();
+        let (batch_size, max_concurrent_batches) = if socket_count <= 100 {
+            (socket_count, 1) // Small broadcasts: no batching needed
+        } else if socket_count <= 1000 {
+            (50, 4) // Medium broadcasts: small batches, limited concurrency
+        } else {
+            (100, 8) // Large broadcasts: larger batches, more concurrency
+        };
+
+        // Create semaphore to limit concurrent batch processing
+        let semaphore = Arc::new(Semaphore::new(max_concurrent_batches));
+
+        // Split sockets into batches and spawn tasks
+        let batch_tasks: Vec<JoinHandle<Vec<Result<()>>>> = target_socket_refs
+            .chunks(batch_size)
+            .map(|batch| {
+                let batch = batch.to_vec();
+                let bytes = message_bytes.clone();
+                let permit = semaphore.clone();
+
+                tokio::spawn(async move {
+                    let _permit = permit.acquire().await.expect("Semaphore closed");
+                    let mut batch_results = Vec::with_capacity(batch.len());
+
+                    // Process all sockets in this batch sequentially to reduce task overhead
+                    for socket_ref in batch {
+                        let result = socket_ref.send_raw_message(bytes.clone()).await;
+                        batch_results.push(result);
+                    }
+
+                    batch_results
+                })
+            })
+            .collect();
+
+        // Wait for all batch tasks to complete and flatten results
+
+        join_all(batch_tasks).await
+    }
+
+    /// Send messages using streaming pipeline with buffer_unordered for optimal throughput
+    async fn send_streaming_messages(
+        &self,
+        target_socket_refs: Vec<WebSocketRef>,
+        message_bytes: Arc<Vec<u8>>,
+    ) -> Vec<Result<()>> {
+        let socket_count = target_socket_refs.len();
+
+        // Determine optimal buffer size based on socket count and system capabilities
+        let buffer_size = if socket_count <= 100 {
+            socket_count.min(16) // Small broadcasts: limited buffering
+        } else if socket_count <= 1000 {
+            64 // Medium broadcasts: moderate buffering
+        } else {
+            128 // Large broadcasts: high buffering for maximum throughput
+        };
+
+        // Create streaming pipeline using buffer_unordered for concurrent processing
+        let results: Vec<Result<()>> =
+            stream::iter(target_socket_refs.into_iter().map(|socket_ref| {
+                let bytes = message_bytes.clone();
+                async move { socket_ref.send_raw_message(bytes).await }
+            }))
+            .buffer_unordered(buffer_size)
+            .collect()
+            .await;
+
+        results
+    }
+
+    /// Hybrid approach: choose between streaming and batching based on subscriber count and threshold
+    async fn send_hybrid_messages(
+        &self,
+        target_socket_refs: Vec<WebSocketRef>,
+        message_bytes: Arc<Vec<u8>>,
+    ) -> Vec<Result<()>> {
+        let subscriber_count = target_socket_refs.len();
+
+        if subscriber_count <= self.broadcast_streaming_threshold {
+            // Use streaming pipeline for smaller broadcasts
+            self.send_streaming_messages(target_socket_refs, message_bytes)
+                .await
+        } else {
+            // Use batched processing for larger broadcasts
+            let batch_results = self
+                .send_batched_messages(target_socket_refs, message_bytes)
+                .await;
+
+            // Flatten batched results to match streaming format
+            let mut flattened_results = Vec::new();
+            for batch_result in batch_results {
+                match batch_result {
+                    Ok(results) => flattened_results.extend(results),
+                    Err(_) => {
+                        // If batch task failed, assume all sends in that batch failed
+                        // This is a simplification - in practice we'd want better error handling
+                        flattened_results.push(Err(crate::error::Error::Connection(
+                            "Batch task failed".to_string(),
+                        )));
+                    }
+                }
+            }
+            flattened_results
         }
     }
 
@@ -112,6 +236,7 @@ impl ConnectionManager for LocalAdapter {
         except: Option<&SocketId>,
         app_id: &str,
     ) -> Result<()> {
+        let start_time = std::time::Instant::now();
         debug!("Sending message to channel: {}", channel);
         debug!("Message: {:?}", message);
 
@@ -129,69 +254,74 @@ impl ConnectionManager for LocalAdapter {
                 }
             }
 
-            // Send messages in parallel using WebSocketRef
-            let send_tasks: Vec<JoinHandle<Result<()>>> = target_socket_refs
-                .into_iter()
-                .map(|socket_ref| {
-                    let message_clone = message.clone();
-                    tokio::spawn(async move { socket_ref.send_message(&message_clone).await })
-                })
-                .collect();
+            let subscriber_count = target_socket_refs.len();
+            info!(
+                "Broadcasting to user channel '{}': {} user sockets",
+                channel, subscriber_count
+            );
 
-            // Wait for all sends to complete and collect results
-            let results = join_all(send_tasks).await;
+            // Serialize message once to avoid repeated serialization overhead
+            let message_bytes =
+                Arc::new(serde_json::to_vec(&message).map_err(|e| {
+                    Error::InvalidMessageFormat(format!("Serialization failed: {e}"))
+                })?);
 
-            // Handle any errors from the spawned tasks
-            for result in results {
-                match result {
-                    Ok(send_result) => {
-                        if let Err(e) = send_result {
-                            error!("Failed to send message to user socket: {}", e);
-                        }
-                    }
-                    Err(join_error) => {
-                        error!("Task join error while sending to user: {}", join_error);
-                    }
+            // Send messages using hybrid approach (streaming for small, batching for large)
+            let results = self
+                .send_hybrid_messages(target_socket_refs, message_bytes)
+                .await;
+
+            let elapsed = start_time.elapsed();
+            info!(
+                "User broadcast completed for channel '{}': {} sockets in {:?} ({:.2}ms)",
+                channel,
+                subscriber_count,
+                elapsed,
+                elapsed.as_secs_f64() * 1000.0
+            );
+
+            // Handle any errors from the hybrid messaging
+            for send_result in results {
+                if let Err(e) = send_result {
+                    error!("Failed to send message to user socket: {}", e);
                 }
             }
         } else {
             let namespace = self.get_namespace(app_id).await.unwrap();
-            let sockets = namespace.get_channel_sockets(channel);
 
-            // Collect socket refs that should receive the message
-            let mut target_socket_refs = Vec::new();
-            for socket_id_entry in sockets.iter() {
-                let socket_id = socket_id_entry.key();
-                if except != Some(socket_id)
-                    && let Some(socket_ref) = namespace.get_connection(socket_id)
-                {
-                    target_socket_refs.push(socket_ref);
-                }
-            }
+            // Get socket references with exclusion handled efficiently during collection
+            let target_socket_refs = namespace.get_channel_socket_refs_except(channel, except);
 
-            // Send messages in parallel using WebSocketRef
-            let send_tasks: Vec<JoinHandle<Result<()>>> = target_socket_refs
-                .into_iter()
-                .map(|socket_ref| {
-                    let message_clone = message.clone();
-                    tokio::spawn(async move { socket_ref.send_message(&message_clone).await })
-                })
-                .collect();
+            let subscriber_count = target_socket_refs.len();
+            info!(
+                "Broadcasting to channel '{}': {} subscribers",
+                channel, subscriber_count
+            );
 
-            // Wait for all sends to complete and collect results
-            let results = join_all(send_tasks).await;
+            // Serialize message once to avoid repeated serialization overhead
+            let message_bytes =
+                Arc::new(serde_json::to_vec(&message).map_err(|e| {
+                    Error::InvalidMessageFormat(format!("Serialization failed: {e}"))
+                })?);
 
-            // Handle any errors from the spawned tasks
-            for result in results {
-                match result {
-                    Ok(send_result) => {
-                        if let Err(e) = send_result {
-                            error!("Failed to send message to channel socket: {}", e);
-                        }
-                    }
-                    Err(join_error) => {
-                        error!("Task join error while sending to channel: {}", join_error);
-                    }
+            // Send messages using hybrid approach (streaming for small, batching for large)
+            let results = self
+                .send_hybrid_messages(target_socket_refs, message_bytes)
+                .await;
+
+            let elapsed = start_time.elapsed();
+            info!(
+                "Broadcast completed for channel '{}': {} subscribers in {:?} ({:.2}ms)",
+                channel,
+                subscriber_count,
+                elapsed,
+                elapsed.as_secs_f64() * 1000.0
+            );
+
+            // Handle any errors from the hybrid messaging
+            for send_result in results {
+                if let Err(e) = send_result {
+                    error!("Failed to send message to channel socket: {}", e);
                 }
             }
         }
@@ -282,6 +412,16 @@ impl ConnectionManager for LocalAdapter {
     ) -> Result<bool> {
         let namespace = self.get_or_create_namespace(app_id).await;
         Ok(namespace.remove_channel_from_socket(channel, socket_id))
+    }
+
+    async fn batch_remove_from_channel(
+        &mut self,
+        app_id: &str,
+        channel: &str,
+        socket_ids: &[SocketId],
+    ) -> Result<usize> {
+        let namespace = self.get_or_create_namespace(app_id).await;
+        Ok(namespace.batch_remove_from_channel(channel, socket_ids))
     }
 
     async fn get_presence_member(

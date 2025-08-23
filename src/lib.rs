@@ -2,6 +2,7 @@ pub mod adapter;
 pub mod app;
 pub mod cache;
 pub mod channel;
+pub mod cleanup;
 pub mod error;
 pub mod http_handler;
 pub mod metrics;
