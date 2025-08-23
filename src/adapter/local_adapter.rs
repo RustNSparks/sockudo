@@ -91,8 +91,8 @@ impl LocalAdapter {
             .collect();
 
         // Wait for all batch tasks to complete and flatten results
-        let batch_results = join_all(batch_tasks).await;
-        batch_results
+
+        join_all(batch_tasks).await
     }
 
     /// Send messages using streaming pipeline with buffer_unordered for optimal throughput
