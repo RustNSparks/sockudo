@@ -13,6 +13,7 @@ use tracing::{debug, error, info, warn};
 
 pub struct CleanupWorker {
     connection_manager: Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
+    #[allow(dead_code)]
     channel_manager: Arc<RwLock<ChannelManager>>,
     app_manager: Arc<dyn AppManager + Send + Sync>,
     webhook_integration: Option<Arc<WebhookIntegration>>,
