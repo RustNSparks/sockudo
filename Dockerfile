@@ -47,7 +47,7 @@ RUN strip target/release/sockudo
 # -----------------------------------------------------------------------------
 # Runtime Stage: Create minimal runtime image
 # -----------------------------------------------------------------------------
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
