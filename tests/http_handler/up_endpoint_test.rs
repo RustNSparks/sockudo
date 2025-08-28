@@ -79,6 +79,7 @@ async fn test_up_general_health_check_with_apps() {
         ))),
         None,
         sockudo::options::ServerOptions::default(),
+        None,
     );
     let handler_arc = Arc::new(handler);
 
@@ -218,6 +219,7 @@ async fn test_up_general_health_check_app_manager_error() {
         ))),
         None,
         sockudo::options::ServerOptions::default(),
+        None,
     );
     let handler_arc = Arc::new(handler);
 
@@ -250,6 +252,7 @@ async fn test_up_specific_app_manager_error() {
         ))),
         None,
         sockudo::options::ServerOptions::default(),
+        None,
     );
     let handler_arc = Arc::new(handler);
 
@@ -317,6 +320,7 @@ async fn test_up_general_health_check_timeout() {
         ))),
         None,
         sockudo::options::ServerOptions::default(),
+        None,
     );
     let handler_arc = Arc::new(handler);
 
@@ -349,6 +353,7 @@ async fn test_up_specific_app_timeout() {
         ))),
         None,
         sockudo::options::ServerOptions::default(),
+        None,
     );
     let handler_arc = Arc::new(handler);
 
@@ -584,6 +589,7 @@ async fn test_up_adapter_health_check_failure() {
         ))),
         None,
         sockudo::options::ServerOptions::default(),
+        None,
     );
     let handler_arc = Arc::new(handler);
 
@@ -619,6 +625,7 @@ async fn test_up_cache_health_check_failure() {
         ))),
         None,
         server_options,
+        None,
     );
     let handler_arc = Arc::new(handler);
 

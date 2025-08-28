@@ -486,6 +486,24 @@ impl MetricsInterface for PrometheusMetricsDriver {
         );
     }
 
+    fn mark_ws_messages_sent_batch(&self, app_id: &str, sent_message_size: usize, count: usize) {
+        let tags = self.get_tags(app_id);
+        // Batch update: total bytes = message_size * count, total messages = count
+        self.socket_bytes_transmitted
+            .with_label_values(&tags)
+            .inc_by((sent_message_size * count) as f64);
+        self.ws_messages_sent
+            .with_label_values(&tags)
+            .inc_by(count as f64);
+
+        debug!(
+            "Metrics: WS messages sent batch for app {}, count: {}, total size: {}",
+            app_id,
+            count,
+            sent_message_size * count
+        );
+    }
+
     fn mark_ws_message_received(&self, app_id: &str, message_size: usize) {
         let tags = self.get_tags(app_id);
         self.socket_bytes_received

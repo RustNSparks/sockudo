@@ -56,7 +56,7 @@ services:
       - ./target:/app/target:ro
       - ./config:/app/config:ro
     environment:
-      - DEBUG=true
+      - DEBUG=false
       - ADAPTER_DRIVER=redis
       - ADAPTER_REDIS_URL=redis://redis:6380/0
       - ADAPTER_REDIS_PREFIX="test:"

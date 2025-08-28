@@ -98,9 +98,12 @@ impl ConnectionHandler {
             && let Some(ref metrics) = self.metrics
         {
             let metrics_locked = metrics.lock().await;
-            for _ in 0..target_socket_count {
-                metrics_locked.mark_ws_message_sent(&app_config.id, message_size);
-            }
+            // Batch metrics update instead of loop for performance
+            metrics_locked.mark_ws_messages_sent_batch(
+                &app_config.id,
+                message_size,
+                target_socket_count,
+            );
 
             // Track broadcast latency if we have a start time
             if let Some(start_ms) = start_time_ms {
