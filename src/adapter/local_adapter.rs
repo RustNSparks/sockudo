@@ -7,21 +7,25 @@ use crate::namespace::Namespace;
 use crate::protocol::messages::PusherMessage;
 use crate::websocket::{SocketId, WebSocketRef};
 use async_trait::async_trait;
+use bytes::Bytes;
 use dashmap::{DashMap, DashSet};
 use fastwebsockets::WebSocketWrite;
-use futures_util::future::join_all;
 use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::WriteHalf;
-use tokio::task::JoinHandle;
+use tokio::sync::Semaphore;
 use tracing::{debug, error, info};
 
 #[derive(Clone)]
 pub struct LocalAdapter {
     pub namespaces: DashMap<String, Arc<Namespace>>,
+    pub buffer_multiplier_per_cpu: usize,
+    pub max_concurrent: usize,
+    // Global semaphore to limit total concurrent broadcast operations across all channels
+    broadcast_semaphore: Arc<Semaphore>,
 }
 
 impl Default for LocalAdapter {
@@ -32,9 +36,83 @@ impl Default for LocalAdapter {
 
 impl LocalAdapter {
     pub fn new() -> Self {
+        Self::new_with_buffer_multiplier(128) // Default: 64 concurrent ops per CPU
+    }
+
+    pub fn new_with_buffer_multiplier(multiplier: usize) -> Self {
+        let cpu_cores = num_cpus::get();
+        let max_concurrent = cpu_cores * multiplier;
+
+        info!(
+            "LocalAdapter initialized with {} CPU cores, buffer multiplier {}, max concurrent {}",
+            cpu_cores, multiplier, max_concurrent
+        );
+
         Self {
             namespaces: DashMap::new(),
+            buffer_multiplier_per_cpu: multiplier,
+            max_concurrent,
+            broadcast_semaphore: Arc::new(Semaphore::new(max_concurrent)),
         }
+    }
+
+    /// Send messages using chunked processing with semaphore-controlled concurrency
+    async fn send_messages_concurrent(
+        &self,
+        target_socket_refs: Vec<WebSocketRef>,
+        message_bytes: Bytes,
+    ) -> Vec<Result<()>> {
+        use futures::stream::{self, StreamExt};
+
+        let socket_count = target_socket_refs.len();
+
+        // Determine target number of chunks (1-8 based on socket count vs max concurrency)
+        let target_chunks = socket_count.div_ceil(self.max_concurrent).clamp(1, 8);
+
+        // Calculate socket chunk size based on socket count divided by target chunks
+        // With a max of self.max_concurrent sockets per chunk (better utilization)
+        let socket_chunk_size = (socket_count / target_chunks)
+            .min(self.max_concurrent)
+            .max(1);
+
+        // Process chunks sequentially with controlled concurrency
+        let mut results = Vec::with_capacity(socket_count);
+
+        for socket_chunk in target_socket_refs.chunks(socket_chunk_size) {
+            let chunk_size = socket_chunk.len();
+
+            // Acquire permits for the entire chunk
+            match self
+                .broadcast_semaphore
+                .acquire_many(chunk_size as u32)
+                .await
+            {
+                Ok(_permits) => {
+                    // Process sockets in this chunk using buffered unordered streaming
+                    let chunk_vec: Vec<_> = socket_chunk.to_vec();
+                    let chunk_results: Vec<Result<()>> = stream::iter(chunk_vec)
+                        .map(|socket_ref| {
+                            let bytes = message_bytes.clone();
+                            async move { socket_ref.send_broadcast(bytes) }
+                        })
+                        .buffer_unordered(chunk_size)
+                        .collect()
+                        .await;
+
+                    results.extend(chunk_results);
+                }
+                Err(_) => {
+                    // Return errors for all sockets if semaphore fails
+                    for _ in 0..chunk_size {
+                        results.push(Err(Error::Connection(
+                            "Broadcast semaphore unavailable".to_string(),
+                        )));
+                    }
+                }
+            }
+        }
+
+        results
     }
 
     // Helper function to get or create namespace
@@ -116,84 +194,41 @@ impl ConnectionManager for LocalAdapter {
         debug!("Sending message to channel: {}", channel);
         debug!("Message: {:?}", message);
 
-        if channel.starts_with("#server-to-user-") {
+        // Serialize message once to avoid repeated serialization overhead
+        let serialized_message = serde_json::to_vec(&message)
+            .map_err(|e| Error::InvalidMessageFormat(format!("Serialization failed: {e}")))?;
+        let message_bytes = Bytes::from(serialized_message);
+
+        let namespace = self.get_namespace(app_id).await.unwrap();
+
+        // Get target socket references based on channel type
+        let target_socket_refs = if channel.starts_with("#server-to-user-") {
             let user_id = channel.trim_start_matches("#server-to-user-");
-            let namespace = self.get_namespace(app_id).await.unwrap();
             let socket_refs = namespace.get_user_sockets(user_id).await?;
 
-            // Collect socket IDs that should receive the message, using WebSocketRef methods
-            let mut target_socket_refs = Vec::new();
+            // Collect socket IDs that should receive the message, applying exclusion
+            let mut target_refs = Vec::new();
             for socket_ref in socket_refs.iter() {
                 let socket_id = socket_ref.get_socket_id().await;
                 if except != Some(&socket_id) {
-                    target_socket_refs.push(socket_ref.clone());
+                    target_refs.push(socket_ref.clone());
                 }
             }
-
-            // Send messages in parallel using WebSocketRef
-            let send_tasks: Vec<JoinHandle<Result<()>>> = target_socket_refs
-                .into_iter()
-                .map(|socket_ref| {
-                    let message_clone = message.clone();
-                    tokio::spawn(async move { socket_ref.send_message(&message_clone).await })
-                })
-                .collect();
-
-            // Wait for all sends to complete and collect results
-            let results = join_all(send_tasks).await;
-
-            // Handle any errors from the spawned tasks
-            for result in results {
-                match result {
-                    Ok(send_result) => {
-                        if let Err(e) = send_result {
-                            error!("Failed to send message to user socket: {}", e);
-                        }
-                    }
-                    Err(join_error) => {
-                        error!("Task join error while sending to user: {}", join_error);
-                    }
-                }
-            }
+            target_refs
         } else {
-            let namespace = self.get_namespace(app_id).await.unwrap();
-            let sockets = namespace.get_channel_sockets(channel);
+            // Get socket references with exclusion handled efficiently during collection
+            namespace.get_channel_socket_refs_except(channel, except)
+        };
 
-            // Collect socket refs that should receive the message
-            let mut target_socket_refs = Vec::new();
-            for socket_id_entry in sockets.iter() {
-                let socket_id = socket_id_entry.key();
-                if except != Some(socket_id)
-                    && let Some(socket_ref) = namespace.get_connection(socket_id)
-                {
-                    target_socket_refs.push(socket_ref);
-                }
-            }
+        // Send messages using concurrent tasks with semaphore-controlled concurrency
+        let results = self
+            .send_messages_concurrent(target_socket_refs, message_bytes)
+            .await;
 
-            // Send messages in parallel using WebSocketRef
-            let send_tasks: Vec<JoinHandle<Result<()>>> = target_socket_refs
-                .into_iter()
-                .map(|socket_ref| {
-                    let message_clone = message.clone();
-                    tokio::spawn(async move { socket_ref.send_message(&message_clone).await })
-                })
-                .collect();
-
-            // Wait for all sends to complete and collect results
-            let results = join_all(send_tasks).await;
-
-            // Handle any errors from the spawned tasks
-            for result in results {
-                match result {
-                    Ok(send_result) => {
-                        if let Err(e) = send_result {
-                            error!("Failed to send message to channel socket: {}", e);
-                        }
-                    }
-                    Err(join_error) => {
-                        error!("Task join error while sending to channel: {}", join_error);
-                    }
-                }
+        // Handle any errors from concurrent messaging
+        for send_result in results {
+            if let Err(e) = send_result {
+                error!("Failed to send message: {}", e);
             }
         }
 
@@ -307,7 +342,7 @@ impl ConnectionManager for LocalAdapter {
     async fn add_user(&mut self, ws_ref: WebSocketRef) -> Result<()> {
         // Get app_id using WebSocketRef async method
         let app_id = {
-            let ws_guard = ws_ref.0.lock().await;
+            let ws_guard = ws_ref.inner.lock().await;
             ws_guard.state.get_app_key()
         };
         let namespace = self.get_namespace(&app_id).await.unwrap();
@@ -318,7 +353,7 @@ impl ConnectionManager for LocalAdapter {
     async fn remove_user(&mut self, ws_ref: WebSocketRef) -> Result<()> {
         // Get app_id using WebSocketRef async method
         let app_id = {
-            let ws_guard = ws_ref.0.lock().await;
+            let ws_guard = ws_ref.inner.lock().await;
             ws_guard.state.get_app_key()
         };
         let namespace = self.get_namespace(&app_id).await.unwrap();

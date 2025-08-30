@@ -54,7 +54,11 @@ impl AdapterFactory {
                                 e
                             )
                         );
-                        Ok(Arc::new(Mutex::new(LocalAdapter::new())))
+                        Ok(Arc::new(Mutex::new(
+                            LocalAdapter::new_with_buffer_multiplier(
+                                config.buffer_multiplier_per_cpu,
+                            ),
+                        )))
                     }
                 }
             }
@@ -73,7 +77,9 @@ impl AdapterFactory {
 
                 if nodes.is_empty() {
                     warn!("{}", "Redis Cluster Adapter selected, but no nodes configured. Falling back to local adapter.".to_string());
-                    return Ok(Arc::new(Mutex::new(LocalAdapter::new())));
+                    return Ok(Arc::new(Mutex::new(
+                        LocalAdapter::new_with_buffer_multiplier(config.buffer_multiplier_per_cpu),
+                    )));
                 }
 
                 let cluster_adapter_config = RedisClusterAdapterConfig {
@@ -93,7 +99,11 @@ impl AdapterFactory {
                                 e
                             )
                         );
-                        Ok(Arc::new(Mutex::new(LocalAdapter::new())))
+                        Ok(Arc::new(Mutex::new(
+                            LocalAdapter::new_with_buffer_multiplier(
+                                config.buffer_multiplier_per_cpu,
+                            ),
+                        )))
                     }
                 }
             }
@@ -119,14 +129,20 @@ impl AdapterFactory {
                                 e
                             )
                         );
-                        Ok(Arc::new(Mutex::new(LocalAdapter::new())))
+                        Ok(Arc::new(Mutex::new(
+                            LocalAdapter::new_with_buffer_multiplier(
+                                config.buffer_multiplier_per_cpu,
+                            ),
+                        )))
                     }
                 }
             }
             AdapterDriver::Local => {
                 // Handle unknown as Local or make it an error
                 info!("{}", "Using local adapter.".to_string());
-                Ok(Arc::new(Mutex::new(LocalAdapter::new())))
+                Ok(Arc::new(Mutex::new(
+                    LocalAdapter::new_with_buffer_multiplier(config.buffer_multiplier_per_cpu),
+                )))
             }
         }
     }

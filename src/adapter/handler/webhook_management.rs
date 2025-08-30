@@ -21,7 +21,7 @@ impl ConnectionHandler {
                     .get_connection(socket_id, &app_config.id)
                     .await
                 {
-                    let conn_locked = conn_arc.0.lock().await;
+                    let conn_locked = conn_arc.inner.lock().await;
                     conn_locked
                         .state
                         .presence

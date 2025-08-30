@@ -5,6 +5,7 @@ use crate::app::config::App;
 use crate::channel::PresenceMemberInfo;
 use crate::error::{Error, Result};
 use crate::protocol::messages::PusherMessage;
+use bytes::Bytes;
 use fastwebsockets::{Frame, Payload, WebSocketWrite};
 use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
@@ -252,6 +253,72 @@ impl SocketOperation {
 }
 
 impl MessageSender {
+    pub fn new_with_broadcast(
+        mut socket: WebSocketWrite<WriteHalf<TokioIo<Upgraded>>>,
+        mut broadcast_rx: mpsc::UnboundedReceiver<Bytes>,
+    ) -> Self {
+        let (sender, mut receiver) = mpsc::unbounded_channel::<Frame<'static>>();
+
+        let receiver_handle = tokio::spawn(async move {
+            let mut frame_count = 0;
+            let mut is_shutting_down = false;
+
+            loop {
+                tokio::select! {
+                    // Priority for broadcasts
+                    biased;
+
+                    Some(bytes) = broadcast_rx.recv() => {
+                        frame_count += 1;
+                        let frame = Frame::text(Payload::from(bytes.as_ref()));
+                        if let Err(e) = socket.write_frame(frame).await {
+                            Self::log_connection_error(
+                                &e,
+                                SocketOperation::WriteFrame,
+                                frame_count,
+                                is_shutting_down,
+                            );
+                            break;
+                        }
+                    }
+                    // Regular messages
+                    Some(frame) = receiver.recv() => {
+                        frame_count += 1;
+
+                        // Detect if this is a close frame (indicates shutdown)
+                        if matches!(frame.opcode, fastwebsockets::OpCode::Close) {
+                            is_shutting_down = true;
+                        }
+
+                        if let Err(e) = socket.write_frame(frame).await {
+                            Self::log_connection_error(
+                                &e,
+                                SocketOperation::WriteFrame,
+                                frame_count,
+                                is_shutting_down,
+                            );
+                            break;
+                        }
+                    }
+                    else => break,
+                }
+            }
+
+            // Try to close gracefully
+            if let Err(e) = socket
+                .write_frame(Frame::close(1000, b"Normal closure"))
+                .await
+            {
+                Self::log_connection_error(&e, SocketOperation::SendCloseFrame, frame_count, true);
+            }
+        });
+
+        Self {
+            sender,
+            _receiver_handle: receiver_handle,
+        }
+    }
+
     fn is_connection_error(error: &fastwebsockets::WebSocketError) -> bool {
         // For now, let's use a different approach to check if it's an IO error
         // We'll pattern match on the error's source or check if it contains IO error
@@ -367,18 +434,37 @@ impl MessageSender {
 pub struct WebSocket {
     pub state: ConnectionState,
     pub message_sender: MessageSender,
+    // New: Direct broadcast channel for lock-free broadcasts
+    pub broadcast_tx: mpsc::UnboundedSender<Bytes>,
 }
 
 impl WebSocket {
     pub fn new(socket_id: SocketId, socket: WebSocketWrite<WriteHalf<TokioIo<Upgraded>>>) -> Self {
-        Self {
+        // Create dedicated broadcast channel
+        let (broadcast_tx, broadcast_rx) = mpsc::unbounded_channel::<Bytes>();
+
+        // Create MessageSender with broadcast receiver
+        let message_sender = MessageSender::new_with_broadcast(socket, broadcast_rx);
+
+        WebSocket {
             state: ConnectionState::with_socket_id(socket_id),
-            message_sender: MessageSender::new(socket),
+            message_sender,
+            broadcast_tx,
         }
     }
 
     pub fn get_socket_id(&self) -> &SocketId {
         &self.state.socket_id
+    }
+
+    fn ensure_can_send(&self) -> Result<()> {
+        if self.is_connected() {
+            Ok(())
+        } else {
+            Err(Error::ConnectionClosed(
+                "Cannot send message on closed connection".to_string(),
+            ))
+        }
     }
 
     pub async fn close(&mut self, code: u16, reason: String) -> Result<()> {
@@ -415,18 +501,12 @@ impl WebSocket {
     }
 
     pub fn send_message(&self, message: &PusherMessage) -> Result<()> {
-        // Check if connection is in a valid state to send messages
-        match self.state.status {
-            ConnectionStatus::Active | ConnectionStatus::PingSent(_) => {
-                self.message_sender.send_json(message)
-            }
-            ConnectionStatus::Closing | ConnectionStatus::Closed => Err(Error::ConnectionClosed(
-                "Cannot send message on closed connection".to_string(),
-            )),
-        }
+        self.ensure_can_send()?;
+        self.message_sender.send_json(message)
     }
 
     pub fn send_text(&self, text: String) -> Result<()> {
+        self.ensure_can_send()?;
         self.message_sender.send_text(text)
     }
 
@@ -499,50 +579,68 @@ impl Hash for WebSocket {
 }
 
 #[derive(Clone)]
-pub struct WebSocketRef(pub Arc<Mutex<WebSocket>>);
+pub struct WebSocketRef {
+    // Lock-free broadcast channel access
+    pub broadcast_tx: mpsc::UnboundedSender<Bytes>,
+
+    // Full reference for all operations
+    pub inner: Arc<Mutex<WebSocket>>,
+}
 
 impl WebSocketRef {
     pub fn new(websocket: WebSocket) -> Self {
-        Self(Arc::new(Mutex::new(websocket)))
+        let broadcast_tx = websocket.broadcast_tx.clone();
+
+        Self {
+            broadcast_tx,
+            inner: Arc::new(Mutex::new(websocket)),
+        }
+    }
+
+    // Lock-free for broadcasts
+    pub fn send_broadcast(&self, bytes: Bytes) -> Result<()> {
+        self.broadcast_tx
+            .send(bytes)
+            .map_err(|_| Error::ConnectionClosed("Broadcast channel closed".to_string()))
     }
 
     pub async fn send_message(&self, message: &PusherMessage) -> Result<()> {
-        let ws = self.0.lock().await;
+        let ws = self.inner.lock().await;
         ws.send_message(message)
     }
 
     pub async fn close(&self, code: u16, reason: String) -> Result<()> {
-        let mut ws = self.0.lock().await;
+        let mut ws = self.inner.lock().await;
         ws.close(code, reason).await
     }
 
     pub async fn get_socket_id(&self) -> SocketId {
-        let ws = self.0.lock().await;
+        let ws = self.inner.lock().await;
         ws.get_socket_id().clone()
     }
 
     pub async fn is_subscribed_to(&self, channel: &str) -> bool {
-        let ws = self.0.lock().await;
+        let ws = self.inner.lock().await;
         ws.is_subscribed_to(channel)
     }
 
     pub async fn get_user_id(&self) -> Option<String> {
-        let ws = self.0.lock().await;
+        let ws = self.inner.lock().await;
         ws.state.user_id.clone()
     }
 
     pub async fn update_activity(&self) {
-        let mut ws = self.0.lock().await;
+        let mut ws = self.inner.lock().await;
         ws.update_activity();
     }
 
     pub async fn subscribe_to_channel(&self, channel: String) {
-        let mut ws = self.0.lock().await;
+        let mut ws = self.inner.lock().await;
         ws.subscribe_to_channel(channel);
     }
 
     pub async fn unsubscribe_from_channel(&self, channel: &str) -> bool {
-        let mut ws = self.0.lock().await;
+        let mut ws = self.inner.lock().await;
         ws.unsubscribe_from_channel(channel)
     }
 }
@@ -550,14 +648,14 @@ impl WebSocketRef {
 impl Hash for WebSocketRef {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         // Use the raw pointer address of the Arc for hashing
-        let ptr = Arc::as_ptr(&self.0) as *const () as usize;
+        let ptr = Arc::as_ptr(&self.inner) as *const () as usize;
         ptr.hash(state);
     }
 }
 
 impl PartialEq for WebSocketRef {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
+        Arc::ptr_eq(&self.inner, &other.inner)
     }
 }
 
@@ -566,7 +664,7 @@ impl Eq for WebSocketRef {}
 impl Debug for WebSocketRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WebSocketRef")
-            .field("ptr", &Arc::as_ptr(&self.0))
+            .field("ptr", &Arc::as_ptr(&self.inner))
             .finish()
     }
 }

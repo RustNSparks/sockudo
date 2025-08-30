@@ -55,7 +55,7 @@ impl ConnectionHandler {
             .ok_or_else(|| Error::ConnectionNotFound)?;
 
         {
-            let mut conn_locked = connection_arc.0.lock().await;
+            let mut conn_locked = connection_arc.inner.lock().await;
             conn_locked.set_user_info(user_info.clone());
         }
 
@@ -191,7 +191,7 @@ impl ConnectionHandler {
                 .await?;
 
             for socket_ref in user_sockets {
-                let socket_guard = socket_ref.0.lock().await;
+                let socket_guard = socket_ref.inner.lock().await;
                 watcher_sockets.push(socket_guard.state.socket_id.clone());
             }
         }

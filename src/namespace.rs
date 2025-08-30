@@ -65,7 +65,7 @@ impl Namespace {
             }
         };
 
-        // Create the WebSocket using your new structure
+        // Create the WebSocket using new structure
         let mut websocket = WebSocket::new(socket_id.clone(), socket_writer);
 
         // Set the app configuration
@@ -105,7 +105,7 @@ impl Namespace {
                 let socket_id = socket_id_entry.key();
                 if let Some(connection) = self.get_connection(socket_id) {
                     let presence_data = {
-                        let conn_guard = connection.0.lock().await;
+                        let conn_guard = connection.inner.lock().await;
                         conn_guard
                             .state
                             .presence
@@ -142,6 +142,48 @@ impl Namespace {
         }
 
         sockets_in_channel
+    }
+
+    // Get socket references for a channel with optional exclusion, minimizing lock contention
+    pub fn get_channel_socket_refs_except(
+        &self,
+        channel: &str,
+        except: Option<&SocketId>,
+    ) -> Vec<WebSocketRef> {
+        let mut socket_refs = Vec::new();
+
+        if let Some(channel_sockets_ref) = self.channels.get(channel) {
+            // Take snapshot of socket IDs, filtering out excluded socket
+            let socket_ids: Vec<SocketId> = channel_sockets_ref
+                .value()
+                .iter()
+                .filter_map(|entry| {
+                    let socket_id = entry.key();
+                    if except == Some(socket_id) {
+                        None // Skip excluded socket
+                    } else {
+                        Some(socket_id.clone())
+                    }
+                })
+                .collect();
+
+            // Release the channel lock by dropping the reference
+            drop(channel_sockets_ref);
+
+            // Now get socket references without holding channel lock
+            for socket_id in socket_ids {
+                if let Some(socket_ref) = self.get_connection(&socket_id) {
+                    socket_refs.push(socket_ref);
+                }
+            }
+        } else {
+            debug!(
+                "get_channel_socket_refs_except called on non-existent channel: {}",
+                channel
+            );
+        }
+
+        socket_refs
     }
 
     // Retrieves references to WebSockets associated with a specific user ID.
@@ -270,7 +312,7 @@ impl Namespace {
         socket_id: &SocketId,
     ) -> Option<PresenceMemberInfo> {
         if let Some(connection) = self.get_connection(socket_id) {
-            let conn_guard = connection.0.lock().await;
+            let conn_guard = connection.inner.lock().await;
             conn_guard
                 .state
                 .presence

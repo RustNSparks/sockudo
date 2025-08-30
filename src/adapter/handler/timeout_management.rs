@@ -55,7 +55,7 @@ impl ConnectionHandler {
 
                 // Check actual time since last activity
                 let time_since_activity = {
-                    let ws = conn.0.lock().await;
+                    let ws = conn.inner.lock().await;
                     ws.state.time_since_last_ping()
                 };
 
@@ -76,7 +76,7 @@ impl ConnectionHandler {
 
                 // Truly inactive for activity timeout duration, send ping
                 let ping_result = {
-                    let mut ws = conn.0.lock().await;
+                    let mut ws = conn.inner.lock().await;
                     // Update connection status to indicate ping sent
                     ws.state.status =
                         crate::websocket::ConnectionStatus::PingSent(std::time::Instant::now());
@@ -103,7 +103,7 @@ impl ConnectionHandler {
                             .get_connection(&socket_id_clone, &app_id_clone)
                             .await
                         {
-                            let mut ws = conn.0.lock().await;
+                            let mut ws = conn.inner.lock().await;
                             // Check if we're still in PingSent state (no pong received)
                             if let crate::websocket::ConnectionStatus::PingSent(ping_time) =
                                 ws.state.status
@@ -143,7 +143,7 @@ impl ConnectionHandler {
         // Store the timeout handle
         let mut conn_manager = self.connection_manager.lock().await;
         if let Some(conn) = conn_manager.get_connection(socket_id, app_id).await {
-            let mut ws = conn.0.lock().await;
+            let mut ws = conn.inner.lock().await;
             ws.state.timeouts.activity_timeout_handle = Some(timeout_handle);
         }
 
@@ -153,7 +153,7 @@ impl ConnectionHandler {
     pub async fn clear_activity_timeout(&self, app_id: &str, socket_id: &SocketId) -> Result<()> {
         let mut conn_manager = self.connection_manager.lock().await;
         if let Some(conn) = conn_manager.get_connection(socket_id, app_id).await {
-            let mut ws = conn.0.lock().await;
+            let mut ws = conn.inner.lock().await;
             ws.state.timeouts.clear_activity_timeout();
         }
         Ok(())
@@ -163,7 +163,7 @@ impl ConnectionHandler {
         // Update last activity time
         let mut conn_manager = self.connection_manager.lock().await;
         if let Some(conn) = conn_manager.get_connection(socket_id, app_id).await {
-            let mut ws = conn.0.lock().await;
+            let mut ws = conn.inner.lock().await;
             ws.update_activity();
         }
         Ok(())
@@ -191,7 +191,7 @@ impl ConnectionHandler {
                 .get_connection(&socket_id_clone, &app_id_clone)
                 .await
             {
-                let mut ws = conn.0.lock().await;
+                let mut ws = conn.inner.lock().await;
 
                 // Check if user is still not authenticated
                 if !ws.state.is_authenticated() {
@@ -208,7 +208,7 @@ impl ConnectionHandler {
         // Store the timeout handle
         let mut conn_manager = self.connection_manager.lock().await;
         if let Some(conn) = conn_manager.get_connection(socket_id, app_id).await {
-            let mut ws = conn.0.lock().await;
+            let mut ws = conn.inner.lock().await;
             ws.state.timeouts.auth_timeout_handle = Some(timeout_handle);
         }
 
@@ -222,7 +222,7 @@ impl ConnectionHandler {
     ) -> Result<()> {
         let mut conn_manager = self.connection_manager.lock().await;
         if let Some(conn) = conn_manager.get_connection(socket_id, app_id).await {
-            let mut ws = conn.0.lock().await;
+            let mut ws = conn.inner.lock().await;
             ws.state.timeouts.clear_auth_timeout();
         }
         Ok(())
@@ -239,7 +239,7 @@ impl ConnectionHandler {
 
         let mut conn_manager = self.connection_manager.lock().await;
         if let Some(conn) = conn_manager.get_connection(socket_id, &app_config.id).await {
-            let mut ws = conn.0.lock().await;
+            let mut ws = conn.inner.lock().await;
             // Reset connection status to Active when we receive a ping (client is alive)
             ws.state.status = crate::websocket::ConnectionStatus::Active;
             let pong_message = PusherMessage::pong();

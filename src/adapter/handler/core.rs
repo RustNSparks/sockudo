@@ -165,7 +165,7 @@ impl ConnectionHandler {
 
         let already_disconnecting = if let Some(conn) = conn {
             // Use try_lock to avoid blocking on nested locks (prevents deadlock)
-            if let Ok(mut conn_locked) = conn.0.try_lock() {
+            if let Ok(mut conn_locked) = conn.inner.try_lock() {
                 let was_disconnecting = conn_locked.state.disconnecting;
                 conn_locked.state.disconnecting = true;
                 was_disconnecting
@@ -271,7 +271,7 @@ impl ConnectionHandler {
             .await
         {
             Some(conn_arc) => {
-                let mut conn_locked = conn_arc.0.lock().await;
+                let mut conn_locked = conn_arc.inner.lock().await;
 
                 // Cancel any active timeouts
                 conn_locked.state.timeouts.clear_all();
@@ -514,7 +514,7 @@ impl ConnectionHandler {
             .get_connection(socket_id, &app_config.id)
             .await
         {
-            let conn_locked = conn.0.lock().await;
+            let conn_locked = conn.inner.lock().await;
             Ok(conn_locked.state.user_id.clone())
         } else {
             Ok(None)
@@ -532,7 +532,7 @@ impl ConnectionHandler {
             .get_connection(socket_id, &app_config.id)
             .await
         {
-            let mut conn_locked = conn_arc.0.lock().await;
+            let mut conn_locked = conn_arc.inner.lock().await;
             conn_locked.unsubscribe_from_channel(channel_name);
 
             // Remove presence info if it's a presence channel
@@ -554,7 +554,7 @@ impl ConnectionHandler {
         let user_sockets = connection_manager.get_user_sockets(user_id, app_id).await?;
 
         for ws_ref in user_sockets.iter() {
-            let socket_state_guard = ws_ref.0.lock().await;
+            let socket_state_guard = ws_ref.inner.lock().await;
             if socket_state_guard.state.is_subscribed(channel_name) {
                 return Ok(true);
             }

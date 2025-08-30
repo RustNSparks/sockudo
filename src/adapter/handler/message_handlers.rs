@@ -12,7 +12,7 @@ impl ConnectionHandler {
         {
             let mut connection_manager = self.connection_manager.lock().await;
             if let Some(connection) = connection_manager.get_connection(socket_id, app_id).await {
-                let mut conn_locked = connection.0.lock().await;
+                let mut conn_locked = connection.inner.lock().await;
                 conn_locked.state.status = crate::websocket::ConnectionStatus::Active;
             } else {
                 tracing::warn!("Ping received for unknown socket: {}", socket_id);
@@ -28,7 +28,7 @@ impl ConnectionHandler {
         tracing::debug!("Received pong from socket: {}", socket_id);
         let mut connection_manager = self.connection_manager.lock().await;
         if let Some(connection) = connection_manager.get_connection(socket_id, app_id).await {
-            let mut conn_locked = connection.0.lock().await;
+            let mut conn_locked = connection.inner.lock().await;
             // Note: activity timestamp is already updated by handle_message() for ALL messages
             // We just need to reset connection status to Active when we receive a pong
             conn_locked.state.status = crate::websocket::ConnectionStatus::Active;

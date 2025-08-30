@@ -132,7 +132,7 @@ impl ConnectionHandler {
     ) -> Result<()> {
         let mut conn_manager = self.connection_manager.lock().await;
         if let Some(conn) = conn_manager.get_connection(socket_id, &app_config.id).await {
-            let mut conn_locked = conn.0.lock().await;
+            let mut conn_locked = conn.inner.lock().await;
             conn_locked
                 .close(code, reason.to_string())
                 .await

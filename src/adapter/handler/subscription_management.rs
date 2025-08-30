@@ -176,7 +176,7 @@ impl ConnectionHandler {
             .get_connection(socket_id, &app_config.id)
             .await
         {
-            let mut conn_locked = conn_arc.0.lock().await;
+            let mut conn_locked = conn_arc.inner.lock().await;
             conn_locked.subscribe_to_channel(request.channel.clone());
 
             // Handle presence data

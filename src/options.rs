@@ -276,13 +276,31 @@ pub struct SqsQueueConfig {
     pub message_group_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AdapterConfig {
     pub driver: AdapterDriver,
     pub redis: RedisAdapterConfig,
     pub cluster: RedisClusterAdapterConfig,
     pub nats: NatsAdapterConfig,
+    #[serde(default = "default_buffer_multiplier_per_cpu")]
+    pub buffer_multiplier_per_cpu: usize,
+}
+
+fn default_buffer_multiplier_per_cpu() -> usize {
+    64 // 64 concurrent operations per CPU core
+}
+
+impl Default for AdapterConfig {
+    fn default() -> Self {
+        Self {
+            driver: AdapterDriver::default(),
+            redis: RedisAdapterConfig::default(),
+            cluster: RedisClusterAdapterConfig::default(),
+            nats: NatsAdapterConfig::default(),
+            buffer_multiplier_per_cpu: default_buffer_multiplier_per_cpu(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -954,6 +972,10 @@ impl ServerOptions {
             self.adapter.driver =
                 parse_driver_enum(driver_str, self.adapter.driver.clone(), "Adapter");
         }
+        self.adapter.buffer_multiplier_per_cpu = parse_env::<usize>(
+            "ADAPTER_BUFFER_MULTIPLIER_PER_CPU",
+            self.adapter.buffer_multiplier_per_cpu,
+        );
         if let Ok(driver_str) = std::env::var("CACHE_DRIVER") {
             self.cache.driver = parse_driver_enum(driver_str, self.cache.driver.clone(), "Cache");
         }
