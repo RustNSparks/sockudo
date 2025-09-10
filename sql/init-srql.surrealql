@@ -1,0 +1,75 @@
+-- migrations/surrealdb/001_create_applications_table.surql
+-- SurrealDB migration to create the applications table with proper schema and indexes
+-- Run this file against your SurrealDB instance to set up the schema
+
+-- Define the applications table with proper field definitions
+DEFINE TABLE applications SCHEMAFULL;
+
+-- Define all fields with their types and constraints
+DEFINE FIELD id ON TABLE applications TYPE string;
+DEFINE FIELD key ON TABLE applications TYPE string ASSERT $value != NONE;
+DEFINE FIELD secret ON TABLE applications TYPE string ASSERT $value != NONE;
+DEFINE FIELD max_connections ON TABLE applications TYPE number DEFAULT 1000;
+DEFINE FIELD enable_client_messages ON TABLE applications TYPE bool DEFAULT true;
+DEFINE FIELD enabled ON TABLE applications TYPE bool DEFAULT true;
+DEFINE FIELD max_backend_events_per_second ON TABLE applications TYPE option<number>;
+DEFINE FIELD max_client_events_per_second ON TABLE applications TYPE number DEFAULT 100;
+DEFINE FIELD max_read_requests_per_second ON TABLE applications TYPE option<number>;
+DEFINE FIELD max_presence_members_per_channel ON TABLE applications TYPE option<number>;
+DEFINE FIELD max_presence_member_size_in_kb ON TABLE applications TYPE option<number>;
+DEFINE FIELD max_channel_name_length ON TABLE applications TYPE option<number>;
+DEFINE FIELD max_event_channels_at_once ON TABLE applications TYPE option<number>;
+DEFINE FIELD max_event_name_length ON TABLE applications TYPE option<number>;
+DEFINE FIELD max_event_payload_in_kb ON TABLE applications TYPE option<number>;
+DEFINE FIELD max_event_batch_size ON TABLE applications TYPE option<number>;
+DEFINE FIELD enable_user_authentication ON TABLE applications TYPE option<bool>;
+DEFINE FIELD enable_watchlist_events ON TABLE applications TYPE option<bool>;
+DEFINE FIELD allowed_origins ON TABLE applications TYPE option<array<string>>;
+DEFINE FIELD created_at ON TABLE applications TYPE datetime DEFAULT time::now();
+DEFINE FIELD updated_at ON TABLE applications TYPE datetime DEFAULT time::now();
+
+-- Create unique index on the key field for fast and unique lookups
+DEFINE INDEX unique_key ON TABLE applications COLUMNS key UNIQUE;
+
+-- Create index on enabled field for filtering active applications
+DEFINE INDEX enabled_idx ON TABLE applications COLUMNS enabled;
+
+-- Create index on created_at for time-based queries
+DEFINE INDEX created_at_idx ON TABLE applications COLUMNS created_at;
+
+-- Define events to automatically update the updated_at field
+DEFINE EVENT update_updated_at ON TABLE applications WHEN $event = "UPDATE" THEN (
+    UPDATE $after.id SET updated_at = time::now()
+);
+
+-- Insert a default demo application for development/testing
+CREATE applications:demo_app SET
+    key = "demo-key",
+    secret = "demo-secret", 
+    max_connections = 1000,
+    enable_client_messages = true,
+    enabled = true,
+    max_backend_events_per_second = 100,
+    max_client_events_per_second = 100,
+    max_read_requests_per_second = 100,
+    max_presence_members_per_channel = 100,
+    max_presence_member_size_in_kb = 2,
+    max_channel_name_length = 200,
+    max_event_channels_at_once = 100,
+    max_event_name_length = 200,
+    max_event_payload_in_kb = 100,
+    max_event_batch_size = 10,
+    enable_user_authentication = false,
+    enable_watchlist_events = false,
+    allowed_origins = ["http://localhost:3000", "https://localhost:3000"];
+
+-- Create permissions for the applications table (optional, for security)
+-- Uncomment and modify these based on your security requirements
+
+-- DEFINE SCOPE user SESSION 24h;
+-- DEFINE TOKEN user ON SCOPE user TYPE HS512 VALUE "your-secret-key-here";
+
+-- DEFINE ACCESS applications ON DATABASE TYPE RECORD
+--     SIGNUP (CREATE user SET email = $email, pass = crypto::argon2::generate($pass))
+--     SIGNIN (SELECT * FROM user WHERE email = $email AND crypto::argon2::compare(pass, $pass))
+--     SELECT, UPDATE, DELETE WHERE user = $auth.id;

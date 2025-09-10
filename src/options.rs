@@ -54,6 +54,33 @@ pub struct DynamoDbSettings {
     // cache_ttl for app_manager is already in AppManagerConfig.cache.ttl
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SurrealDbDatabaseConfig {
+    pub url: String,
+    pub namespace: String,
+    pub database: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub table_name: String,
+    pub cache_ttl: u64,
+    pub cache_max_capacity: u64,
+}
+impl Default for SurrealDbDatabaseConfig {
+    fn default() -> Self {
+        Self {
+            url: "ws://localhost:8000".to_string(),
+            namespace: "sockudo".to_string(),
+            database: "sockudo".to_string(),
+            username: Some("root".to_string()),
+            password: Some("root".to_string()),
+            table_name: "applications".to_string(),
+            cache_ttl: 300, // 5 minutes
+            cache_max_capacity: 1000,
+        }
+    }
+}
+
 impl Default for DynamoDbSettings {
     fn default() -> Self {
         Self {
@@ -88,6 +115,7 @@ pub enum AppManagerDriver {
     Mysql,
     Dynamodb,
     PgSql, // Added PostgreSQL as a potential driver
+    SurrealDB,
 }
 impl FromStr for AppManagerDriver {
     type Err = String;
@@ -96,6 +124,8 @@ impl FromStr for AppManagerDriver {
             "memory" => Ok(AppManagerDriver::Memory),
             "mysql" => Ok(AppManagerDriver::Mysql),
             "dynamodb" => Ok(AppManagerDriver::Dynamodb),
+            "pgsql" => Ok(AppManagerDriver::PgSql),
+            "surrealdb" => Ok(AppManagerDriver::SurrealDB),
             _ => Err(format!("Unknown app manager driver: {s}")),
         }
     }
@@ -405,6 +435,7 @@ pub struct DatabaseConfig {
     pub postgres: DatabaseConnection,
     pub redis: RedisConnection,
     pub dynamodb: DynamoDbSettings,
+    pub surrealdb: SurrealDbDatabaseConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1065,6 +1096,32 @@ impl ServerOptions {
         if let Ok(secret) = std::env::var("AWS_SECRET_ACCESS_KEY") {
             self.database.dynamodb.aws_secret_access_key = Some(secret);
         }
+        if let Ok(url) = std::env::var("DATABASE_SURREALDB_URL") {
+            self.database.surrealdb.url = url;
+        }
+        if let Ok(namespace) = std::env::var("DATABASE_SURREALDB_NAMESPACE") {
+            self.database.surrealdb.namespace = namespace;
+        }
+        if let Ok(database) = std::env::var("DATABASE_SURREALDB_DATABASE") {
+            self.database.surrealdb.database = database;
+        }
+        if let Ok(username) = std::env::var("DATABASE_SURREALDB_USERNAME") {
+            self.database.surrealdb.username = Some(username);
+        }
+        if let Ok(password) = std::env::var("DATABASE_SURREALDB_PASSWORD") {
+            self.database.surrealdb.password = Some(password);
+        }
+        if let Ok(table_name) = std::env::var("DATABASE_SURREALDB_TABLE_NAME") {
+            self.database.surrealdb.table_name = table_name;
+        }
+        self.database.surrealdb.cache_ttl = parse_env::<u64>(
+            "DATABASE_SURREALDB_CACHE_TTL",
+            self.database.surrealdb.cache_ttl,
+        );
+        self.database.surrealdb.cache_max_capacity = parse_env::<u64>(
+            "DATABASE_SURREALDB_CACHE_MAX_CAPACITY",
+            self.database.surrealdb.cache_max_capacity,
+        );
 
         // --- Redis Cluster ---
         if let Ok(nodes) = std::env::var("REDIS_CLUSTER_NODES") {

@@ -63,6 +63,7 @@ mockall = "0.13.1"
 rustls = { version = "0.23.29", features = ["ring"] }
 tower = "0.5.2"
 mimalloc = { version = "0.1.48", features = ["v3"] }
+surrealdb = { version = "2.3.7", features = ["kv-mem", "kv-rocksdb", "protocol-ws", "protocol-http"] }
 
 
 [dependencies.uuid]

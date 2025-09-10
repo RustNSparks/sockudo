@@ -6,3 +6,4 @@ pub mod manager;
 pub mod memory_app_manager;
 pub mod mysql_app_manager;
 pub mod pg_app_manager;
+mod surrealdb_app_manager;

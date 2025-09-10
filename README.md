@@ -37,7 +37,7 @@ Sockudo is a production-ready WebSocket server that provides real-time communica
 
 ### 🎛️ **Flexible Architecture**
 - **Multiple Adapters**: Choose between Local (single-node), Redis, Redis Cluster, or NATS for message broadcasting and horizontal scaling.
-- **Database Support for App Management**: Options include Memory, MySQL, PostgreSQL, and DynamoDB for storing application configurations.
+- **Database Support for App Management**: Options include Memory, MySQL, PostgreSQL, DynamoDB and SurrealDB for storing application configurations.
 - **Queue Systems**: Supports Memory, Redis, Redis Cluster, and SQS for background job processing (e.g., webhooks).
 - **Cache Backends**: Options for Memory, Redis, or Redis Cluster for caching channel data and other information.
 
@@ -414,7 +414,7 @@ Provides detailed control over all aspects. Below is a snippet; refer to your up
 - **Adapter (`adapter`)**: Abstract interface for connection management and message broadcasting.
     - **Local Adapter (`adapter::local_adapter`)**: Single-node operation.
     - **Horizontal Adapters (`adapter::redis_adapter`, `adapter::redis_cluster_adapter`, `adapter::nats_adapter`)**: Enable multi-node setups by using Redis, Redis Cluster, or NATS for pub/sub to synchronize state and broadcast messages across instances.
-- **App Manager (`app::manager`)**: Manages application configurations (keys, secrets, limits, features), with backends like Memory, MySQL, PostgreSQL, or DynamoDB.
+- **App Manager (`app::manager`)**: Manages application configurations (keys, secrets, limits, features), with backends like Memory, MySQL, PostgreSQL, DynamoDB or SurrealDB.
 - **Cache Manager (`cache::manager`)**: Provides caching for frequently accessed data (e.g., channel information, app settings) with Memory or Redis backends.
 - **Queue Manager (`queue::manager`)**: Handles background tasks, primarily for delivering webhooks, using Memory, Redis, Redis Cluster, or SQS.
 - **Rate Limiter (`rate_limiter`)**: Protects against abuse with configurable limits, using Memory or Redis.
