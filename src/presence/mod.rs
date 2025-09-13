@@ -6,7 +6,7 @@ use crate::webhook::integration::WebhookIntegration;
 use crate::websocket::SocketId;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::debug;
+use tracing::{debug, error};
 
 /// Centralized presence channel management functionality
 /// This module handles presence member removal logic that needs to be
@@ -80,6 +80,27 @@ impl PresenceManager {
             );
         }
 
+        // Always broadcast presence join to all nodes for cluster replication (for every connection)
+        if let Some(excluding_socket) = excluding_socket
+            && let Some(horizontal_adapter) =
+                connection_manager.lock().await.as_horizontal_adapter()
+        {
+            horizontal_adapter
+                .broadcast_presence_join(
+                    &app_config.id,
+                    channel,
+                    user_id,
+                    excluding_socket.as_ref(),
+                    user_info.cloned(),
+                )
+                .await
+                .map_err(|e| {
+                    error!("Failed to broadcast presence join: {}", e);
+                    e
+                })
+                .ok(); // Log but don't fail the operation
+        }
+
         Ok(())
     }
 
@@ -144,6 +165,26 @@ impl PresenceManager {
                 "User {} has other connections in channel {}, skipping member_removed events",
                 user_id, channel
             );
+        }
+
+        // Always broadcast presence leave to all nodes for cluster replication (for every disconnection)
+        if let Some(excluding_socket) = excluding_socket
+            && let Some(horizontal_adapter) =
+                connection_manager.lock().await.as_horizontal_adapter()
+        {
+            horizontal_adapter
+                .broadcast_presence_leave(
+                    &app_config.id,
+                    channel,
+                    user_id,
+                    excluding_socket.as_ref(),
+                )
+                .await
+                .map_err(|e| {
+                    error!("Failed to broadcast presence leave: {}", e);
+                    e
+                })
+                .ok(); // Log but don't fail the operation
         }
 
         Ok(())

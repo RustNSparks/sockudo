@@ -1,7 +1,9 @@
 #![allow(dead_code)]
 
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::adapter::ConnectionManager;
@@ -13,9 +15,9 @@ use crate::metrics::MetricsInterface;
 use crate::websocket::SocketId;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{Mutex, Notify, RwLock};
 use tokio::time::sleep;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 /// Request types for horizontal communication
@@ -35,6 +37,17 @@ pub enum RequestType {
     SocketsCount,                  // Get count of all sockets
     ChannelMembersCount,           // Get count of members in a channel
     CountUserConnectionsInChannel, // Count user's connections in a specific channel
+
+    // Presence replication requests
+    PresenceMemberJoined, // Replicate presence member join across nodes
+    PresenceMemberLeft,   // Replicate presence member leave across nodes
+
+    // Node health requests
+    Heartbeat, // Node health heartbeat
+    NodeDead,  // Dead node notification
+
+    // State synchronization
+    PresenceStateSync, // Send bulk presence state to a specific node
 }
 
 /// Request body for horizontal communication
@@ -47,6 +60,12 @@ pub struct RequestBody {
     pub channel: Option<String>,
     pub socket_id: Option<String>,
     pub user_id: Option<String>,
+
+    // Additional fields for cluster presence replication
+    pub user_info: Option<serde_json::Value>, // For presence member info (needed for rich presence data)
+    pub timestamp: Option<u64>,               // For heartbeat timestamp
+    pub dead_node_id: Option<String>,         // For dead node notifications
+    pub target_node_id: Option<String>,       // Which node should process this request
 }
 
 /// Response body for horizontal requests
@@ -85,6 +104,37 @@ pub struct PendingRequest {
     pub(crate) notify: Arc<Notify>,
 }
 
+/// Presence entry for cluster-wide presence tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresenceEntry {
+    pub user_info: Option<serde_json::Value>,
+    pub node_id: String,      // Which node owns this connection
+    pub app_id: String,       // Which app this member belongs to
+    pub user_id: String,      // Which user this socket belongs to
+    pub socket_id: String,    // Socket ID for this connection
+    pub sequence_number: u64, // Sequence number for conflict resolution
+}
+
+/// Type alias for the cluster presence registry structure
+/// HashMap<node_id, HashMap<channel, HashMap<socket_id, PresenceEntry>>>
+pub type ClusterPresenceRegistry = HashMap<String, HashMap<String, HashMap<String, PresenceEntry>>>;
+
+/// Event emitted when a node dies and orphaned presence members need cleanup
+#[derive(Debug, Clone)]
+pub struct DeadNodeEvent {
+    pub dead_node_id: String,
+    pub orphaned_members: Vec<OrphanedMember>,
+}
+
+/// Information about an orphaned presence member that needs cleanup
+#[derive(Debug, Clone)]
+pub struct OrphanedMember {
+    pub app_id: String,
+    pub channel: String,
+    pub user_id: String,
+    pub user_info: Option<serde_json::Value>,
+}
+
 /// Base horizontal adapter
 pub struct HorizontalAdapter {
     /// Unique node ID
@@ -100,6 +150,16 @@ pub struct HorizontalAdapter {
     pub requests_timeout: u64,
 
     pub metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
+
+    /// Complete cluster-wide presence registry (node-first structure for efficient cleanup)
+    /// HashMap<node_id, HashMap<channel, HashMap<socket_id, PresenceEntry>>>
+    pub cluster_presence_registry: Arc<RwLock<ClusterPresenceRegistry>>,
+
+    /// Track node heartbeats: HashMap<node_id, last_heartbeat_received_time>
+    pub node_heartbeats: Arc<RwLock<HashMap<String, Instant>>>,
+
+    /// Sequence counter for conflict resolution
+    pub sequence_counter: Arc<AtomicU64>,
 }
 
 impl Default for HorizontalAdapter {
@@ -117,6 +177,9 @@ impl HorizontalAdapter {
             pending_requests: DashMap::new(),
             requests_timeout: 5000, // Default 5 seconds
             metrics: None,
+            cluster_presence_registry: Arc::new(RwLock::new(HashMap::new())),
+            node_heartbeats: Arc::new(RwLock::new(HashMap::new())),
+            sequence_counter: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -301,6 +364,137 @@ impl HorizontalAdapter {
                         .await?;
                 }
             }
+            // Presence replication handlers
+            RequestType::PresenceMemberJoined => {
+                if let (Some(channel), Some(user_id), Some(socket_id)) =
+                    (&request.channel, &request.user_id, &request.socket_id)
+                {
+                    // Use the helper method to update cluster presence registry
+                    self.add_presence_entry(
+                        &request.node_id,
+                        channel,
+                        socket_id,
+                        user_id,
+                        &request.app_id,
+                        request.user_info.clone(),
+                    )
+                    .await;
+                }
+            }
+            RequestType::PresenceMemberLeft => {
+                if let (Some(channel), Some(_user_id), Some(socket_id)) =
+                    (&request.channel, &request.user_id, &request.socket_id)
+                {
+                    // Use the helper method to update cluster presence registry
+                    self.remove_presence_entry(&request.node_id, channel, socket_id)
+                        .await;
+                }
+            }
+            RequestType::Heartbeat => {
+                // Update heartbeat tracking (don't track our own heartbeat)
+                if request.node_id != self.node_id {
+                    let mut heartbeats = self.node_heartbeats.write().await;
+
+                    // Atomically check and insert to avoid race conditions
+                    let receive_time = Instant::now();
+                    let is_new_node = match heartbeats.entry(request.node_id.clone()) {
+                        Entry::Vacant(e) => {
+                            e.insert(receive_time);
+                            true
+                        }
+                        Entry::Occupied(mut e) => {
+                            e.insert(receive_time);
+                            false
+                        }
+                    };
+
+                    if is_new_node {
+                        info!("New node detected: {}", request.node_id);
+                        // Note: State sync will be handled by the caller
+                        // Return a special response that indicates new node detected
+                        response.exists = true; // Use this field to signal new node
+                    }
+
+                    debug!(
+                        "Received heartbeat from node: {} at local time: {:?} (new: {})",
+                        request.node_id, receive_time, is_new_node
+                    );
+                }
+            }
+            RequestType::NodeDead => {
+                if let Some(dead_node_id) = &request.dead_node_id {
+                    debug!("Received dead node notification for: {}", dead_node_id);
+
+                    // This message is only for followers to clean registry
+                    // Leader already did full cleanup before sending this message
+
+                    // Remove from heartbeat tracking
+                    {
+                        let mut heartbeats = self.node_heartbeats.write().await;
+                        heartbeats.remove(dead_node_id);
+                    }
+
+                    // Clean up local presence registry only
+                    self.cleanup_local_presence_registry(dead_node_id).await;
+                }
+            }
+            RequestType::PresenceStateSync => {
+                if let Some(presence_data) = request.user_info {
+                    // Deserialize the bulk presence data
+                    match serde_json::from_value::<HashMap<String, HashMap<String, PresenceEntry>>>(
+                        presence_data,
+                    ) {
+                        Ok(incoming_node_data) => {
+                            let mut registry = self.cluster_presence_registry.write().await;
+
+                            // Get or create the sending node's entry
+                            // Each node sends its own data, so different nodes update different keys
+                            let node_registry = registry
+                                .entry(request.node_id.clone())
+                                .or_insert_with(HashMap::new);
+
+                            // Merge channel data
+                            for (channel, incoming_sockets) in incoming_node_data {
+                                let channel_registry = node_registry
+                                    .entry(channel.clone())
+                                    .or_insert_with(HashMap::new);
+
+                                // Merge socket entries, preferring newer data
+                                for (socket_id, incoming_entry) in incoming_sockets {
+                                    match channel_registry.get(&socket_id) {
+                                        Some(existing)
+                                            if existing.sequence_number
+                                                > incoming_entry.sequence_number =>
+                                        {
+                                            // Keep existing (it's newer)
+                                            debug!(
+                                                "Keeping existing entry for socket {} (newer)",
+                                                socket_id
+                                            );
+                                        }
+                                        _ => {
+                                            // Insert new or replace older
+                                            channel_registry.insert(socket_id, incoming_entry);
+                                        }
+                                    }
+                                }
+                            }
+
+                            info!(
+                                "Merged presence state from node: {} ({} channels)",
+                                request.node_id,
+                                registry.get(&request.node_id).map(|d| d.len()).unwrap_or(0)
+                            );
+                        }
+                        Err(e) => {
+                            warn!(
+                                "Failed to deserialize presence state from node {}: {}",
+                                request.node_id, e
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         // Return the response
@@ -349,6 +543,11 @@ impl HorizontalAdapter {
             channel: channel.map(String::from),
             socket_id: socket_id.map(String::from),
             user_id: user_id.map(String::from),
+            // Cluster presence fields (not used for regular requests)
+            user_info: None,
+            timestamp: None,
+            dead_node_id: None,
+            target_node_id: None,
         };
 
         // Add to pending requests with proper initialization
@@ -587,6 +786,22 @@ impl HorizontalAdapter {
                     // Sum connection counts from all nodes
                     combined_response.sockets_count += response.sockets_count;
                 }
+                // Presence replication - no response aggregation needed (broadcast-only)
+                RequestType::PresenceMemberJoined => {
+                    // These are broadcast-only requests, no response aggregation needed
+                }
+                RequestType::PresenceMemberLeft => {
+                    // These are broadcast-only requests, no response aggregation needed
+                }
+                RequestType::Heartbeat => {
+                    // These are broadcast-only requests, no response aggregation needed
+                }
+                RequestType::NodeDead => {
+                    // These are broadcast-only requests, no response aggregation needed
+                }
+                RequestType::PresenceStateSync => {
+                    // These are broadcast-only requests, no response aggregation needed
+                }
             }
         }
 
@@ -694,4 +909,175 @@ impl HorizontalAdapter {
             recipient_count
         }
     }
+
+    /// Get dead nodes by checking heartbeat timeouts
+    pub async fn get_dead_nodes(&self, dead_node_timeout_ms: u64) -> Vec<String> {
+        let now = Instant::now();
+        let timeout_duration = Duration::from_millis(dead_node_timeout_ms);
+
+        let heartbeats_guard = self.node_heartbeats.read().await;
+        heartbeats_guard
+            .iter()
+            .filter_map(|(node, last_heartbeat_time)| {
+                if now.duration_since(*last_heartbeat_time) > timeout_duration {
+                    Some(node.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Remove a dead node from heartbeat tracking
+    pub async fn remove_dead_node(&self, dead_node_id: &str) {
+        let mut heartbeats = self.node_heartbeats.write().await;
+        heartbeats.remove(dead_node_id);
+    }
+
+    /// Clean up local presence registry for a dead node (followers only)
+    pub async fn cleanup_local_presence_registry(&self, dead_node_id: &str) {
+        let mut registry = self.cluster_presence_registry.write().await;
+
+        // O(1) removal of entire node's data
+        if let Some(dead_node_data) = registry.remove(dead_node_id) {
+            let total_members: usize = dead_node_data
+                .values()
+                .map(|channel_members| channel_members.len())
+                .sum();
+
+            debug!(
+                "Removed {} orphaned presence members from dead node: {}",
+                total_members, dead_node_id
+            );
+        }
+    }
+
+    /// Determine if this node should be the cleanup leader
+    /// Excludes dead nodes from the election pool
+    pub async fn is_cleanup_leader(&self, dead_nodes: &[String]) -> bool {
+        let heartbeats = self.node_heartbeats.read().await;
+        let mut alive_nodes: Vec<String> = heartbeats.keys().cloned().collect();
+        alive_nodes.push(self.node_id.clone()); // Include ourselves
+
+        // Remove dead nodes from election pool
+        alive_nodes.retain(|node| !dead_nodes.contains(node));
+
+        alive_nodes.sort();
+        alive_nodes.first() == Some(&self.node_id)
+    }
+
+    /// Handle cleanup for a dead node (called only by elected leader)
+    /// Returns the list of orphaned presence members that need broadcast cleanup
+    /// Format: Vec<(app_id, channel, user_id, user_info)>
+    pub async fn handle_dead_node_cleanup(
+        &self,
+        dead_node_id: &str,
+    ) -> Result<Vec<(String, String, String, Option<serde_json::Value>)>> {
+        let mut registry = self.cluster_presence_registry.write().await;
+
+        // O(1) lookup and removal of entire node's data
+        if let Some(dead_node_data) = registry.remove(dead_node_id) {
+            // Group sockets by (app_id, channel, user_id) to avoid duplicate cleanup calls for same user
+            let mut unique_members = std::collections::HashMap::<
+                (String, String, String),
+                Option<serde_json::Value>,
+            >::new();
+
+            for (channel, sockets) in dead_node_data {
+                for (_socket_id, entry) in sockets {
+                    let key = (entry.app_id.clone(), channel.clone(), entry.user_id.clone());
+                    // Keep user_info from first socket (they should all be the same for same user)
+                    unique_members.entry(key).or_insert(entry.user_info);
+                }
+            }
+
+            // Convert to list format
+            let cleanup_tasks: Vec<(String, String, String, Option<serde_json::Value>)> =
+                unique_members
+                    .into_iter()
+                    .map(|((app_id, channel, user_id), user_info)| {
+                        (app_id, channel, user_id, user_info)
+                    })
+                    .collect();
+
+            debug!(
+                "Found {} unique presence members to clean up from dead node {}",
+                cleanup_tasks.len(),
+                dead_node_id
+            );
+
+            // Return the list of members that need broadcast cleanup
+            Ok(cleanup_tasks)
+        } else {
+            debug!("No presence members found for dead node {}", dead_node_id);
+            Ok(Vec::new())
+        }
+    }
+    /// Add a presence entry to the cluster registry
+    pub async fn add_presence_entry(
+        &self,
+        node_id: &str,
+        channel: &str,
+        socket_id: &str,
+        user_id: &str,
+        app_id: &str,
+        user_info: Option<serde_json::Value>,
+    ) {
+        let mut registry = self.cluster_presence_registry.write().await;
+        registry
+            .entry(node_id.to_string())
+            .or_insert_with(HashMap::new)
+            .entry(channel.to_string())
+            .or_insert_with(HashMap::new)
+            .insert(
+                socket_id.to_string(),
+                PresenceEntry {
+                    user_info,
+                    node_id: node_id.to_string(),
+                    app_id: app_id.to_string(),
+                    user_id: user_id.to_string(),
+                    socket_id: socket_id.to_string(),
+                    sequence_number: self.sequence_counter.fetch_add(1, Ordering::SeqCst),
+                },
+            );
+
+        debug!(
+            "Added presence entry: user {} (socket {}) in channel {} for node {}",
+            user_id, socket_id, channel, node_id
+        );
+    }
+
+    /// Remove a presence entry from the cluster registry
+    pub async fn remove_presence_entry(&self, node_id: &str, channel: &str, socket_id: &str) {
+        let mut registry = self.cluster_presence_registry.write().await;
+        if let Some(node_data) = registry.get_mut(node_id) {
+            if let Some(channel_sockets) = node_data.get_mut(channel) {
+                channel_sockets.remove(socket_id);
+                if channel_sockets.is_empty() {
+                    node_data.remove(channel);
+                }
+            }
+            if node_data.is_empty() {
+                registry.remove(node_id);
+            }
+        }
+
+        debug!(
+            "Removed presence entry: socket {} in channel {} for node {}",
+            socket_id, channel, node_id
+        );
+    }
+}
+
+/// Generate unique request ID
+pub fn generate_request_id() -> String {
+    Uuid::new_v4().to_string()
+}
+
+/// Get current timestamp in seconds
+pub fn current_timestamp() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }

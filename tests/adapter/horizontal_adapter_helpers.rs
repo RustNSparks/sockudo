@@ -149,6 +149,40 @@ pub struct MockTransport {
 }
 
 impl MockTransport {
+    /// Create a new MockTransport with shared state for multi-node simulation
+    pub fn new_with_shared_state(
+        config: MockConfig,
+        _shared_state: Arc<Mutex<HashMap<String, MockNodeState>>>,
+    ) -> Self {
+        Self {
+            config,
+            handlers: Arc::new(Mutex::new(None)),
+            published_broadcasts: Arc::new(Mutex::new(Vec::new())),
+            published_requests: Arc::new(Mutex::new(Vec::new())),
+            published_responses: Arc::new(Mutex::new(Vec::new())),
+            healthy: Arc::new(Mutex::new(true)),
+            node_count: Arc::new(Mutex::new(1)),
+        }
+    }
+
+    /// Set the health status of this transport (for simulating node failures)
+    pub async fn set_health_status(&self, healthy: bool) {
+        *self.healthy.lock().await = healthy;
+    }
+
+    /// Check if this transport is healthy
+    #[allow(dead_code)]
+    pub async fn is_healthy(&self) -> bool {
+        *self.healthy.lock().await
+    }
+
+    /// Get access to published requests for testing
+    pub async fn get_published_requests(
+        &self,
+    ) -> Vec<sockudo::adapter::horizontal_adapter::RequestBody> {
+        self.published_requests.lock().await.clone()
+    }
+
     /// Create test configurations for specific scenarios
     /// Configuration with conflicting data between nodes
     pub fn conflicting_data() -> MockConfig {
@@ -252,11 +286,6 @@ impl MockTransport {
     /// Get published broadcasts for verification
     pub async fn get_published_broadcasts(&self) -> Vec<BroadcastMessage> {
         self.published_broadcasts.lock().await.clone()
-    }
-
-    /// Set health status for testing
-    pub async fn set_health_status(&self, healthy: bool) {
-        *self.healthy.lock().await = healthy;
     }
 
     /// Simulate a node joining the cluster

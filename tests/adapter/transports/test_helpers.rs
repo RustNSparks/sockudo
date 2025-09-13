@@ -73,6 +73,10 @@ pub fn create_test_request() -> RequestBody {
         channel: None,
         socket_id: None,
         user_id: None,
+        user_info: None,
+        timestamp: None,
+        dead_node_id: None,
+        target_node_id: None,
     }
 }
 

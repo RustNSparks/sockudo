@@ -4,7 +4,7 @@ use fastwebsockets::WebSocketWrite;
 use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use serde_json::Value;
-use sockudo::adapter::ConnectionManager;
+use sockudo::adapter::connection_manager::{ConnectionManager, HorizontalAdapterInterface};
 use sockudo::adapter::handler::ConnectionHandler;
 use sockudo::app::config::App;
 use sockudo::app::manager::AppManager;
@@ -215,6 +215,14 @@ impl ConnectionManager for MockAdapter {
     async fn check_health(&self) -> Result<()> {
         // Mock adapter is always healthy for testing
         Ok(())
+    }
+
+    fn get_node_id(&self) -> String {
+        "mock-node".to_string()
+    }
+
+    fn as_horizontal_adapter(&self) -> Option<&dyn HorizontalAdapterInterface> {
+        None
     }
 }
 

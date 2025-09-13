@@ -424,4 +424,16 @@ impl ConnectionManager for LocalAdapter {
         // Local adapter is always healthy since it's in-memory
         Ok(())
     }
+
+    fn get_node_id(&self) -> String {
+        // Local adapter doesn't have a node ID concept (single node)
+        "local".to_string()
+    }
+
+    fn as_horizontal_adapter(
+        &self,
+    ) -> Option<&dyn crate::adapter::connection_manager::HorizontalAdapterInterface> {
+        // Local adapter doesn't support horizontal scaling
+        None
+    }
 }

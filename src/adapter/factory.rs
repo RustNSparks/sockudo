@@ -47,7 +47,10 @@ impl AdapterFactory {
                     cluster_mode: config.redis.cluster_mode,
                 };
                 match RedisAdapter::new(adapter_options).await {
-                    Ok(adapter) => Ok(Arc::new(Mutex::new(adapter))),
+                    Ok(mut adapter) => {
+                        adapter.set_cluster_health(&config.cluster_health).await?;
+                        Ok(Arc::new(Mutex::new(adapter)))
+                    }
                     Err(e) => {
                         warn!(
                             "{}",
@@ -92,7 +95,10 @@ impl AdapterFactory {
                     use_connection_manager: config.cluster.use_connection_manager,
                 };
                 match RedisClusterAdapter::new(cluster_adapter_config).await {
-                    Ok(adapter) => Ok(Arc::new(Mutex::new(adapter))),
+                    Ok(mut adapter) => {
+                        adapter.set_cluster_health(&config.cluster_health).await?;
+                        Ok(Arc::new(Mutex::new(adapter)))
+                    }
                     Err(e) => {
                         warn!(
                             "{}",
@@ -122,7 +128,10 @@ impl AdapterFactory {
                     nodes_number: config.nats.nodes_number,
                 };
                 match NatsAdapter::new(nats_cfg).await {
-                    Ok(adapter) => Ok(Arc::new(Mutex::new(adapter))),
+                    Ok(mut adapter) => {
+                        adapter.set_cluster_health(&config.cluster_health).await?;
+                        Ok(Arc::new(Mutex::new(adapter)))
+                    }
                     Err(e) => {
                         warn!(
                             "{}",

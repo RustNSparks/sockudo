@@ -144,6 +144,9 @@ pub enum Error {
     #[error("Own request ignored")]
     OwnRequestIgnored,
 
+    #[error("Request not for this node")]
+    RequestNotForThisNode,
+
     #[error("Horizontal adapter error: {0}")]
     HorizontalAdapter(String),
 
@@ -158,6 +161,12 @@ pub enum Error {
 
     #[error("Config file Error: {0}")]
     ConfigFile(String),
+
+    #[error("Cluster presence error: {0}")]
+    ClusterPresence(String),
+
+    #[error("Dead node cleanup error: {0}")]
+    DeadNodeCleanup(String),
 }
 
 // Add conversion to WebSocket close codes

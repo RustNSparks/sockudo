@@ -28,6 +28,12 @@
       "prefix": "sockudo_nats:",
       "request_timeout_ms": 5000,
       "connection_timeout_ms": 5000
+    },
+    "cluster_health": {
+      "enabled": true,
+      "heartbeat_interval_ms": 10000,
+      "node_timeout_ms": 30000,
+      "cleanup_interval_ms": 10000
     }
   },
 

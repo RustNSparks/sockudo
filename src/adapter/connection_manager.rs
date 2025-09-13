@@ -14,6 +14,29 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::WriteHalf;
 
+/// Interface for horizontal adapters that support cluster presence replication
+#[async_trait]
+pub trait HorizontalAdapterInterface: Send + Sync {
+    /// Broadcast presence member joined to all nodes
+    async fn broadcast_presence_join(
+        &self,
+        app_id: &str,
+        channel: &str,
+        user_id: &str,
+        socket_id: &str,
+        user_info: Option<serde_json::Value>,
+    ) -> Result<()>;
+
+    /// Broadcast presence member left to all nodes
+    async fn broadcast_presence_leave(
+        &self,
+        app_id: &str,
+        channel: &str,
+        user_id: &str,
+        socket_id: &str,
+    ) -> Result<()>;
+}
+
 #[async_trait]
 pub trait ConnectionManager: Send + Sync {
     async fn init(&mut self);
@@ -121,4 +144,20 @@ pub trait ConnectionManager: Send + Sync {
     /// Check the health of the connection manager and its underlying adapter
     /// Returns Ok(()) if healthy, Err(error_message) if unhealthy with specific reason
     async fn check_health(&self) -> Result<()>;
+
+    /// Get the unique node ID for this instance
+    fn get_node_id(&self) -> String;
+
+    /// Get reference to horizontal adapter if available (for cluster presence replication)
+    fn as_horizontal_adapter(&self) -> Option<&dyn HorizontalAdapterInterface>;
+
+    /// Configure dead node event bus if this adapter supports clustering
+    /// Returns Some(receiver) if configured, None if not supported
+    fn configure_dead_node_events(
+        &mut self,
+    ) -> Option<
+        tokio::sync::mpsc::UnboundedReceiver<crate::adapter::horizontal_adapter::DeadNodeEvent>,
+    > {
+        None // Default: no clustering support
+    }
 }

@@ -3,9 +3,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::adapter::ConnectionManager;
+use crate::adapter::connection_manager::{ConnectionManager, HorizontalAdapterInterface};
 use crate::adapter::horizontal_adapter::{
-    BroadcastMessage, HorizontalAdapter, PendingRequest, RequestBody, RequestType, ResponseBody,
+    BroadcastMessage, DeadNodeEvent, HorizontalAdapter, OrphanedMember, PendingRequest,
+    RequestBody, RequestType, ResponseBody, current_timestamp, generate_request_id,
 };
 use crate::adapter::horizontal_transport::{
     HorizontalTransport, TransportConfig, TransportHandlers,
@@ -15,6 +16,7 @@ use crate::channel::PresenceMemberInfo;
 use crate::error::{Error, Result};
 use crate::metrics::MetricsInterface;
 use crate::namespace::Namespace;
+use crate::options::ClusterHealthConfig;
 use crate::protocol::messages::PusherMessage;
 use crate::websocket::{SocketId, WebSocketRef};
 use async_trait::async_trait;
@@ -24,7 +26,7 @@ use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use tokio::io::WriteHalf;
 use tokio::sync::{Mutex, Notify};
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 /// Generic base adapter that handles all common horizontal scaling logic
@@ -32,22 +34,37 @@ pub struct HorizontalAdapterBase<T: HorizontalTransport> {
     pub horizontal: Arc<Mutex<HorizontalAdapter>>,
     pub transport: T,
     pub config: T::Config,
+    pub event_bus: Option<tokio::sync::mpsc::UnboundedSender<DeadNodeEvent>>,
+    pub node_id: String,
+    pub cluster_health_enabled: bool,
+    pub heartbeat_interval_ms: u64,
+    pub node_timeout_ms: u64,
+    pub cleanup_interval_ms: u64,
 }
 
-impl<T: HorizontalTransport> HorizontalAdapterBase<T>
+impl<T: HorizontalTransport + 'static> HorizontalAdapterBase<T>
 where
     T::Config: TransportConfig,
 {
     pub async fn new(config: T::Config) -> Result<Self> {
         let mut horizontal = HorizontalAdapter::new();
         horizontal.requests_timeout = config.request_timeout_ms();
+        let node_id = horizontal.node_id.clone();
 
         let transport = T::new(config.clone()).await?;
+
+        let cluster_health_defaults = ClusterHealthConfig::default();
 
         Ok(Self {
             horizontal: Arc::new(Mutex::new(horizontal)),
             transport,
             config,
+            event_bus: None,
+            node_id,
+            cluster_health_enabled: cluster_health_defaults.enabled,
+            heartbeat_interval_ms: cluster_health_defaults.heartbeat_interval_ms,
+            node_timeout_ms: cluster_health_defaults.node_timeout_ms,
+            cleanup_interval_ms: cluster_health_defaults.cleanup_interval_ms,
         })
     }
 
@@ -57,6 +74,41 @@ where
     ) -> Result<()> {
         let mut horizontal = self.horizontal.lock().await;
         horizontal.metrics = Some(metrics);
+        Ok(())
+    }
+
+    pub fn set_event_bus(
+        &mut self,
+        event_sender: tokio::sync::mpsc::UnboundedSender<DeadNodeEvent>,
+    ) {
+        self.event_bus = Some(event_sender);
+    }
+
+    pub async fn set_cluster_health(&mut self, cluster_health: &ClusterHealthConfig) -> Result<()> {
+        // Validate cluster health configuration first
+        if let Err(validation_error) = cluster_health.validate() {
+            warn!(
+                "Cluster health configuration validation failed: {}",
+                validation_error
+            );
+            warn!("Keeping current cluster health settings");
+            return Ok(());
+        }
+
+        // Set cluster health configuration directly on the base adapter
+        self.heartbeat_interval_ms = cluster_health.heartbeat_interval_ms;
+        self.node_timeout_ms = cluster_health.node_timeout_ms;
+        self.cleanup_interval_ms = cluster_health.cleanup_interval_ms;
+        self.cluster_health_enabled = cluster_health.enabled;
+
+        // Log warning for high-frequency heartbeats
+        if cluster_health.heartbeat_interval_ms < 1000 {
+            warn!(
+                "High-frequency heartbeat interval ({} ms) may cause unnecessary network load. Consider using >= 1000 ms unless high availability is critical.",
+                cluster_health.heartbeat_interval_ms
+            );
+        }
+
         Ok(())
     }
 
@@ -86,6 +138,11 @@ where
             channel: channel.map(String::from),
             socket_id: socket_id.map(String::from),
             user_id: user_id.map(String::from),
+            // Cluster presence fields (not used for regular requests)
+            user_info: None,
+            timestamp: None,
+            dead_node_id: None,
+            target_node_id: None,
         };
 
         // Add to pending requests
@@ -245,12 +302,18 @@ where
             horizontal.start_request_cleanup();
         }
 
+        // Start cluster health system only if enabled
+        if self.cluster_health_enabled {
+            self.start_cluster_health_system().await;
+        }
+
         // Set up transport handlers
         let horizontal_arc = self.horizontal.clone();
 
         let broadcast_horizontal = horizontal_arc.clone();
         let request_horizontal = horizontal_arc.clone();
         let response_horizontal = horizontal_arc.clone();
+        let transport_for_request = self.transport.clone();
 
         let handlers = TransportHandlers {
             on_broadcast: Arc::new(move |broadcast| {
@@ -313,6 +376,7 @@ where
             }),
             on_request: Arc::new(move |request| {
                 let horizontal_clone = request_horizontal.clone();
+                let transport_clone = transport_for_request.clone();
                 Box::pin(async move {
                     let node_id = {
                         let horizontal = horizontal_clone.lock().await;
@@ -320,11 +384,48 @@ where
                     };
 
                     if request.node_id == node_id {
-                        return Err(Error::Other("Skipping own request".to_string()));
+                        return Err(Error::OwnRequestIgnored);
+                    }
+
+                    // Check if this is a targeted request for another node
+                    if let Some(ref target_node) = request.target_node_id
+                        && target_node != &node_id
+                    {
+                        // Not for us, ignore silently
+                        return Err(Error::RequestNotForThisNode);
                     }
 
                     let mut horizontal_lock = horizontal_clone.lock().await;
-                    horizontal_lock.process_request(request).await
+                    let response = horizontal_lock.process_request(request.clone()).await?;
+
+                    // Check if this was a heartbeat that detected a new node
+                    if request.request_type == RequestType::Heartbeat && response.exists {
+                        // New node detected, send our presence state to it
+                        // Spawn task to avoid blocking request processing
+                        let new_node_id = request.node_id.clone();
+                        let horizontal_clone_for_task = horizontal_clone.clone();
+                        let transport_for_task = transport_clone.clone();
+
+                        tokio::spawn(async move {
+                            // Small delay to let the new node finish initialization
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+
+                            if let Err(e) = send_presence_state_to_node(
+                                &horizontal_clone_for_task,
+                                &transport_for_task,
+                                &new_node_id,
+                            )
+                            .await
+                            {
+                                error!(
+                                    "Failed to send presence state to new node {}: {}",
+                                    new_node_id, e
+                                );
+                            }
+                        });
+                    }
+
+                    Ok(response)
                 })
             }),
             on_response: Arc::new(move |response| {
@@ -347,6 +448,199 @@ where
 
         self.transport.start_listeners(handlers).await?;
         Ok(())
+    }
+
+    /// Start cluster health monitoring system
+    pub async fn start_cluster_health_system(&self) {
+        let heartbeat_interval_ms = self.heartbeat_interval_ms;
+        let node_timeout_ms = self.node_timeout_ms;
+
+        info!(
+            "Starting cluster health system with heartbeat interval: {}ms, timeout: {}ms",
+            heartbeat_interval_ms, node_timeout_ms
+        );
+
+        // Start heartbeat broadcasting
+        self.start_heartbeat_loop().await;
+
+        // Start dead node detection
+        self.start_dead_node_detection().await;
+    }
+
+    /// Start heartbeat broadcasting loop
+    async fn start_heartbeat_loop(&self) {
+        let transport = self.transport.clone();
+        let node_id = self.node_id.clone();
+        let heartbeat_interval_ms = self.heartbeat_interval_ms;
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_millis(heartbeat_interval_ms));
+
+            loop {
+                interval.tick().await;
+
+                let heartbeat_request = RequestBody {
+                    request_id: generate_request_id(),
+                    node_id: node_id.clone(),
+                    app_id: "cluster".to_string(),
+                    request_type: RequestType::Heartbeat,
+                    channel: None,
+                    socket_id: None,
+                    user_id: None,
+                    user_info: None,
+                    timestamp: Some(current_timestamp()),
+                    dead_node_id: None,
+                    target_node_id: None,
+                };
+
+                if let Err(e) = transport.publish_request(&heartbeat_request).await {
+                    error!("Failed to send heartbeat: {}", e);
+                }
+            }
+        });
+    }
+
+    /// Start dead node detection loop
+    async fn start_dead_node_detection(&self) {
+        let transport = self.transport.clone();
+        let horizontal = self.horizontal.clone();
+        let event_bus = self.event_bus.clone();
+        let node_id = self.node_id.clone();
+        let cleanup_interval_ms = self.cleanup_interval_ms;
+        let node_timeout_ms = self.node_timeout_ms;
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_millis(cleanup_interval_ms));
+
+            loop {
+                interval.tick().await;
+
+                let dead_nodes = {
+                    let horizontal_guard = horizontal.lock().await;
+                    horizontal_guard.get_dead_nodes(node_timeout_ms).await
+                };
+
+                if !dead_nodes.is_empty() {
+                    // Single leader election for entire cleanup round
+                    let is_leader = {
+                        let horizontal_guard = horizontal.lock().await;
+                        horizontal_guard.is_cleanup_leader(&dead_nodes).await
+                    };
+
+                    if is_leader {
+                        info!(
+                            "Elected as cleanup leader for {} dead nodes: {:?}",
+                            dead_nodes.len(),
+                            dead_nodes
+                        );
+
+                        // Process ALL dead nodes as the elected leader
+                        for dead_node_id in dead_nodes {
+                            debug!("Processing dead node: {}", dead_node_id);
+
+                            // 1. Remove from local heartbeat tracking
+                            {
+                                let horizontal_guard = horizontal.lock().await;
+                                horizontal_guard.remove_dead_node(&dead_node_id).await;
+                            }
+
+                            // 2. Get orphaned members and clean up local registry
+                            let cleanup_tasks = {
+                                let horizontal_guard = horizontal.lock().await;
+                                match horizontal_guard
+                                    .handle_dead_node_cleanup(&dead_node_id)
+                                    .await
+                                {
+                                    Ok(tasks) => tasks,
+                                    Err(e) => {
+                                        error!(
+                                            "Failed to cleanup dead node {}: {}",
+                                            dead_node_id, e
+                                        );
+                                        continue;
+                                    }
+                                }
+                            };
+
+                            if !cleanup_tasks.is_empty() {
+                                // 3. Convert to orphaned members and emit event
+                                let orphaned_members: Vec<OrphanedMember> = cleanup_tasks
+                                    .into_iter()
+                                    .map(|(app_id, channel, user_id, user_info)| OrphanedMember {
+                                        app_id,
+                                        channel,
+                                        user_id,
+                                        user_info, // Preserve user_info for proper presence management
+                                    })
+                                    .collect();
+
+                                let event = DeadNodeEvent {
+                                    dead_node_id: dead_node_id.clone(),
+                                    orphaned_members: orphaned_members.clone(),
+                                };
+
+                                // Emit event for processing by ConnectionHandler
+                                if let Some(event_sender) = &event_bus {
+                                    if let Err(e) = event_sender.send(event) {
+                                        error!("Failed to send dead node event: {}", e);
+                                    }
+                                } else {
+                                    warn!("No event bus configured for dead node cleanup");
+                                }
+
+                                info!(
+                                    "Emitted cleanup event for {} orphaned presence members from dead node {}",
+                                    orphaned_members.len(),
+                                    dead_node_id
+                                );
+                            }
+
+                            // 4. Notify followers to clean their registries
+                            let dead_node_request = RequestBody {
+                                request_id: generate_request_id(),
+                                node_id: node_id.clone(),
+                                app_id: "cluster".to_string(),
+                                request_type: RequestType::NodeDead,
+                                channel: None,
+                                socket_id: None,
+                                user_id: None,
+                                user_info: None,
+                                timestamp: Some(current_timestamp()),
+                                dead_node_id: Some(dead_node_id.clone()),
+                                target_node_id: None,
+                            };
+
+                            if let Err(e) = transport.publish_request(&dead_node_request).await {
+                                error!("Failed to send dead node notification: {}", e);
+                            }
+                        }
+                    } else {
+                        debug!(
+                            "Not cleanup leader for {} dead nodes, waiting for leader's broadcasts",
+                            dead_nodes.len()
+                        );
+                    }
+                }
+            }
+        });
+    }
+
+    /// Get a snapshot of the cluster presence registry
+    pub async fn get_cluster_presence_registry(
+        &self,
+    ) -> crate::adapter::horizontal_adapter::ClusterPresenceRegistry {
+        let horizontal = self.horizontal.lock().await;
+        let registry = horizontal.cluster_presence_registry.read().await;
+        registry.clone()
+    }
+
+    /// Get a snapshot of node heartbeat tracking
+    pub async fn get_node_heartbeats(
+        &self,
+    ) -> std::collections::HashMap<String, std::time::Instant> {
+        let horizontal = self.horizontal.lock().await;
+        let heartbeats = horizontal.node_heartbeats.read().await;
+        heartbeats.clone()
     }
 }
 
@@ -822,4 +1116,167 @@ where
     async fn check_health(&self) -> Result<()> {
         self.transport.check_health().await
     }
+
+    fn get_node_id(&self) -> String {
+        self.node_id.clone()
+    }
+
+    fn as_horizontal_adapter(&self) -> Option<&dyn HorizontalAdapterInterface> {
+        Some(self)
+    }
+
+    fn configure_dead_node_events(
+        &mut self,
+    ) -> Option<tokio::sync::mpsc::UnboundedReceiver<DeadNodeEvent>> {
+        let (event_sender, event_receiver) = tokio::sync::mpsc::unbounded_channel();
+        self.set_event_bus(event_sender);
+        Some(event_receiver)
+    }
+}
+
+#[async_trait]
+impl<T: HorizontalTransport> HorizontalAdapterInterface for HorizontalAdapterBase<T> {
+    /// Broadcast presence member joined to all nodes
+    async fn broadcast_presence_join(
+        &self,
+        app_id: &str,
+        channel: &str,
+        user_id: &str,
+        socket_id: &str,
+        user_info: Option<serde_json::Value>,
+    ) -> Result<()> {
+        // Store in our own registry first with a single lock acquisition
+        {
+            let horizontal = self.horizontal.lock().await;
+            horizontal
+                .add_presence_entry(
+                    &self.node_id,
+                    channel,
+                    socket_id,
+                    user_id,
+                    app_id,
+                    user_info.clone(),
+                )
+                .await;
+        }
+
+        // Skip cluster broadcast if cluster health is disabled
+        if !self.cluster_health_enabled {
+            return Ok(());
+        }
+
+        let request = RequestBody {
+            request_id: crate::adapter::horizontal_adapter::generate_request_id(),
+            node_id: self.node_id.clone(),
+            app_id: app_id.to_string(),
+            request_type: RequestType::PresenceMemberJoined,
+            channel: Some(channel.to_string()),
+            socket_id: Some(socket_id.to_string()),
+            user_id: Some(user_id.to_string()),
+            // Cluster presence fields
+            user_info,
+            timestamp: None,
+            dead_node_id: None,
+            target_node_id: None,
+        };
+
+        // Send without waiting for response (broadcast)
+        self.transport.publish_request(&request).await
+    }
+
+    /// Broadcast presence member left to all nodes
+    async fn broadcast_presence_leave(
+        &self,
+        app_id: &str,
+        channel: &str,
+        user_id: &str,
+        socket_id: &str,
+    ) -> Result<()> {
+        // Remove from our own registry first with a single lock acquisition
+        {
+            let horizontal = self.horizontal.lock().await;
+            horizontal
+                .remove_presence_entry(&self.node_id, channel, socket_id)
+                .await;
+        }
+
+        // Skip cluster broadcast if cluster health is disabled
+        if !self.cluster_health_enabled {
+            return Ok(());
+        }
+
+        let request = RequestBody {
+            request_id: crate::adapter::horizontal_adapter::generate_request_id(),
+            node_id: self.node_id.clone(),
+            app_id: app_id.to_string(),
+            request_type: RequestType::PresenceMemberLeft,
+            channel: Some(channel.to_string()),
+            socket_id: Some(socket_id.to_string()),
+            user_id: Some(user_id.to_string()),
+            // Cluster presence fields
+            user_info: None,
+            timestamp: None,
+            dead_node_id: None,
+            target_node_id: None,
+        };
+
+        // Send without waiting for response (broadcast)
+        self.transport.publish_request(&request).await
+    }
+}
+
+/// Helper function to send presence state to a new node
+async fn send_presence_state_to_node<T: HorizontalTransport>(
+    horizontal: &Arc<tokio::sync::Mutex<HorizontalAdapter>>,
+    transport: &T,
+    target_node_id: &str,
+) -> Result<()> {
+    // Get our presence data
+    let (our_node_id, data_to_send) = {
+        let horizontal_lock = horizontal.lock().await;
+        let registry = horizontal_lock.cluster_presence_registry.read().await;
+
+        // Get only our node's data
+        if let Some(our_presence_data) = registry.get(&horizontal_lock.node_id) {
+            // Clone the data to avoid holding the lock
+            (
+                horizontal_lock.node_id.clone(),
+                Some(our_presence_data.clone()),
+            )
+        } else {
+            (horizontal_lock.node_id.clone(), None)
+        }
+    };
+
+    if let Some(data_to_send) = data_to_send {
+        // Serialize the presence data
+        let serialized_data = serde_json::to_value(&data_to_send)?;
+
+        let sync_request = RequestBody {
+            request_id: generate_request_id(),
+            node_id: our_node_id,
+            app_id: "cluster".to_string(),
+            request_type: RequestType::PresenceStateSync,
+            target_node_id: Some(target_node_id.to_string()),
+            user_info: Some(serialized_data), // Reuse this field for bulk data
+            channel: None,
+            socket_id: None,
+            user_id: None,
+            timestamp: None,
+            dead_node_id: None,
+        };
+
+        // This broadcasts but only target_node will process it
+        transport.publish_request(&sync_request).await?;
+
+        info!(
+            "Sent presence state to new node: {} ({} channels)",
+            target_node_id,
+            data_to_send.len()
+        );
+    } else {
+        debug!("No presence data to send to new node: {}", target_node_id);
+    }
+
+    Ok(())
 }

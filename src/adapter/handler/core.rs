@@ -1,5 +1,6 @@
 // src/adapter/handler/core_methods.rs
 use super::ConnectionHandler;
+use crate::adapter::horizontal_adapter::DeadNodeEvent;
 use crate::app::config::App;
 use crate::cleanup::{AuthInfo, ConnectionCleanupInfo, DisconnectTask};
 use crate::error::{Error, Result};
@@ -7,7 +8,7 @@ use crate::presence::PresenceManager;
 use crate::protocol::messages::{ErrorData, MessageData, PusherMessage};
 use crate::websocket::SocketId;
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, error, info, warn};
@@ -872,5 +873,91 @@ impl ConnectionHandler {
                 Ok(false) // Assume no cache on error
             }
         }
+    }
+
+    /// Handle dead node cleanup event by processing each orphaned member
+    pub async fn handle_dead_node_cleanup(&self, event: DeadNodeEvent) -> Result<()> {
+        let orphaned_members_count = event.orphaned_members.len();
+        debug!(
+            "Processing dead node cleanup for node {}, cleaning up {} orphaned members",
+            event.dead_node_id, orphaned_members_count
+        );
+
+        // Group orphaned members by app_id to batch app config lookups
+        let mut members_by_app: HashMap<String, Vec<_>> = HashMap::new();
+        for member in event.orphaned_members {
+            members_by_app
+                .entry(member.app_id.clone())
+                .or_default()
+                .push(member);
+        }
+
+        debug!(
+            "Batched {} orphaned members across {} apps for efficient processing",
+            orphaned_members_count,
+            members_by_app.len()
+        );
+
+        // Process each app once
+        for (app_id, members) in members_by_app {
+            let app_config = match self.app_manager.find_by_id(&app_id).await {
+                Ok(Some(app)) => app,
+                Ok(None) => {
+                    warn!(
+                        "App {} not found during dead node cleanup, skipping {} members",
+                        app_id,
+                        members.len()
+                    );
+                    continue;
+                }
+                Err(e) => {
+                    error!(
+                        "Error fetching app {} during dead node cleanup: {}, skipping {} members",
+                        app_id,
+                        e,
+                        members.len()
+                    );
+                    continue;
+                }
+            };
+
+            debug!(
+                "Processing {} orphaned members for app {}",
+                members.len(),
+                app_config.id
+            );
+
+            // Process all members for this app
+            for orphaned_member in members {
+                // Use PresenceManager to handle member removal
+                if let Err(e) = PresenceManager::handle_member_removed(
+                    &self.connection_manager,
+                    self.webhook_integration.as_ref(),
+                    &app_config,
+                    &orphaned_member.channel,
+                    &orphaned_member.user_id,
+                    None, // No excluding socket for dead node cleanup
+                )
+                .await
+                {
+                    error!(
+                        "Failed to handle member removal for user {} in channel {} (app: {}) during dead node cleanup: {}",
+                        orphaned_member.user_id, orphaned_member.channel, orphaned_member.app_id, e
+                    );
+                } else {
+                    debug!(
+                        "Successfully cleaned up orphaned member {} from channel {} (app: {})",
+                        orphaned_member.user_id, orphaned_member.channel, orphaned_member.app_id
+                    );
+                }
+            }
+        }
+
+        info!(
+            "Completed dead node cleanup for node {}, processed {} orphaned members",
+            event.dead_node_id, orphaned_members_count
+        );
+
+        Ok(())
     }
 }

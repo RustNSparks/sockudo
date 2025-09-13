@@ -552,6 +552,16 @@ impl sockudo::adapter::ConnectionManager for FailingAdapter {
     async fn check_health(&self) -> sockudo::error::Result<()> {
         Err(sockudo::error::Error::ApplicationNotFound)
     }
+
+    fn get_node_id(&self) -> String {
+        "test-node".to_string()
+    }
+
+    fn as_horizontal_adapter(
+        &self,
+    ) -> Option<&dyn sockudo::adapter::connection_manager::HorizontalAdapterInterface> {
+        None
+    }
 }
 
 // Mock cache manager that fails health check
