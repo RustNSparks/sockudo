@@ -42,6 +42,15 @@ pub struct HorizontalAdapterBase<T: HorizontalTransport> {
     pub cleanup_interval_ms: u64,
 }
 
+impl<T: HorizontalTransport> HorizontalAdapterBase<T> {
+    /// Check if we should skip horizontal communication (single node optimization)
+    async fn should_skip_horizontal_communication(&self) -> bool {
+        let horizontal = self.horizontal.lock().await;
+        let effective_node_count = horizontal.get_effective_node_count().await;
+        effective_node_count <= 1
+    }
+}
+
 impl<T: HorizontalTransport + 'static> HorizontalAdapterBase<T>
 where
     T::Config: TransportConfig,
@@ -164,8 +173,10 @@ where
             }
         }
 
-        // Broadcast the request via transport
-        self.transport.publish_request(&request).await?;
+        // Broadcast the request via transport (skip if single node)
+        if !self.should_skip_horizontal_communication().await {
+            self.transport.publish_request(&request).await?;
+        }
 
         // Wait for responses
         let timeout_duration = Duration::from_millis(self.config.request_timeout_ms());
@@ -521,6 +532,7 @@ where
                 };
 
                 if !dead_nodes.is_empty() {
+
                     // Single leader election for entire cleanup round
                     let is_leader = {
                         let horizontal_guard = horizontal.lock().await;
@@ -595,23 +607,30 @@ where
                                 );
                             }
 
-                            // 4. Notify followers to clean their registries
-                            let dead_node_request = RequestBody {
-                                request_id: generate_request_id(),
-                                node_id: node_id.clone(),
-                                app_id: "cluster".to_string(),
-                                request_type: RequestType::NodeDead,
-                                channel: None,
-                                socket_id: None,
-                                user_id: None,
-                                user_info: None,
-                                timestamp: Some(current_timestamp()),
-                                dead_node_id: Some(dead_node_id.clone()),
-                                target_node_id: None,
+                            // 4. Notify followers to clean their registries (skip if single node)
+                            let effective_node_count = {
+                                let horizontal_guard = horizontal.lock().await;
+                                horizontal_guard.get_effective_node_count().await
                             };
 
-                            if let Err(e) = transport.publish_request(&dead_node_request).await {
-                                error!("Failed to send dead node notification: {}", e);
+                            if effective_node_count > 1 {
+                                let dead_node_request = RequestBody {
+                                    request_id: generate_request_id(),
+                                    node_id: node_id.clone(),
+                                    app_id: "cluster".to_string(),
+                                    request_type: RequestType::NodeDead,
+                                    channel: None,
+                                    socket_id: None,
+                                    user_id: None,
+                                    user_info: None,
+                                    timestamp: Some(current_timestamp()),
+                                    dead_node_id: Some(dead_node_id.clone()),
+                                    target_node_id: None,
+                                };
+
+                                if let Err(e) = transport.publish_request(&dead_node_request).await {
+                                    error!("Failed to send dead node notification: {}", e);
+                                }
                             }
                         }
                     } else {
@@ -642,6 +661,7 @@ where
         let heartbeats = horizontal.node_heartbeats.read().await;
         heartbeats.clone()
     }
+
 }
 
 #[async_trait]
@@ -752,7 +772,10 @@ where
             }),
         };
 
-        self.transport.publish_broadcast(&broadcast).await?;
+        // Skip broadcasting to other nodes if we're in single-node mode
+        if !self.should_skip_horizontal_communication().await {
+            self.transport.publish_broadcast(&broadcast).await?;
+        }
 
         Ok(())
     }
@@ -1180,8 +1203,12 @@ impl<T: HorizontalTransport> HorizontalAdapterInterface for HorizontalAdapterBas
             target_node_id: None,
         };
 
-        // Send without waiting for response (broadcast)
-        self.transport.publish_request(&request).await
+        // Send without waiting for response (broadcast) - skip if single node
+        if !self.should_skip_horizontal_communication().await {
+            self.transport.publish_request(&request).await
+        } else {
+            Ok(())
+        }
     }
 
     /// Broadcast presence member left to all nodes
@@ -1220,8 +1247,12 @@ impl<T: HorizontalTransport> HorizontalAdapterInterface for HorizontalAdapterBas
             target_node_id: None,
         };
 
-        // Send without waiting for response (broadcast)
-        self.transport.publish_request(&request).await
+        // Send without waiting for response (broadcast) - skip if single node
+        if !self.should_skip_horizontal_communication().await {
+            self.transport.publish_request(&request).await
+        } else {
+            Ok(())
+        }
     }
 }
 

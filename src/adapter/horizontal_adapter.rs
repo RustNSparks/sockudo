@@ -1067,6 +1067,12 @@ impl HorizontalAdapter {
             socket_id, channel, node_id
         );
     }
+
+    /// Get count of active nodes (including ourselves)
+    pub async fn get_effective_node_count(&self) -> usize {
+        let heartbeats = self.node_heartbeats.read().await;
+        heartbeats.len() + 1 // +1 for ourselves
+    }
 }
 
 /// Generate unique request ID
