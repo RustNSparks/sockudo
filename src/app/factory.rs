@@ -1,12 +1,13 @@
-// src/app/factory.rs
+// Updates to src/app/factory.rs to add SurrealDB support
+
 use crate::app::dynamodb_app_manager::{DynamoDbAppManager, DynamoDbConfig};
 use crate::app::manager::AppManager;
 use crate::app::memory_app_manager::MemoryAppManager;
 use crate::app::mysql_app_manager::MySQLAppManager;
-use crate::error::Result;
-
 use crate::app::pg_app_manager::PgSQLAppManager;
-use crate::options::{AppManagerConfig, AppManagerDriver, DatabaseConfig}; // Import AppManagerDriver
+use crate::app::surrealdb_app_manager::{SurrealDbAppManager, SurrealDbConfig}; // Add this import
+use crate::error::Result;
+use crate::options::{AppManagerConfig, AppManagerDriver, DatabaseConfig};
 use std::sync::Arc;
 use tracing::{info, warn};
 
@@ -17,33 +18,41 @@ impl AppManagerFactory {
         config: &AppManagerConfig,
         db_config: &DatabaseConfig,
     ) -> Result<Arc<dyn AppManager + Send + Sync>> {
-        info!(
-            "{}",
-            format!("Initializing AppManager with driver: {:?}", config.driver)
-        );
+        info!("Initializing AppManager with driver: {:?}", config.driver);
         match config.driver {
-            // Match on the enum
+            AppManagerDriver::Memory => Ok(Arc::new(MemoryAppManager::new())),
+
             AppManagerDriver::Mysql => {
                 let mysql_db_config = db_config.mysql.clone();
                 match MySQLAppManager::new(mysql_db_config).await {
                     Ok(manager) => Ok(Arc::new(manager)),
                     Err(e) => {
                         warn!(
-                            "{}",
-                            format!(
-                                "Failed to initialize MySQL app manager: {}, falling back to memory manager",
-                                e
-                            )
+                            "Failed to initialize MySQL app manager: {}, falling back to memory manager",
+                            e
                         );
                         Ok(Arc::new(MemoryAppManager::new()))
                     }
                 }
             }
-            AppManagerDriver::Dynamodb => {
-                let dynamo_settings = &db_config.dynamodb; // Use the new dedicated settings
 
+            AppManagerDriver::PgSql => {
+                let pg_db_config = db_config.postgres.clone();
+                match PgSQLAppManager::new(pg_db_config).await {
+                    Ok(manager) => Ok(Arc::new(manager)),
+                    Err(e) => {
+                        warn!(
+                            "Failed to initialize PostgreSQL app manager: {}, falling back to memory manager",
+                            e
+                        );
+                        Ok(Arc::new(MemoryAppManager::new()))
+                    }
+                }
+            }
+
+            AppManagerDriver::Dynamodb => {
+                let dynamo_settings = &db_config.dynamodb;
                 let dynamo_app_config = DynamoDbConfig {
-                    // This is from app::dynamodb_app_manager
                     region: dynamo_settings.region.clone(),
                     table_name: dynamo_settings.table_name.clone(),
                     endpoint: dynamo_settings.endpoint_url.clone(),
@@ -55,36 +64,36 @@ impl AppManagerFactory {
                     Ok(manager) => Ok(Arc::new(manager)),
                     Err(e) => {
                         warn!(
-                            "{}",
-                            format!(
-                                "Failed to initialize DynamoDB app manager: {}, falling back to memory manager",
-                                e
-                            )
+                            "Failed to initialize DynamoDB app manager: {}, falling back to memory manager",
+                            e
                         );
                         Ok(Arc::new(MemoryAppManager::new()))
                     }
                 }
             }
-            AppManagerDriver::PgSql => {
-                let pgsql_db_config = db_config.postgres.clone();
-                match PgSQLAppManager::new(pgsql_db_config).await {
+
+            AppManagerDriver::SurrealDB => {
+                let surrealdb_settings = &db_config.surrealdb;
+                let surrealdb_config = SurrealDbConfig {
+                    url: surrealdb_settings.url.clone(),
+                    namespace: surrealdb_settings.namespace.clone(),
+                    database: surrealdb_settings.database.clone(),
+                    username: surrealdb_settings.username.clone(),
+                    password: surrealdb_settings.password.clone(),
+                    table_name: surrealdb_settings.table_name.clone(),
+                    cache_ttl: surrealdb_settings.cache_ttl,
+                    cache_max_capacity: surrealdb_settings.cache_max_capacity,
+                };
+                match SurrealDbAppManager::new(surrealdb_config).await {
                     Ok(manager) => Ok(Arc::new(manager)),
                     Err(e) => {
                         warn!(
-                            "{}",
-                            format!(
-                                "Failed to initialize PgSQL app manager: {}, falling back to memory manager",
-                                e
-                            )
+                            "Failed to initialize SurrealDB app manager: {}, falling back to memory manager",
+                            e
                         );
                         Ok(Arc::new(MemoryAppManager::new()))
                     }
                 }
-            }
-            AppManagerDriver::Memory => {
-                // Handle unknown as Memory or make it an error
-                info!("{}", "Using memory app manager.".to_string());
-                Ok(Arc::new(MemoryAppManager::new()))
             }
         }
     }
