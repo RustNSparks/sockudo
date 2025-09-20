@@ -1,0 +1,35 @@
+# Docker image with both Nginx and Sockudo for Unix socket testing
+FROM ubuntu:24.04
+
+# Install nginx, supervisor for process management, and curl for testing
+RUN apt update && apt install -y nginx supervisor curl openssl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create nginx user (Ubuntu uses www-data by default, but we'll create nginx for compatibility)
+RUN useradd -r -d /var/cache/nginx -s /sbin/nologin -U nginx || true
+
+# Create directory for sockudo unix socket
+RUN mkdir -p /var/run/sockudo && \
+    chmod 755 /var/run/sockudo
+
+# Copy nginx configuration
+COPY test/unix-socket/nginx-unix-socket.conf /etc/nginx/nginx.conf
+
+# Copy the multinode client HTML file to be served by nginx
+COPY test/multinode/client/index.html /usr/share/nginx/html/index.html
+
+# Copy supervisor configuration
+COPY test/unix-socket/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Copy startup script
+COPY test/unix-socket/start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
+
+# Set working directory
+WORKDIR /app
+
+# Expose nginx ports
+EXPOSE 80 443
+
+# Use supervisor to run both nginx and sockudo
+CMD ["/usr/local/bin/start.sh"]

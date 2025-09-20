@@ -148,6 +148,9 @@ Key variables (see `.env.example` for complete list):
 - `ENVIRONMENT` - Mode (production/development)
 - `REDIS_URL` - Override all Redis configurations with single URL
 - `SOCKUDO_DEFAULT_APP_ALLOWED_ORIGINS` - Comma-separated list of allowed origins for default app
+- `UNIX_SOCKET_ENABLED` - Enable Unix socket server (true|false, default: false)
+- `UNIX_SOCKET_PATH` - Unix socket file path (default: /var/run/sockudo/sockudo.sock)
+- `UNIX_SOCKET_PERMISSION_MODE` - Unix socket file permissions in octal (default: 660)
 
 #### Logging Configuration
 **Environment Variables:**
@@ -205,6 +208,64 @@ Key variables (see `.env.example` for complete list):
 4. Configure webhooks if needed (`WEBHOOK_BATCHING_ENABLED`, `WEBHOOK_BATCHING_DURATION`)
 5. Set appropriate limits via app configuration
 6. Configure structured logging for external systems (see [Production Logging](#production-logging))
+7. Consider Unix socket deployment for reverse proxy scenarios (see [Unix Socket Configuration](#unix-socket-configuration))
+
+### Unix Socket Configuration
+
+Sockudo supports Unix domain sockets for communication when deployed behind a reverse proxy, providing performance benefits by avoiding TCP/IP stack overhead.
+
+#### Configuration Options
+```bash
+# Enable Unix socket server
+UNIX_SOCKET_ENABLED=true
+
+# Custom socket path (optional, default: /var/run/sockudo/sockudo.sock)
+UNIX_SOCKET_PATH=/var/run/sockudo/sockudo.sock
+
+# Socket file permissions in octal (optional, default: 660)
+UNIX_SOCKET_PERMISSION_MODE=660
+```
+
+#### Configuration File Example
+```json
+{
+  "unix_socket": {
+    "enabled": true,
+    "path": "/var/run/sockudo/sockudo.sock",
+    "permission_mode": "660"
+  }
+}
+```
+
+#### Usage with Reverse Proxies
+
+**Nginx Configuration Example:**
+```nginx
+upstream sockudo {
+    server unix:/var/run/sockudo/sockudo.sock;
+}
+
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://sockudo;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+#### Benefits
+- **Performance**: Eliminates TCP/IP stack overhead for local communication
+- **Security**: Unix sockets are local filesystem objects, not network accessible
+- **Flexibility**: Easier deployment behind reverse proxies without port conflicts
+
+**Note**: Unix sockets are only available on Unix-like systems (Linux, macOS). On Windows, the Unix socket configuration is ignored.
 
 ### Production Logging
 For production environments with external log aggregation systems (Fluentd, Logstash, etc.):

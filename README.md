@@ -285,6 +285,11 @@ SSL_ENABLED=false # Set to true for production and provide paths
 # SSL_KEY_PATH=/path/to/key.pem
 # REDIS_PASSWORD=your-redis-password # If Redis requires auth
 
+# Unix Socket (Alternative to HTTP/HTTPS - useful for reverse proxy setups)
+UNIX_SOCKET_ENABLED=false # Set to true to use Unix socket instead of HTTP
+# UNIX_SOCKET_PATH=/var/run/sockudo/sockudo.sock # Path to Unix socket file
+# UNIX_SOCKET_PERMISSION_MODE=660 # Socket file permissions in octal
+
 # Application Defaults (if not using a persistent AppManager or for fallback)
 SOCKUDO_DEFAULT_APP_ID=demo-app
 SOCKUDO_DEFAULT_APP_KEY=demo-key
@@ -375,6 +380,11 @@ Provides detailed control over all aspects. Below is a snippet; refer to your up
     "enabled": false,
     // "cert_path": "/path/to/fullchain.pem",
     // "key_path": "/path/to/privkey.pem"
+  },
+  "unix_socket": {
+    "enabled": false, // Set to true to use Unix socket instead of HTTP/HTTPS
+    "path": "/var/run/sockudo/sockudo.sock", // Path to Unix socket file
+    "permission_mode": "755" // Socket file permissions in octal (preferred)
   }
   // ... many other options available, see src/options.rs
 }
@@ -551,6 +561,113 @@ func main() {
 	fmt.Printf("Events triggered: %+v\n", events)
 }
 ```
+
+-----
+
+## 🔌 Unix Socket Support
+
+Sockudo supports Unix domain sockets as an alternative to HTTP/HTTPS servers, providing performance benefits and security advantages when deployed behind reverse proxies.
+
+### Benefits of Unix Sockets
+
+- **Performance**: Eliminates TCP/IP stack overhead for local communication
+- **Security**: Unix sockets are filesystem objects, not network accessible
+- **Flexibility**: Easier deployment behind reverse proxies without port conflicts
+- **Resource Efficiency**: Single server process instead of concurrent HTTP + Unix socket
+
+### Configuration
+
+**Important**: When Unix socket is enabled, the HTTP/HTTPS server will **NOT** start. This is an either/or choice, not concurrent operation.
+
+#### Environment Variables
+```bash
+# Enable Unix socket (disables HTTP/HTTPS)
+UNIX_SOCKET_ENABLED=true
+UNIX_SOCKET_PATH=/var/run/sockudo/sockudo.sock
+UNIX_SOCKET_PERMISSION_MODE=660  # Octal permissions
+```
+
+#### Configuration File
+```json
+{
+  "unix_socket": {
+    "enabled": true,
+    "path": "/var/run/sockudo/sockudo.sock",
+    "permission_mode": "755"  // Octal string notation (recommended)
+  }
+}
+```
+
+**Alternative formats supported:**
+```json
+"permission_mode": "755"  // Octal string (recommended)
+"permission_mode": 755    // Parsed as octal if ≤ 777 and all digits 0-7
+"permission_mode": 493    // Decimal equivalent (legacy support)
+```
+
+#### Common Permission Values
+| Octal | JSON Value | Permissions | Use Case |
+|-------|------------|-------------|----------|
+| `755` | `"755"` | rwxr-xr-x | Standard (recommended) |
+| `660` | `"660"` | rw-rw---- | Restricted to group |
+| `644` | `"644"` | rw-r--r-- | Read-only for group/others |
+
+### Reverse Proxy Integration
+
+#### Nginx Configuration Example
+```nginx
+upstream sockudo {
+    server unix:/var/run/sockudo/sockudo.sock;
+}
+
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    # WebSocket upgrade support
+    location / {
+        proxy_pass http://sockudo;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+
+        # Forward real IP
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+#### Apache Configuration Example
+```apache
+<VirtualHost *:80>
+    ServerName your-domain.com
+
+    # Enable proxy modules: proxy, proxy_http, proxy_wstunnel
+    ProxyRequests Off
+    ProxyPreserveHost On
+
+    # WebSocket support
+    ProxyPass / unix:/var/run/sockudo/sockudo.sock|http://localhost/
+    ProxyPassReverse / unix:/var/run/sockudo/sockudo.sock|http://localhost/
+
+    # WebSocket upgrade
+    RewriteEngine on
+    RewriteCond %{HTTP:Upgrade} websocket [NC]
+    RewriteCond %{HTTP:Connection} upgrade [NC]
+    RewriteRule ^/?(.*) "ws://localhost/$1" [P,L]
+</VirtualHost>
+```
+
+### Platform Support
+
+Unix sockets are supported on Unix-like systems:
+- ✅ Linux (all distributions)
+- ✅ macOS
+- ❌ Windows (configuration ignored, falls back to HTTP)
 
 -----
 

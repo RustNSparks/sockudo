@@ -1,0 +1,55 @@
+name: sockudo-unix-socket
+
+services:
+  sockudo-unix-socket:
+    build:
+      context: ./
+      dockerfile: ./test/unix-socket/Dockerfile.unix-socket
+    volumes:
+      # Mount the sockudo binary
+      - ./target:/app/target:ro
+      - ./config:/app/config:ro
+      # Shared volume for unix socket
+      - sockudo-socket:/var/run/sockudo
+    environment:
+      # Sockudo configuration for Unix socket
+      - DEBUG=true
+      - UNIX_SOCKET_ENABLED=true
+      - UNIX_SOCKET_PATH=/var/run/sockudo/sockudo.sock
+      - UNIX_SOCKET_PERMISSION_MODE=777
+      - PORT=6001
+      - HOST=127.0.0.1
+      - METRICS_ENABLED=true
+      - METRICS_PORT=9601
+      - APP_MANAGER_DRIVER=memory
+      - CACHE_DRIVER=memory
+      - QUEUE_DRIVER=memory
+      - RATE_LIMITER_DRIVER=memory
+      - SHUTDOWN_GRACE_PERIOD=1
+      # Default app configuration
+      - SOCKUDO_DEFAULT_APP_ID=test-app
+      - SOCKUDO_DEFAULT_APP_KEY=test-key
+      - SOCKUDO_DEFAULT_APP_SECRET=test-secret
+      - SOCKUDO_DEFAULT_APP_MAX_CONNECTIONS=100
+      - SOCKUDO_DEFAULT_APP_ENABLE_CLIENT_MESSAGES=true
+      - SOCKUDO_DEFAULT_APP_ALLOWED_ORIGINS=http://localhost,http://localhost:80,https://localhost:443
+      # Logging
+      - LOG_COLORS_ENABLED=true
+      - LOG_INCLUDE_TARGET=true
+    ports:
+      - "82:80"        # Nginx HTTP (match multinode node1 port)
+      - "444:443"      # Nginx HTTPS (match multinode node1 port)
+      - "9601:9601"    # Sockudo metrics (direct access for debugging)
+    networks:
+      - sockudo-unix-test
+    command: ${SOCKUDO_COMMAND:-/usr/local/bin/start.sh}
+    stdin_open: true
+    tty: true
+
+networks:
+  sockudo-unix-test:
+    driver: bridge
+
+volumes:
+  sockudo-socket:
+    driver: local
