@@ -2,6 +2,7 @@
 use super::ConnectionHandler;
 use crate::adapter::horizontal_adapter::DeadNodeEvent;
 use crate::app::config::App;
+use crate::channel::ChannelManager;
 use crate::cleanup::{AuthInfo, ConnectionCleanupInfo, DisconnectTask};
 use crate::error::{Error, Result};
 use crate::presence::PresenceManager;
@@ -56,17 +57,14 @@ impl ConnectionHandler {
         let user_id = self.get_user_id_for_socket(socket_id, app_config).await?;
 
         // Perform unsubscription through channel manager
-        {
-            let channel_manager = self.channel_manager.read().await;
-            channel_manager
-                .unsubscribe(
-                    socket_id.as_ref(),
-                    &channel_name,
-                    &app_config.id,
-                    user_id.as_deref(),
-                )
-                .await?;
-        }
+        ChannelManager::unsubscribe(
+            &self.connection_manager,
+            socket_id.as_ref(),
+            &channel_name,
+            &app_config.id,
+            user_id.as_deref(),
+        )
+        .await?;
 
         // Update connection state
         self.update_connection_unsubscribe_state(socket_id, app_config, &channel_name)
@@ -508,46 +506,57 @@ impl ConnectionHandler {
         subscribed_channels: &HashSet<String>,
         user_id: &Option<String>,
     ) -> Result<()> {
-        let channel_manager = self.channel_manager.read().await;
+        if subscribed_channels.is_empty() {
+            return Ok(());
+        }
 
-        for channel_str in subscribed_channels {
-            debug!(
-                "Processing channel {} for disconnect of socket {}",
-                channel_str, socket_id
-            );
+        debug!(
+            "Processing batch unsubscribe for socket {} from {} channels",
+            socket_id,
+            subscribed_channels.len()
+        );
 
-            match channel_manager
-                .unsubscribe(
-                    socket_id.as_ref(),
-                    channel_str,
-                    &app_config.id,
-                    user_id.as_deref(),
-                )
-                .await
-            {
-                Ok(_) => {
-                    let current_sub_count = self
-                        .connection_manager
-                        .lock()
-                        .await
-                        .get_channel_socket_count(&app_config.id, channel_str)
-                        .await;
+        // Prepare batch operations for all channels
+        let operations: Vec<(String, String, String)> = subscribed_channels
+            .iter()
+            .map(|channel| (socket_id.0.clone(), channel.clone(), app_config.id.clone()))
+            .collect();
 
-                    self.handle_post_unsubscribe_webhooks(
-                        app_config,
-                        channel_str,
-                        user_id,
-                        current_sub_count,
-                        socket_id,
-                    )
-                    .await?;
+        match ChannelManager::batch_unsubscribe(&self.connection_manager, operations).await {
+            Ok(results) => {
+                // Process webhook events for each successful unsubscribe
+                let channels_vec: Vec<&String> = subscribed_channels.iter().collect();
+                for (i, result) in results.iter().enumerate() {
+                    match result {
+                        Ok((was_removed, remaining_connections)) => {
+                            if *was_removed && i < channels_vec.len() {
+                                let channel_str = channels_vec[i];
+                                self.handle_post_unsubscribe_webhooks(
+                                    app_config,
+                                    channel_str,
+                                    user_id,
+                                    *remaining_connections,
+                                    socket_id,
+                                )
+                                .await?;
+                            }
+                        }
+                        Err(e) => {
+                            if i < channels_vec.len() {
+                                error!(
+                                    "Error unsubscribing socket {} from channel {} during disconnect: {}",
+                                    socket_id, channels_vec[i], e
+                                );
+                            }
+                        }
+                    }
                 }
-                Err(e) => {
-                    error!(
-                        "Error unsubscribing socket {} from channel {} during disconnect: {}",
-                        socket_id, channel_str, e
-                    );
-                }
+            }
+            Err(e) => {
+                error!(
+                    "Batch unsubscribe failed for socket {} during disconnect: {}",
+                    socket_id, e
+                );
             }
         }
 

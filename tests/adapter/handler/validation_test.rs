@@ -21,7 +21,7 @@ mod client_event_validation_tests {
 
     #[tokio::test]
     async fn test_client_event_must_start_with_client_prefix() {
-        let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+        let (handler, _app_manager) = create_test_connection_handler();
         let app = setup_test_app();
 
         let request = ClientEventRequest {
@@ -42,7 +42,7 @@ mod client_event_validation_tests {
 
     #[tokio::test]
     async fn test_client_event_cannot_use_pusher_prefix() {
-        let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+        let (handler, _app_manager) = create_test_connection_handler();
         let app = setup_test_app();
 
         let request = ClientEventRequest {
@@ -63,7 +63,7 @@ mod client_event_validation_tests {
 
     #[tokio::test]
     async fn test_client_event_cannot_use_pusher_internal_prefix() {
-        let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+        let (handler, _app_manager) = create_test_connection_handler();
         let app = setup_test_app();
 
         let request = ClientEventRequest {
@@ -84,7 +84,7 @@ mod client_event_validation_tests {
 
     #[tokio::test]
     async fn test_valid_client_event_passes_validation() {
-        let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+        let (handler, _app_manager) = create_test_connection_handler();
         let app = setup_test_app();
 
         let request = ClientEventRequest {
@@ -99,7 +99,7 @@ mod client_event_validation_tests {
 
     #[tokio::test]
     async fn test_client_events_disabled_for_app() {
-        let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+        let (handler, _app_manager) = create_test_connection_handler();
         let mut app = setup_test_app();
         app.enable_client_messages = false;
 
@@ -118,7 +118,7 @@ mod client_event_validation_tests {
 
     #[tokio::test]
     async fn test_client_event_rejected_on_public_channel() {
-        let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+        let (handler, _app_manager) = create_test_connection_handler();
         let app = setup_test_app();
 
         let request = ClientEventRequest {
@@ -139,7 +139,7 @@ mod client_event_validation_tests {
 
     #[tokio::test]
     async fn test_client_event_allowed_on_private_channel() {
-        let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+        let (handler, _app_manager) = create_test_connection_handler();
         let app = setup_test_app();
 
         let request = ClientEventRequest {
@@ -154,7 +154,7 @@ mod client_event_validation_tests {
 
     #[tokio::test]
     async fn test_client_event_allowed_on_presence_channel() {
-        let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+        let (handler, _app_manager) = create_test_connection_handler();
         let app = setup_test_app();
 
         let request = ClientEventRequest {
@@ -169,7 +169,7 @@ mod client_event_validation_tests {
 
     #[tokio::test]
     async fn test_client_event_name_length_limit() {
-        let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+        let (handler, _app_manager) = create_test_connection_handler();
         let mut app = setup_test_app();
         app.max_event_name_length = Some(20);
 
@@ -188,7 +188,7 @@ mod client_event_validation_tests {
 
     #[tokio::test]
     async fn test_client_event_payload_size_limit() {
-        let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+        let (handler, _app_manager) = create_test_connection_handler();
         let mut app = setup_test_app();
         app.max_event_payload_in_kb = Some(1); // 1KB limit
 
@@ -209,7 +209,7 @@ mod client_event_validation_tests {
 
     #[tokio::test]
     async fn test_client_event_channel_name_length_limit() {
-        let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+        let (handler, _app_manager) = create_test_connection_handler();
         let mut app = setup_test_app();
         app.max_channel_name_length = Some(20);
 
@@ -228,7 +228,7 @@ mod client_event_validation_tests {
 
     #[tokio::test]
     async fn test_client_event_with_special_prefixes_variations() {
-        let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+        let (handler, _app_manager) = create_test_connection_handler();
         let app = setup_test_app();
 
         // Test variations of reserved prefixes that should be blocked
@@ -274,7 +274,7 @@ mod client_event_validation_tests {
 
     #[tokio::test]
     async fn test_client_event_validation_edge_cases() {
-        let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+        let (handler, _app_manager) = create_test_connection_handler();
         let app = setup_test_app();
 
         // Test event that starts with 'client-pusher:' (should pass after prefix check)

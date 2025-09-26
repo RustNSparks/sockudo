@@ -8,7 +8,7 @@ use sockudo::websocket::SocketId;
 
 #[tokio::test]
 async fn test_verify_channel_authentication_public_channel() {
-    let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+    let (handler, _app_manager) = create_test_connection_handler();
     let app_config = App::default();
     let socket_id = SocketId::new();
 
@@ -27,7 +27,7 @@ async fn test_verify_channel_authentication_public_channel() {
 
 #[tokio::test]
 async fn test_verify_channel_authentication_private_channel_no_auth() {
-    let (handler, _app_manager, _channel_manager) = create_test_connection_handler();
+    let (handler, _app_manager) = create_test_connection_handler();
     let app_config = App::default();
     let socket_id = SocketId::new();
 
@@ -49,13 +49,13 @@ async fn test_verify_channel_authentication_private_channel_no_auth() {
 
 #[tokio::test]
 async fn test_verify_channel_authentication_private_channel_with_auth() {
-    let (handler, _app_manager, mut channel_manager) = create_test_connection_handler();
+    let (handler, _app_manager) = create_test_connection_handler();
     let app_config = App::default();
     let socket_id = SocketId::new();
     let channel = "private-channel".to_string();
     let auth = "test-signature".to_string();
 
-    let expected_message = PusherMessage {
+    let _expected_message = PusherMessage {
         channel: Some(channel.clone()),
         event: Some("pusher:subscribe".to_string()),
         data: Some(MessageData::Json(json!({
@@ -66,8 +66,6 @@ async fn test_verify_channel_authentication_private_channel_with_auth() {
         name: None,
         user_id: None,
     };
-
-    channel_manager.expect_signature_validation(auth.clone(), expected_message, true);
 
     let request = SubscriptionRequest {
         channel,
@@ -83,7 +81,7 @@ async fn test_verify_channel_authentication_private_channel_with_auth() {
 
 #[tokio::test]
 async fn test_verify_channel_authentication_presence_channel() {
-    let (handler, _app_manager, mut channel_manager) = create_test_connection_handler();
+    let (handler, _app_manager) = create_test_connection_handler();
     let app_config = App::default();
     let socket_id = SocketId::new();
     let channel = "presence-channel".to_string();
@@ -96,7 +94,7 @@ async fn test_verify_channel_authentication_presence_channel() {
     })
     .to_string();
 
-    let expected_message = PusherMessage {
+    let _expected_message = PusherMessage {
         channel: Some(channel.clone()),
         event: Some("pusher:subscribe".to_string()),
         data: Some(MessageData::Json(json!({
@@ -107,8 +105,6 @@ async fn test_verify_channel_authentication_presence_channel() {
         name: None,
         user_id: None,
     };
-
-    channel_manager.expect_signature_validation(auth.clone(), expected_message, true);
 
     let request = SubscriptionRequest {
         channel,

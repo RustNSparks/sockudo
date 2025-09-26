@@ -2,6 +2,7 @@
 use super::ConnectionHandler;
 use super::types::*;
 use crate::app::config::App;
+use crate::channel::ChannelManager;
 use crate::channel::{ChannelType, PresenceMemberInfo};
 use crate::error::Result;
 use crate::presence::PresenceManager;
@@ -45,19 +46,15 @@ impl ConnectionHandler {
             user_id: None,
         };
 
-        let subscription_result = {
-            let channel_manager = self.channel_manager.read().await;
-
-            channel_manager
-                .subscribe(
-                    socket_id.as_ref(),
-                    &temp_message,
-                    &request.channel,
-                    is_authenticated,
-                    &app_config.id,
-                )
-                .await?
-        };
+        let subscription_result = ChannelManager::subscribe(
+            &self.connection_manager,
+            socket_id.as_ref(),
+            &temp_message,
+            &request.channel,
+            is_authenticated,
+            &app_config.id,
+        )
+        .await?;
 
         // Track subscription metrics if successful
         if subscription_result.success
@@ -90,7 +87,7 @@ impl ConnectionHandler {
             success: subscription_result.success,
             auth_error: subscription_result.auth_error,
             member: subscription_result.member.map(|m| PresenceMember {
-                user_id: m.user_id,
+                user_id: m.user_id.to_string(),
                 user_info: m.user_info,
             }),
             channel_connections: subscription_result.channel_connections,

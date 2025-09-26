@@ -5,7 +5,6 @@ mod tests {
     use sockudo::app::config::App;
     use sockudo::app::manager::AppManager;
     use sockudo::app::memory_app_manager::MemoryAppManager;
-    use sockudo::channel::ChannelManager;
     use sockudo::cleanup::multi_worker::MultiWorkerCleanupSystem;
     use sockudo::cleanup::{
         AuthInfo, CleanupConfig, ConnectionCleanupInfo, DisconnectTask, WorkerThreadsConfig,
@@ -14,13 +13,12 @@ mod tests {
     use sockudo::websocket::SocketId;
     use std::sync::Arc;
     use std::time::Instant;
-    use tokio::sync::{Mutex, RwLock};
+    use tokio::sync::Mutex;
 
     /// Helper to create a real cleanup system with all components
     async fn create_real_cleanup_system() -> (
         MultiWorkerCleanupSystem,
         Arc<Mutex<LocalAdapter>>,
-        Arc<RwLock<ChannelManager>>,
         Arc<MemoryAppManager>,
     ) {
         let config = CleanupConfig {
@@ -35,8 +33,7 @@ mod tests {
 
         let local_adapter = Arc::new(Mutex::new(LocalAdapter::new()));
         let connection_manager = local_adapter.clone();
-        let channel_manager =
-            Arc::new(RwLock::new(ChannelManager::new(connection_manager.clone())));
+        // ChannelManager is now a static struct
         let app_manager = Arc::new(MemoryAppManager::new());
 
         // Create test app
@@ -67,20 +64,18 @@ mod tests {
 
         let cleanup_system = MultiWorkerCleanupSystem::new(
             connection_manager.clone(),
-            channel_manager.clone(),
             app_manager.clone(),
             None,
             config,
         );
 
-        (cleanup_system, local_adapter, channel_manager, app_manager)
+        (cleanup_system, local_adapter, app_manager)
     }
 
     /// Helper to create a cleanup system with webhook app configuration
     async fn create_cleanup_system_with_webhook_app() -> (
         MultiWorkerCleanupSystem,
         Arc<Mutex<LocalAdapter>>,
-        Arc<RwLock<ChannelManager>>,
         Arc<MemoryAppManager>,
     ) {
         let config = CleanupConfig {
@@ -95,8 +90,7 @@ mod tests {
 
         let local_adapter = Arc::new(Mutex::new(LocalAdapter::new()));
         let connection_manager = local_adapter.clone();
-        let channel_manager =
-            Arc::new(RwLock::new(ChannelManager::new(connection_manager.clone())));
+        // ChannelManager is now a static struct
         let app_manager = Arc::new(MemoryAppManager::new());
 
         // Create test app with webhook configuration
@@ -137,13 +131,12 @@ mod tests {
         // Create cleanup system WITHOUT webhook integration
         let cleanup_system = MultiWorkerCleanupSystem::new(
             connection_manager.clone(),
-            channel_manager.clone(),
             app_manager.clone(),
             None,
             config,
         );
 
-        (cleanup_system, local_adapter, channel_manager, app_manager)
+        (cleanup_system, local_adapter, app_manager)
     }
 
     /// Helper to create a disconnect task
@@ -161,8 +154,7 @@ mod tests {
     #[tokio::test]
     async fn test_cleanup_actually_removes_socket_from_channel() {
         // TEST: Verify that the cleanup worker actually removes sockets from channels
-        let (cleanup_system, adapter, _channel_manager, _app_manager) =
-            create_real_cleanup_system().await;
+        let (cleanup_system, adapter, _app_manager) = create_real_cleanup_system().await;
         let cleanup_sender = cleanup_system.get_sender();
 
         let socket_id = SocketId("socket-123".to_string());
@@ -236,8 +228,7 @@ mod tests {
     #[tokio::test]
     async fn test_cleanup_handles_multiple_channels_per_socket() {
         // TEST: Verify cleanup removes socket from ALL subscribed channels
-        let (cleanup_system, adapter, _channel_manager, _app_manager) =
-            create_real_cleanup_system().await;
+        let (cleanup_system, adapter, _app_manager) = create_real_cleanup_system().await;
         let cleanup_sender = cleanup_system.get_sender();
 
         let socket_id = SocketId("multi-socket".to_string());
@@ -305,8 +296,7 @@ mod tests {
     #[tokio::test]
     async fn test_cleanup_preserves_other_sockets_in_same_channel() {
         // TEST: Verify cleanup only removes the target socket, not others in same channel
-        let (cleanup_system, adapter, _channel_manager, _app_manager) =
-            create_real_cleanup_system().await;
+        let (cleanup_system, adapter, _app_manager) = create_real_cleanup_system().await;
         let cleanup_sender = cleanup_system.get_sender();
 
         let target_socket = SocketId("target-socket".to_string());
@@ -385,8 +375,7 @@ mod tests {
     #[tokio::test]
     async fn test_cleanup_batch_processing() {
         // TEST: Verify that batch processing actually works for multiple sockets
-        let (cleanup_system, adapter, _channel_manager, _app_manager) =
-            create_real_cleanup_system().await;
+        let (cleanup_system, adapter, _app_manager) = create_real_cleanup_system().await;
         let cleanup_sender = cleanup_system.get_sender();
 
         let channel = "batch-channel";
@@ -456,8 +445,7 @@ mod tests {
     #[tokio::test]
     async fn test_cleanup_with_presence_channels() {
         // TEST: Verify cleanup handles presence channels with user info
-        let (cleanup_system, adapter, _channel_manager, _app_manager) =
-            create_real_cleanup_system().await;
+        let (cleanup_system, adapter, _app_manager) = create_real_cleanup_system().await;
         let cleanup_sender = cleanup_system.get_sender();
 
         let socket_id = SocketId("presence-socket".to_string());
@@ -545,8 +533,7 @@ mod tests {
 
         let local_adapter = Arc::new(Mutex::new(LocalAdapter::new()));
         let connection_manager = local_adapter.clone();
-        let channel_manager =
-            Arc::new(RwLock::new(ChannelManager::new(connection_manager.clone())));
+        // ChannelManager is now a static struct
         let app_manager = Arc::new(MemoryAppManager::new());
 
         // Create test app
@@ -576,7 +563,6 @@ mod tests {
 
         let cleanup_system = MultiWorkerCleanupSystem::new(
             connection_manager.clone(),
-            channel_manager.clone(),
             app_manager.clone(),
             None,
             config,
@@ -654,7 +640,7 @@ mod tests {
     async fn test_cleanup_processes_presence_channels_with_user_info() {
         // TEST: Verify cleanup worker properly processes presence channel disconnections with user info
         // This tests the webhook preparation logic without actually sending webhooks
-        let (cleanup_system, adapter, _channel_manager, _app_manager) =
+        let (cleanup_system, adapter, _app_manager) =
             create_cleanup_system_with_webhook_app().await;
         let cleanup_sender = cleanup_system.get_sender();
 
@@ -735,7 +721,7 @@ mod tests {
     #[tokio::test]
     async fn test_cleanup_detects_channel_vacancy_for_webhook_logic() {
         // TEST: Verify cleanup worker detects when channels become empty (webhook preparation logic)
-        let (cleanup_system, adapter, _channel_manager, _app_manager) =
+        let (cleanup_system, adapter, _app_manager) =
             create_cleanup_system_with_webhook_app().await;
         let cleanup_sender = cleanup_system.get_sender();
 
@@ -801,7 +787,7 @@ mod tests {
     #[tokio::test]
     async fn test_cleanup_handles_mixed_presence_and_regular_channels() {
         // TEST: Verify cleanup worker handles both presence and regular channels in single task
-        let (cleanup_system, adapter, _channel_manager, _app_manager) =
+        let (cleanup_system, adapter, _app_manager) =
             create_cleanup_system_with_webhook_app().await;
         let cleanup_sender = cleanup_system.get_sender();
 

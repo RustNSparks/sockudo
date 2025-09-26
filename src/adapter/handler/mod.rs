@@ -16,7 +16,6 @@ use crate::adapter::ConnectionManager;
 use crate::app::config::App;
 use crate::app::manager::AppManager;
 use crate::cache::manager::CacheManager;
-use crate::channel::ChannelManager;
 use crate::error::{Error, Result};
 use crate::metrics::MetricsInterface;
 use crate::options::ServerOptions;
@@ -36,12 +35,11 @@ use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
 use tokio::io::WriteHalf;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use tracing::{debug, error, warn};
 
 pub struct ConnectionHandler {
     pub(crate) app_manager: Arc<dyn AppManager + Send + Sync>,
-    pub(crate) channel_manager: Arc<RwLock<ChannelManager>>,
     pub(crate) connection_manager: Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
     pub(crate) cache_manager: Arc<Mutex<dyn CacheManager + Send + Sync>>,
     pub(crate) metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
@@ -58,7 +56,6 @@ impl ConnectionHandler {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         app_manager: Arc<dyn AppManager + Send + Sync>,
-        channel_manager: Arc<RwLock<ChannelManager>>,
         connection_manager: Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
         cache_manager: Arc<Mutex<dyn CacheManager + Send + Sync>>,
         metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
@@ -68,7 +65,6 @@ impl ConnectionHandler {
     ) -> Self {
         Self {
             app_manager,
-            channel_manager,
             connection_manager,
             cache_manager,
             metrics,

@@ -3,6 +3,7 @@ use super::ConnectionHandler;
 use super::types::*;
 use crate::app::auth::AuthValidator;
 use crate::app::config::App;
+use crate::channel::ChannelManager;
 use crate::error::{Error, Result};
 use crate::websocket::SocketId;
 
@@ -23,8 +24,6 @@ impl ConnectionHandler {
             Error::Auth("Authentication signature required for this channel".into())
         })?;
 
-        let channel_manager = self.channel_manager.read().await;
-
         // Create a temporary PusherMessage for signature validation
         let temp_message = crate::protocol::messages::PusherMessage {
             channel: Some(request.channel.clone()),
@@ -40,7 +39,7 @@ impl ConnectionHandler {
             user_id: None,
         };
 
-        let is_valid = channel_manager.signature_is_valid(
+        let is_valid = ChannelManager::signature_is_valid(
             app_config.clone(),
             socket_id,
             signature,

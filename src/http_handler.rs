@@ -1,5 +1,6 @@
 use crate::adapter::ConnectionHandler;
 use crate::app::config::App; // To access app limits
+use crate::channel::ChannelManager;
 use crate::error::{HEALTH_CHECK_TIMEOUT_MS, HealthStatus};
 use crate::protocol::constants::EVENT_NAME_MAX_LENGTH as DEFAULT_EVENT_NAME_MAX_LENGTH;
 use crate::protocol::messages::{
@@ -374,12 +375,12 @@ async fn process_single_event_parallel(
 
                 // Get user count for presence channels if requested.
                 if is_presence && info_for_task.as_deref().is_some_and(|s| s.contains("user_count")) {
-                    match handler_clone
-                        .channel_manager
-                        .read()
-                        .await
-                        .get_channel_members(&app.id, &target_channel_str)
-                        .await
+                    match ChannelManager::get_channel_members(
+                        &handler_clone.connection_manager,
+                        &app.id,
+                        &target_channel_str
+                    )
+                    .await
                     {
                         Ok(members_map) => {
                             current_channel_info_map
@@ -708,12 +709,12 @@ pub async fn channel(
 
     let user_count_val = if wants_user_count {
         if channel_name.starts_with("presence-") {
-            let members_map = handler
-                .channel_manager
-                .read()
-                .await
-                .get_channel_members(&app_id, &channel_name)
-                .await?;
+            let members_map = ChannelManager::get_channel_members(
+                &handler.connection_manager,
+                &app_id,
+                &channel_name,
+            )
+            .await?;
             Some(members_map.len() as u64)
         } else {
             return Err(AppError::InvalidInput(
@@ -799,12 +800,12 @@ pub async fn channels(
         let mut current_channel_info_map = serde_json::Map::new();
         if wants_user_count {
             if channel_name_str.starts_with("presence-") {
-                let members_map = handler
-                    .channel_manager
-                    .read()
-                    .await
-                    .get_channel_members(&app_id, channel_name_str)
-                    .await?;
+                let members_map = ChannelManager::get_channel_members(
+                    &handler.connection_manager,
+                    &app_id,
+                    channel_name_str,
+                )
+                .await?;
                 current_channel_info_map.insert("user_count".to_string(), json!(members_map.len()));
             } else if !filter_prefix_str.starts_with("presence-") {
                 return Err(AppError::InvalidInput(
@@ -850,12 +851,9 @@ pub async fn channel_users(
         ));
     }
 
-    let channel_members_map = handler
-        .channel_manager
-        .read()
-        .await
-        .get_channel_members(&app_id, &channel_name)
-        .await?;
+    let channel_members_map =
+        ChannelManager::get_channel_members(&handler.connection_manager, &app_id, &channel_name)
+            .await?;
     let users_vec = channel_members_map
         .keys()
         .map(|user_id_str| json!({ "id": user_id_str }))
