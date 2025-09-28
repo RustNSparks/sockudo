@@ -196,7 +196,7 @@ impl ConnectionManager for LocalAdapter {
         debug!("Message: {:?}", message);
 
         // Serialize message once to avoid repeated serialization overhead
-        let serialized_message = serde_json::to_vec(&message)
+        let serialized_message = sonic_rs::to_vec(&message)
             .map_err(|e| Error::InvalidMessageFormat(format!("Serialization failed: {e}")))?;
         let message_bytes = Bytes::from(serialized_message);
 

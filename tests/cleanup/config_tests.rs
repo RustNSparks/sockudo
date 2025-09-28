@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use serde_json;
     use sockudo::cleanup::{CleanupConfig, WorkerThreadsConfig};
+    use sonic_rs;
 
     #[test]
     fn test_cleanup_config_defaults() {
@@ -38,47 +38,47 @@ mod tests {
     fn test_worker_threads_config_serialization() {
         // Test Auto serialization
         let auto_config = WorkerThreadsConfig::Auto;
-        let json = serde_json::to_string(&auto_config).unwrap();
+        let json = sonic_rs::to_string(&auto_config).unwrap();
         assert_eq!(json, "\"auto\"");
 
         // Test Fixed serialization
         let fixed_config = WorkerThreadsConfig::Fixed(4);
-        let json = serde_json::to_string(&fixed_config).unwrap();
+        let json = sonic_rs::to_string(&fixed_config).unwrap();
         assert_eq!(json, "4");
     }
 
     #[test]
     fn test_worker_threads_config_deserialization() {
         // Test Auto deserialization
-        let auto_config: WorkerThreadsConfig = serde_json::from_str("\"auto\"").unwrap();
+        let auto_config: WorkerThreadsConfig = sonic_rs::from_str("\"auto\"").unwrap();
         assert!(matches!(auto_config, WorkerThreadsConfig::Auto));
 
         // Test case insensitive
-        let auto_config: WorkerThreadsConfig = serde_json::from_str("\"AUTO\"").unwrap();
+        let auto_config: WorkerThreadsConfig = sonic_rs::from_str("\"AUTO\"").unwrap();
         assert!(matches!(auto_config, WorkerThreadsConfig::Auto));
 
         // Test Fixed deserialization from number
-        let fixed_config: WorkerThreadsConfig = serde_json::from_str("4").unwrap();
+        let fixed_config: WorkerThreadsConfig = sonic_rs::from_str("4").unwrap();
         assert!(matches!(fixed_config, WorkerThreadsConfig::Fixed(4)));
 
         // Test Fixed deserialization from string number
-        let fixed_config: WorkerThreadsConfig = serde_json::from_str("\"8\"").unwrap();
+        let fixed_config: WorkerThreadsConfig = sonic_rs::from_str("\"8\"").unwrap();
         assert!(matches!(fixed_config, WorkerThreadsConfig::Fixed(8)));
     }
 
     #[test]
     fn test_worker_threads_config_deserialization_errors() {
         // Test zero value error
-        let result: Result<WorkerThreadsConfig, _> = serde_json::from_str("0");
+        let result: Result<WorkerThreadsConfig, _> = sonic_rs::from_str("0");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("greater than 0"));
 
         // Test negative value (should be caught by u64 parsing)
-        let result: Result<WorkerThreadsConfig, _> = serde_json::from_str("-1");
+        let result: Result<WorkerThreadsConfig, _> = sonic_rs::from_str("-1");
         assert!(result.is_err());
 
         // Test invalid string
-        let result: Result<WorkerThreadsConfig, _> = serde_json::from_str("\"invalid\"");
+        let result: Result<WorkerThreadsConfig, _> = sonic_rs::from_str("\"invalid\"");
         assert!(result.is_err());
         assert!(
             result
@@ -88,7 +88,7 @@ mod tests {
         );
 
         // Test string zero
-        let result: Result<WorkerThreadsConfig, _> = serde_json::from_str("\"0\"");
+        let result: Result<WorkerThreadsConfig, _> = sonic_rs::from_str("\"0\"");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("greater than 0"));
     }
@@ -106,10 +106,10 @@ mod tests {
         };
 
         // Serialize
-        let json = serde_json::to_string(&original_config).unwrap();
+        let json = sonic_rs::to_string(&original_config).unwrap();
 
         // Deserialize
-        let deserialized: CleanupConfig = serde_json::from_str(&json).unwrap();
+        let deserialized: CleanupConfig = sonic_rs::from_str(&json).unwrap();
 
         // Verify all fields match
         assert_eq!(

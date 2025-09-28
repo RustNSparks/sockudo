@@ -1,8 +1,8 @@
 use crate::adapter::horizontal_adapter_helpers::{MockConfig, MockTransport};
-use serde_json::json;
 use sockudo::adapter::horizontal_adapter::{RequestBody, RequestType};
 use sockudo::adapter::horizontal_adapter_base::HorizontalAdapterBase;
 use sockudo::options::ClusterHealthConfig;
+use sonic_rs::json;
 use std::collections::HashMap;
 
 /// Test sequence number conflict resolution during presence updates

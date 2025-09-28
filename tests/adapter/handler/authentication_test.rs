@@ -1,10 +1,10 @@
 use crate::mocks::connection_handler_mock::create_test_connection_handler;
-use serde_json::json;
 use sockudo::adapter::handler::types::SubscriptionRequest;
 use sockudo::app::config::App;
 use sockudo::error::Error;
 use sockudo::protocol::messages::{MessageData, PusherMessage};
 use sockudo::websocket::SocketId;
+use sonic_rs::json;
 
 #[tokio::test]
 async fn test_verify_channel_authentication_public_channel() {

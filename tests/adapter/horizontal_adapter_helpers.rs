@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use serde_json::{Value, json};
 use sockudo::adapter::horizontal_adapter::{
     BroadcastMessage, RequestBody, RequestType, ResponseBody,
 };
@@ -8,6 +7,7 @@ use sockudo::adapter::horizontal_transport::{
 };
 use sockudo::channel::PresenceMemberInfo;
 use sockudo::error::{Error, Result};
+use sonic_rs::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;

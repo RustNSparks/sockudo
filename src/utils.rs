@@ -4,6 +4,7 @@ use std::sync::LazyLock;
 use crate::app::config::App;
 use crate::error::Error;
 use regex::Regex;
+use sonic_rs::JsonValueTrait;
 use tracing::warn;
 
 // Compile regexes once using lazy_static
@@ -42,14 +43,14 @@ pub fn data_to_bytes<T: AsRef<str> + serde::Serialize>(data: &[T]) -> usize {
         .sum()
 }
 
-pub fn data_to_bytes_flexible(data: Vec<serde_json::Value>) -> usize {
+pub fn data_to_bytes_flexible(data: Vec<sonic_rs::Value>) -> usize {
     data.iter().fold(0, |total_bytes, element| {
-        let element_str = if element.is_string() {
+        let element_str = if element.is_str() {
             // Use string value directly if it's a string
             element.as_str().unwrap_or_default().to_string()
         } else {
             // Convert to JSON string for other types
-            serde_json::to_string(element).unwrap_or_default()
+            sonic_rs::to_string(element).unwrap_or_default()
         };
 
         // Add byte length, handling potential encoding errors
@@ -229,7 +230,7 @@ pub async fn resolve_socket_addr(host: &str, port: u16, context: &str) -> std::n
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use sonic_rs::json;
 
     #[test]
     fn test_data_to_bytes_flexible() {

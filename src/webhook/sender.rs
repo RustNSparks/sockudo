@@ -10,7 +10,7 @@ use crate::webhook::lambda_sender::LambdaWebhookSender;
 use crate::token::Token; // For HMAC SHA256 signing
 use crate::webhook::types::{JobData, PusherWebhookPayload, Webhook};
 use reqwest::{Client, header};
-use serde_json::{Value, json}; // Keep json! and Value
+use sonic_rs::{JsonValueTrait, Value, json}; // Keep json! and Value
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -80,7 +80,7 @@ impl WebhookSender {
             events: job.payload.events.clone(),
         };
 
-        let body_json_string = serde_json::to_string(&pusher_payload)
+        let body_json_string = sonic_rs::to_string(&pusher_payload)
             .map_err(|e| Error::Serialization(format!("Failed to serialize webhook body: {e}")))?;
 
         let _signature =
@@ -261,7 +261,7 @@ impl WebhookSender {
     ) -> tokio::task::JoinHandle<()> {
         let lambda_sender = self.lambda_sender.clone();
         let webhook_clone = webhook_config.clone();
-        let payload_for_lambda: Value = serde_json::from_str(&body_to_send).unwrap_or(json!({}));
+        let payload_for_lambda: Value = sonic_rs::from_str(&body_to_send).unwrap_or(json!({}));
 
         tokio::spawn(async move {
             let _permit = permit;
@@ -421,7 +421,7 @@ mod tests {
             app_secret: "test_secret".to_string(),
             payload: JobPayload {
                 time_ms: 1234567890,
-                events: vec![serde_json::json!({
+                events: vec![sonic_rs::json!({
                     "name": "channel_occupied",
                     "channel": "test-channel"
                 })],
@@ -478,7 +478,7 @@ mod tests {
                 app_secret: "test_secret".to_string(),
                 payload: JobPayload {
                     time_ms: 1234567890 + i,
-                    events: vec![serde_json::json!({
+                    events: vec![sonic_rs::json!({
                         "name": "channel_occupied",
                         "channel": format!("test-channel-{}", i)
                     })],

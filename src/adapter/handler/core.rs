@@ -8,7 +8,7 @@ use crate::error::{Error, Result};
 use crate::presence::PresenceManager;
 use crate::protocol::messages::{ErrorData, MessageData, PusherMessage};
 use crate::websocket::SocketId;
-use serde_json::Value;
+use sonic_rs::{JsonValueTrait, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -768,7 +768,7 @@ impl ConnectionHandler {
             Ok(Some(cache_content)) => {
                 // Found cached content, send it to the socket
                 let cache_message: PusherMessage =
-                    serde_json::from_str(&cache_content).map_err(|e| {
+                    sonic_rs::from_str(&cache_content).map_err(|e| {
                         Error::InvalidMessageFormat(format!("Invalid cached message format: {e}"))
                     })?;
 
@@ -833,7 +833,7 @@ impl ConnectionHandler {
         let mut cache_manager = self.cache_manager.lock().await;
         let cache_key = format!("app:{app_id}:channel:{channel}:cache_miss");
 
-        let message_json = serde_json::to_string(message).map_err(|e| {
+        let message_json = sonic_rs::to_string(message).map_err(|e| {
             Error::InvalidMessageFormat(format!("Failed to serialize message for cache: {e}"))
         })?;
 

@@ -110,7 +110,7 @@ pub enum Error {
 
     // JSON serialization/deserialization errors
     #[error("JSON error: {0}")]
-    Json(#[from] serde_json::Error),
+    Json(#[from] sonic_rs::Error),
 
     #[error("Client event error: {0}")]
     ClientEvent(String), // Add this variant

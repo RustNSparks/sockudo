@@ -328,7 +328,7 @@ where
                         return;
                     }
 
-                    if let Ok(message) = serde_json::from_str(&broadcast.message) {
+                    if let Ok(message) = sonic_rs::from_str(&broadcast.message) {
                         let except_id = broadcast
                             .except_socket_id
                             .as_ref()
@@ -734,7 +734,7 @@ where
         }
 
         // Broadcast to other nodes
-        let message_json = serde_json::to_string(&message)?;
+        let message_json = sonic_rs::to_string(&message)?;
         let broadcast = BroadcastMessage {
             node_id,
             app_id: app_id.to_string(),
@@ -1143,7 +1143,7 @@ impl<T: HorizontalTransport> HorizontalAdapterInterface for HorizontalAdapterBas
         channel: &str,
         user_id: &str,
         socket_id: &str,
-        user_info: Option<serde_json::Value>,
+        user_info: Option<sonic_rs::Value>,
     ) -> Result<()> {
         // Store in our own registry first with a single lock acquisition
         {
@@ -1250,7 +1250,7 @@ async fn send_presence_state_to_node<T: HorizontalTransport>(
 
     if let Some(data_to_send) = data_to_send {
         // Serialize the presence data
-        let serialized_data = serde_json::to_value(&data_to_send)?;
+        let serialized_data = sonic_rs::to_value(&data_to_send)?;
 
         let sync_request = RequestBody {
             request_id: generate_request_id(),

@@ -7,12 +7,12 @@ use crate::app::config::App;
 use crate::error::{Error, Result};
 use crate::protocol::messages::PusherMessage;
 use crate::websocket::{SocketId, UserInfo};
-use serde_json::Value;
+use sonic_rs::{JsonContainerTrait, JsonValueTrait, Value};
 use tracing::{info, warn};
 
 impl ConnectionHandler {
     pub fn parse_and_validate_user_data(&self, user_data_str: &str) -> Result<UserInfo> {
-        let user_info_val: Value = serde_json::from_str(user_data_str)
+        let user_info_val: Value = sonic_rs::from_str(user_data_str)
             .map_err(|e| Error::Auth(format!("Invalid user_data JSON: {e}")))?;
 
         let user_id = user_info_val

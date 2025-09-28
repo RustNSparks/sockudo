@@ -8,7 +8,7 @@ use axum::{
 };
 use futures_util::future::BoxFuture;
 use hyper::Request as HyperRequest;
-use serde_json::json;
+use sonic_rs::json;
 use std::{
     fmt,
     net::SocketAddr,
@@ -338,7 +338,7 @@ fn rate_limit_error_response(result: Option<&RateLimitResult>) -> AxumResponse {
         .status(StatusCode::TOO_MANY_REQUESTS)
         .header(axum::http::header::CONTENT_TYPE, "application/json")
         .body(AxumBody::from(
-            serde_json::to_string(&json!({
+            sonic_rs::to_string(&json!({
                 "error": "Too Many Requests",
                 "message": "Rate limit exceeded. Please try again later.",
             }))
@@ -358,7 +358,7 @@ fn internal_server_error_response_with_message(message: &str) -> AxumResponse {
         .status(StatusCode::INTERNAL_SERVER_ERROR)
         .header(axum::http::header::CONTENT_TYPE, "application/json")
         .body(AxumBody::from(
-            serde_json::to_string(&json!({
+            sonic_rs::to_string(&json!({
                 "error": "Internal Server Error",
                 "message": message,
             }))

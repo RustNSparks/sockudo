@@ -64,7 +64,7 @@ impl HorizontalTransport for RedisClusterTransport {
     }
 
     async fn publish_broadcast(&self, message: &BroadcastMessage) -> Result<()> {
-        let broadcast_json = serde_json::to_string(message)?;
+        let broadcast_json = sonic_rs::to_string(message)?;
 
         // Use client's internal connection pooling - this is efficient
         let mut conn = self.client.get_async_connection().await.map_err(|e| {
@@ -81,7 +81,7 @@ impl HorizontalTransport for RedisClusterTransport {
     }
 
     async fn publish_request(&self, request: &RequestBody) -> Result<()> {
-        let request_json = serde_json::to_string(request)
+        let request_json = sonic_rs::to_string(request)
             .map_err(|e| Error::Other(format!("Failed to serialize request: {e}")))?;
 
         // Use client's internal connection pooling - this is efficient for cluster
@@ -103,7 +103,7 @@ impl HorizontalTransport for RedisClusterTransport {
     }
 
     async fn publish_response(&self, response: &ResponseBody) -> Result<()> {
-        let response_json = serde_json::to_string(response)
+        let response_json = sonic_rs::to_string(response)
             .map_err(|e| Error::Other(format!("Failed to serialize response: {e}")))?;
 
         // Use client's internal connection pooling - this is efficient for cluster
@@ -204,16 +204,16 @@ impl HorizontalTransport for RedisClusterTransport {
                 tokio::spawn(async move {
                     if channel == broadcast_channel_clone {
                         // Handle broadcast message
-                        if let Ok(broadcast) = serde_json::from_str::<BroadcastMessage>(&payload) {
+                        if let Ok(broadcast) = sonic_rs::from_str::<BroadcastMessage>(&payload) {
                             broadcast_handler(broadcast).await;
                         }
                     } else if channel == request_channel_clone {
                         // Handle request message
-                        if let Ok(request) = serde_json::from_str::<RequestBody>(&payload) {
+                        if let Ok(request) = sonic_rs::from_str::<RequestBody>(&payload) {
                             let response_result = request_handler(request).await;
 
                             if let Ok(response) = response_result
-                                && let Ok(response_json) = serde_json::to_string(&response)
+                                && let Ok(response_json) = sonic_rs::to_string(&response)
                             {
                                 // Use client's connection pooling for response publishing
                                 if let Ok(mut conn) = client_clone.get_async_connection().await {
@@ -225,7 +225,7 @@ impl HorizontalTransport for RedisClusterTransport {
                         }
                     } else if channel == response_channel_clone {
                         // Handle response message
-                        if let Ok(response) = serde_json::from_str::<ResponseBody>(&payload) {
+                        if let Ok(response) = sonic_rs::from_str::<ResponseBody>(&payload) {
                             response_handler(response).await;
                         }
                     }

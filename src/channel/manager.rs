@@ -8,7 +8,7 @@ use crate::token::{Token, secure_compare};
 use crate::websocket::SocketId;
 use ahash::{HashMap, HashMapExt};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use sonic_rs::{JsonValueTrait, Value, json};
 use std::collections::HashMap as StdHashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -233,7 +233,7 @@ impl ChannelManager {
                     .ok_or_else(|| Error::Channel("Missing channel_data".into()))?;
 
                 // Parse JSON directly into the fields we need, avoiding intermediate Value
-                let parsed: serde_json::Value = serde_json::from_str(channel_data_str)
+                let parsed: sonic_rs::Value = sonic_rs::from_str(channel_data_str)
                     .map_err(|_| Error::Channel("Invalid JSON in channel_data".into()))?;
 
                 Self::extract_presence_member(&parsed, extra)
@@ -250,7 +250,7 @@ impl ChannelManager {
         // For structured data, channel_data is already parsed
         if let Some(channel_data_str) = data.get("channel_data").and_then(|v| v.as_str()) {
             // Parse the inner JSON
-            let user_data: Value = serde_json::from_str(channel_data_str)
+            let user_data: Value = sonic_rs::from_str(channel_data_str)
                 .map_err(|_| Error::Channel("Invalid JSON in channel_data".into()))?;
 
             let user_id = user_data
@@ -377,7 +377,7 @@ impl ChannelManager {
                 }
             }
             MessageData::String(data) => {
-                let parsed_data: Value = serde_json::from_str(&data).unwrap_or_default();
+                let parsed_data: Value = sonic_rs::from_str(&data).unwrap_or_default();
                 let channel = parsed_data
                     .get("channel")
                     .and_then(|v| v.as_str())

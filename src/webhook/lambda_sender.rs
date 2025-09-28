@@ -10,7 +10,7 @@ use aws_sdk_lambda::error::SdkError; // Keep for sync if needed
 use aws_sdk_lambda::operation::invoke::{InvokeError, InvokeOutput}; // Keep for sync if needed
 use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::types::InvocationType;
-use serde_json::{Value, json};
+use sonic_rs::{Value, json};
 use std::time::Duration;
 use tracing::{error, info, warn};
 
@@ -107,7 +107,7 @@ impl LambdaWebhookSender {
         // Now `lambda_config_ref` is guaranteed to be a valid reference to a LambdaConfig.
         let client = self.get_client(&lambda_config_ref.region).await?;
 
-        let payload_bytes = serde_json::to_vec(&pusher_webhook_payload).map_err(|e| {
+        let payload_bytes = sonic_rs::to_vec(&pusher_webhook_payload).map_err(|e| {
             Error::Other(format!(
                 "Failed to serialize Pusher Webhook payload for Lambda: {e}"
             ))
@@ -176,7 +176,7 @@ impl LambdaWebhookSender {
 
         let client = self.get_client(&lambda_config_ref.region).await?;
 
-        let payload_bytes = serde_json::to_vec(&pusher_webhook_payload).map_err(|e| {
+        let payload_bytes = sonic_rs::to_vec(&pusher_webhook_payload).map_err(|e| {
             Error::Other(format!(
                 "Failed to serialize Pusher Webhook payload for Lambda sync: {e}"
             ))
@@ -198,7 +198,7 @@ impl LambdaWebhookSender {
         match result {
             Ok(output) => {
                 if let Some(response_payload_blob) = output.payload() {
-                    match serde_json::from_slice::<Value>(response_payload_blob.as_ref()) {
+                    match sonic_rs::from_slice::<Value>(response_payload_blob.as_ref()) {
                         Ok(json_response) => {
                             info!(
                                 "Received response from Lambda function {}: {:?}",
@@ -336,8 +336,8 @@ mod tests {
             function_name: "test-function".to_string(),
             region: "us-east-1".to_string(),
         };
-        let serialized = serde_json::to_string(&config).unwrap();
-        let deserialized: LambdaConfig = serde_json::from_str(&serialized).unwrap();
+        let serialized = sonic_rs::to_string(&config).unwrap();
+        let deserialized: LambdaConfig = sonic_rs::from_str(&serialized).unwrap();
         assert_eq!(config.function_name, deserialized.function_name);
         assert_eq!(config.region, deserialized.region);
     }

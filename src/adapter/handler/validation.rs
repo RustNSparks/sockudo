@@ -6,7 +6,7 @@ use crate::channel::ChannelType;
 use crate::error::{Error, Result};
 use crate::protocol::constants::*;
 use crate::utils;
-use serde_json::Value;
+use sonic_rs::{JsonValueTrait, Value};
 
 impl ConnectionHandler {
     pub async fn validate_subscription_request(
@@ -44,7 +44,7 @@ impl ConnectionHandler {
         })?;
 
         // Parse and validate user info size
-        let user_info_payload: Value = serde_json::from_str(channel_data).map_err(|_| {
+        let user_info_payload: Value = sonic_rs::from_str(channel_data).map_err(|_| {
             Error::InvalidMessageFormat("Invalid channel_data JSON for presence".into())
         })?;
 

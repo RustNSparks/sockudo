@@ -82,7 +82,7 @@ impl HorizontalTransport for NatsTransport {
     }
 
     async fn publish_broadcast(&self, message: &BroadcastMessage) -> Result<()> {
-        let message_data = serde_json::to_vec(message)
+        let message_data = sonic_rs::to_vec(message)
             .map_err(|e| Error::Other(format!("Failed to serialize broadcast message: {e}")))?;
 
         self.client
@@ -98,7 +98,7 @@ impl HorizontalTransport for NatsTransport {
     }
 
     async fn publish_request(&self, request: &RequestBody) -> Result<()> {
-        let request_data = serde_json::to_vec(request)
+        let request_data = sonic_rs::to_vec(request)
             .map_err(|e| Error::Other(format!("Failed to serialize request: {e}")))?;
 
         self.client
@@ -114,7 +114,7 @@ impl HorizontalTransport for NatsTransport {
     }
 
     async fn publish_response(&self, response: &ResponseBody) -> Result<()> {
-        let response_data = serde_json::to_vec(response)
+        let response_data = sonic_rs::to_vec(response)
             .map_err(|e| Error::Other(format!("Failed to serialize response: {e}")))?;
 
         self.client
@@ -167,7 +167,7 @@ impl HorizontalTransport for NatsTransport {
         let broadcast_handler = handlers.on_broadcast.clone();
         tokio::spawn(async move {
             while let Some(msg) = broadcast_subscription.next().await {
-                if let Ok(broadcast) = serde_json::from_slice::<BroadcastMessage>(&msg.payload) {
+                if let Ok(broadcast) = sonic_rs::from_slice::<BroadcastMessage>(&msg.payload) {
                     broadcast_handler(broadcast).await;
                 }
             }
@@ -177,11 +177,11 @@ impl HorizontalTransport for NatsTransport {
         let request_handler = handlers.on_request.clone();
         tokio::spawn(async move {
             while let Some(msg) = request_subscription.next().await {
-                if let Ok(request) = serde_json::from_slice::<RequestBody>(&msg.payload) {
+                if let Ok(request) = sonic_rs::from_slice::<RequestBody>(&msg.payload) {
                     let response_result = request_handler(request).await;
 
                     if let Ok(response) = response_result
-                        && let Ok(response_data) = serde_json::to_vec(&response)
+                        && let Ok(response_data) = sonic_rs::to_vec(&response)
                     {
                         let _ = response_client
                             .publish(
@@ -198,7 +198,7 @@ impl HorizontalTransport for NatsTransport {
         let response_handler = handlers.on_response.clone();
         tokio::spawn(async move {
             while let Some(msg) = response_subscription.next().await {
-                if let Ok(response) = serde_json::from_slice::<ResponseBody>(&msg.payload) {
+                if let Ok(response) = sonic_rs::from_slice::<ResponseBody>(&msg.payload) {
                     response_handler(response).await;
                 }
             }

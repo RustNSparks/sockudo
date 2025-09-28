@@ -62,10 +62,10 @@ pub struct RequestBody {
     pub user_id: Option<String>,
 
     // Additional fields for cluster presence replication
-    pub user_info: Option<serde_json::Value>, // For presence member info (needed for rich presence data)
-    pub timestamp: Option<u64>,               // For heartbeat timestamp
-    pub dead_node_id: Option<String>,         // For dead node notifications
-    pub target_node_id: Option<String>,       // Which node should process this request
+    pub user_info: Option<sonic_rs::Value>, // For presence member info (needed for rich presence data)
+    pub timestamp: Option<u64>,             // For heartbeat timestamp
+    pub dead_node_id: Option<String>,       // For dead node notifications
+    pub target_node_id: Option<String>,     // Which node should process this request
 }
 
 /// Response body for horizontal requests
@@ -107,7 +107,7 @@ pub struct PendingRequest {
 /// Presence entry for cluster-wide presence tracking
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PresenceEntry {
-    pub user_info: Option<serde_json::Value>,
+    pub user_info: Option<sonic_rs::Value>,
     pub node_id: String,      // Which node owns this connection
     pub app_id: String,       // Which app this member belongs to
     pub user_id: String,      // Which user this socket belongs to
@@ -132,7 +132,7 @@ pub struct OrphanedMember {
     pub app_id: String,
     pub channel: String,
     pub user_id: String,
-    pub user_info: Option<serde_json::Value>,
+    pub user_info: Option<sonic_rs::Value>,
 }
 
 /// Base horizontal adapter
@@ -441,8 +441,8 @@ impl HorizontalAdapter {
             RequestType::PresenceStateSync => {
                 if let Some(presence_data) = request.user_info {
                     // Deserialize the bulk presence data
-                    match serde_json::from_value::<HashMap<String, HashMap<String, PresenceEntry>>>(
-                        presence_data,
+                    match sonic_rs::from_value::<HashMap<String, HashMap<String, PresenceEntry>>>(
+                        &presence_data,
                     ) {
                         Ok(incoming_node_data) => {
                             let mut registry = self.cluster_presence_registry.write().await;
@@ -972,7 +972,7 @@ impl HorizontalAdapter {
     pub async fn handle_dead_node_cleanup(
         &self,
         dead_node_id: &str,
-    ) -> Result<Vec<(String, String, String, Option<serde_json::Value>)>> {
+    ) -> Result<Vec<(String, String, String, Option<sonic_rs::Value>)>> {
         let mut registry = self.cluster_presence_registry.write().await;
 
         // O(1) lookup and removal of entire node's data
@@ -980,7 +980,7 @@ impl HorizontalAdapter {
             // Group sockets by (app_id, channel, user_id) to avoid duplicate cleanup calls for same user
             let mut unique_members = std::collections::HashMap::<
                 (String, String, String),
-                Option<serde_json::Value>,
+                Option<sonic_rs::Value>,
             >::new();
 
             for (channel, sockets) in dead_node_data {
@@ -992,7 +992,7 @@ impl HorizontalAdapter {
             }
 
             // Convert to list format
-            let cleanup_tasks: Vec<(String, String, String, Option<serde_json::Value>)> =
+            let cleanup_tasks: Vec<(String, String, String, Option<sonic_rs::Value>)> =
                 unique_members
                     .into_iter()
                     .map(|((app_id, channel, user_id), user_info)| {
@@ -1021,7 +1021,7 @@ impl HorizontalAdapter {
         socket_id: &str,
         user_id: &str,
         app_id: &str,
-        user_info: Option<serde_json::Value>,
+        user_info: Option<sonic_rs::Value>,
     ) {
         let mut registry = self.cluster_presence_registry.write().await;
         registry

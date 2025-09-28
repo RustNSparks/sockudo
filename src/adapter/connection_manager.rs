@@ -24,7 +24,7 @@ pub trait HorizontalAdapterInterface: Send + Sync {
         channel: &str,
         user_id: &str,
         socket_id: &str,
-        user_info: Option<serde_json::Value>,
+        user_info: Option<sonic_rs::Value>,
     ) -> Result<()>;
 
     /// Broadcast presence member left to all nodes

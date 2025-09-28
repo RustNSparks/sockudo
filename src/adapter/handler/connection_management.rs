@@ -20,7 +20,7 @@ impl ConnectionHandler {
         message: PusherMessage,
     ) -> Result<()> {
         // Calculate message size for metrics
-        let message_size = serde_json::to_string(&message).unwrap_or_default().len();
+        let message_size = sonic_rs::to_string(&message).unwrap_or_default().len();
 
         // Send the message
         let mut conn_manager = self.connection_manager.lock().await;
@@ -62,7 +62,7 @@ impl ConnectionHandler {
         start_time_ms: Option<f64>,
     ) -> Result<()> {
         // Calculate message size for metrics
-        let message_size = serde_json::to_string(&message).unwrap_or_default().len();
+        let message_size = sonic_rs::to_string(&message).unwrap_or_default().len();
 
         // Get the number of sockets in the channel before sending and send the message
         let (result, target_socket_count) = {
@@ -183,7 +183,7 @@ impl ConnectionHandler {
     ) {
         let error_message = PusherMessage::error(error.close_code(), error.to_string(), None);
 
-        if let Ok(payload) = serde_json::to_string(&error_message) {
+        if let Ok(payload) = sonic_rs::to_string(&error_message) {
             let payload = Payload::from(payload.as_bytes());
             if let Err(e) = ws_tx.write_frame(Frame::text(payload)).await {
                 warn!("Failed to send error frame: {e}");

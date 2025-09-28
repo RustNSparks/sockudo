@@ -29,7 +29,7 @@ impl ConnectionHandler {
             channel: Some(request.channel.clone()),
             event: Some("pusher:subscribe".to_string()),
             data: Some(crate::protocol::messages::MessageData::Json(
-                serde_json::json!({
+                sonic_rs::json!({
                     "channel": request.channel,
                     "auth": signature,
                     "channel_data": request.channel_data

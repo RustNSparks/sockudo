@@ -3,7 +3,6 @@ use dashmap::{DashMap, DashSet};
 use fastwebsockets::WebSocketWrite;
 use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
-use serde_json::Value;
 use sockudo::adapter::connection_manager::{ConnectionManager, HorizontalAdapterInterface};
 use sockudo::adapter::handler::ConnectionHandler;
 use sockudo::app::config::App;
@@ -17,6 +16,7 @@ use sockudo::options::ServerOptions;
 use sockudo::protocol::messages::PusherMessage;
 use sockudo::rate_limiter::{RateLimitResult, RateLimiter};
 use sockudo::websocket::{SocketId, WebSocketRef};
+use sonic_rs::Value;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -467,7 +467,7 @@ impl MetricsInterface for MockMetricsInterface {
         String::new()
     }
     async fn get_metrics_as_json(&self) -> Value {
-        serde_json::json!({})
+        sonic_rs::json!({})
     }
     async fn clear(&self) {}
 }

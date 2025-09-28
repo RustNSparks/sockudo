@@ -31,7 +31,7 @@ use dashmap::DashMap;
 use fastwebsockets::{FragmentCollectorRead, Frame, OpCode, WebSocketWrite, upgrade};
 use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
-use serde_json::Value;
+use sonic_rs::Value;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
 use tokio::io::WriteHalf;
@@ -153,7 +153,7 @@ impl ConnectionHandler {
                     None,
                 );
 
-                if let Ok(payload_str) = serde_json::to_string(&error_message) {
+                if let Ok(payload_str) = sonic_rs::to_string(&error_message) {
                     let payload = Payload::from(payload_str.as_bytes());
                     if let Err(e) = socket_tx.write_frame(Frame::text(payload)).await {
                         warn!("Failed to send origin rejection message: {}", e);
@@ -427,7 +427,7 @@ impl ConnectionHandler {
         let payload = String::from_utf8(frame.payload.to_vec())
             .map_err(|e| Error::InvalidMessageFormat(format!("Invalid UTF-8: {e}")))?;
 
-        serde_json::from_str(&payload)
+        sonic_rs::from_str(&payload)
             .map_err(|e| Error::InvalidMessageFormat(format!("Invalid JSON: {e}")))
     }
 
@@ -447,23 +447,24 @@ impl ConnectionHandler {
         let data = match &message.data {
             Some(MessageData::Json(data)) => data.clone(),
             Some(MessageData::String(s)) => {
-                serde_json::from_str(s).unwrap_or_else(|_| Value::String(s.clone()))
+                sonic_rs::from_str(s).unwrap_or_else(|_| Value::from(s.as_str()))
             }
             Some(MessageData::Structured { extra, .. }) => {
                 // For client events, the data is in the extra fields
                 // Always convert the extra HashMap to a JSON object to preserve structure
                 if !extra.is_empty() {
-                    Value::Object(
-                        extra
+                    sonic_rs::to_value(
+                        &extra
                             .iter()
                             .map(|(k, v)| (k.clone(), v.clone()))
-                            .collect::<serde_json::Map<String, Value>>(),
+                            .collect::<std::collections::HashMap<String, Value>>(),
                     )
+                    .unwrap_or_default()
                 } else {
-                    Value::Null
+                    Value::default()
                 }
             }
-            None => Value::Null,
+            None => Value::default(),
         };
 
         Ok(ClientEventRequest {
