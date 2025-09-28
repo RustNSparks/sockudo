@@ -123,13 +123,13 @@ dependencies = [
 
 [[package]]
 name = "async-nats"
-version = "0.42.0"
+version = "0.43.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08f6da6d49a956424ca4e28fe93656f790d748b469eaccbc7488fec545315180"
+checksum = "351fc678084ed17ee61a56285eda9443b10452ed5ea611a35d06b28000bf07fd"
 dependencies = [
  "base64 0.22.1",
  "bytes",
- "futures",
+ "futures-util",
  "memchr",
  "nkeys",
  "nuid",
@@ -150,6 +150,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-rustls 0.26.3",
+ "tokio-stream",
  "tokio-util",
  "tokio-websockets",
  "tracing",
@@ -3447,7 +3448,7 @@ dependencies = [
 
 [[package]]
 name = "sockudo"
-version = "2.7.4"
+version = "2.7.5"
 dependencies = [
  "ahash",
  "async-nats",
@@ -3773,9 +3774,9 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.36.1"
+version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "252800745060e7b9ffb7b2badbd8b31cfa4aa2e61af879d0a3bf2a317c20217d"
+checksum = "07cec4dc2d2e357ca1e610cfb07de2fa7a10fc3e9fe89f72545f3d244ea87753"
 dependencies = [
  "libc",
  "memchr",

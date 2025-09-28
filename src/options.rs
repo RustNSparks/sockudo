@@ -128,6 +128,7 @@ impl FromStr for AppManagerDriver {
             "memory" => Ok(AppManagerDriver::Memory),
             "mysql" => Ok(AppManagerDriver::Mysql),
             "dynamodb" => Ok(AppManagerDriver::Dynamodb),
+            "pgsql" | "postgres" | "postgresql" => Ok(AppManagerDriver::PgSql),
             _ => Err(format!("Unknown app manager driver: {s}")),
         }
     }

@@ -1,6 +1,6 @@
 [package]
 name = "sockudo"
-version = "2.7.4"
+version = "2.7.5"
 edition = "2024"
 repository = "https://github.com/RustNSparks/sockudo"
 license-file = "LICENSE"
@@ -32,7 +32,7 @@ rand = "0.9.0"
 hyper-util = "^0.1.10"
 hyper = "^1.5.0"
 chrono = "^0.4.41"
-sysinfo = "^0.36.1"
+sysinfo = "0.37.0"
 async-trait = "0.1.83"
 redis = { version = "^0.32.4", features = ["tokio-comp", "json", "cluster", "cluster-async", "tls-rustls", "tokio-rustls-comp", "tls-rustls-webpki-roots", "connection-manager"] }
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "mysql", "postgres", "tls-rustls"] }
@@ -46,7 +46,7 @@ prometheus = "0.14.0"
 moka = { version = "0.12.10", features = ["future"] }
 reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"] }
 aws-sdk-sqs = "1.65.0"
-async-nats = "0.42.0"
+async-nats = "0.43.0"
 aws-sdk-lambda = "1.76.0"
 num_cpus = "1.16.0"
 bytes = "1.10"
@@ -91,3 +91,11 @@ supported-targets = [
 [package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
 pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.zip"
 pkg-fmt = "zip"
+
+[package.metadata.binstall.overrides.x86_64-unknown-linux-gnu]
+pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.tar.gz"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-unknown-linux-musl]
+pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.tar.gz"
+pkg-fmt = "tgz"
