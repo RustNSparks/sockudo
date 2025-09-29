@@ -94,18 +94,10 @@ supported-targets = [
 pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.zip"
 pkg-fmt = "zip"
 
-[package.metadata.binstall.overrides.x86_64-unknown-linux-gnu]
+[package.metadata.binstall.overrides."*-unknown-linux-gnu"]
 pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.tar.gz"
 pkg-fmt = "tar.gz"
 
-[package.metadata.binstall.overrides.aarch64-unknown-linux-gnu]
-pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.tar.gz"
-pkg-fmt = "tar.gz"
-
-[package.metadata.binstall.overrides.x86_64-unknown-linux-musl]
-pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.tgz"
-pkg-fmt = "tgz"
-
-[package.metadata.binstall.overrides.aarch64-unknown-linux-musl]
+[package.metadata.binstall.overrides."*-unknown-linux-musl"]
 pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.tgz"
 pkg-fmt = "tgz"
