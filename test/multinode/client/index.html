@@ -121,6 +121,10 @@
             <p class="mb-1">• <strong>Presence:</strong> presence-test</p>
             <p class="mb-1">• <strong>Cache:</strong> cache-test</p>
             <p class="mb-1">• <strong>Private Cache:</strong> private-cache-test</p>
+            <p class="mb-2"><strong>User Authentication:</strong></p>
+            <p class="mb-1">• Auto signs in on connect</p>
+            <p class="mb-1">• Send to user via #server-to-user-{id}</p>
+            <p class="mb-1">• User receives events automatically</p>
             <p class="mb-2"><strong>Redis Recovery Test:</strong></p>
             <p class="mb-1">Stop/Start Redis to test recovery</p>
             <p class="mb-2"><strong>Cache Channel Test:</strong></p>
@@ -159,6 +163,23 @@
                 <button onclick="sendCacheEvent()"
                         class="bg-yellow-500 text-white px-6 py-2 rounded-md hover:bg-yellow-600 transition text-sm">
                     Send Cache Event
+                </button>
+            </div>
+            <!-- User-to-User Message Section -->
+            <div class="flex gap-2 border-t pt-2">
+                <select id="user-message-node" class="px-3 py-2 border rounded-md text-sm">
+                    <option value="1">From Node 1</option>
+                    <option value="2">From Node 2</option>
+                </select>
+                <input type="text" id="target-user-id" placeholder="Target User ID (e.g., user-2)"
+                       class="px-3 py-2 border rounded-md text-sm" value="user-2">
+                <input type="text" id="user-message-event" placeholder="Event name"
+                       class="px-3 py-2 border rounded-md text-sm" value="user-message">
+                <input type="text" id="user-message-content" placeholder="Message to user..."
+                       class="flex-1 px-3 py-2 border rounded-md text-sm">
+                <button onclick="sendUserMessage()"
+                        class="bg-green-500 text-white px-6 py-2 rounded-md hover:bg-green-600 transition text-sm">
+                    Send to User
                 </button>
             </div>
         </div>
@@ -516,6 +537,17 @@
                         }
                     }
                 };
+            },
+            userAuthentication: {
+                endpoint: '/pusher/user-auth',
+                transport: 'ajax',
+                customHandler: function(params, callback) {
+                    // Custom handler for user authentication
+                    // This generates auth locally for testing
+                    generateUserAuth(params.socketId, nodeNum)
+                        .then(auth => callback(null, auth))
+                        .catch(err => callback(err, null));
+                }
             }
         });
 
@@ -530,6 +562,43 @@
             pusherConnections[nodeNum] = pusher;
             updateStatus(nodeNum, true);
             addMessage(nodeNum, 'Connected successfully!', 'system');
+
+            // Automatically sign in the user after connection
+            addMessage(nodeNum, 'Signing in user...', 'system');
+            pusher.signin();
+        });
+
+        // Bind to signin events
+        pusher.bind('pusher:signin_success', function(data) {
+            const userId = document.getElementById(`node${nodeNum}-user-id`).value;
+            addMessage(nodeNum, `✅ User signed in successfully: ${userId}`, 'success');
+            if (data && data.user_data) {
+                addMessage(nodeNum, `User data: ${JSON.stringify(data.user_data)}`, 'system');
+            }
+            // Store that user is authenticated
+            pusherConnections[nodeNum].userAuthenticated = true;
+
+            // Subscribe to user channel to receive user-specific events
+            const userChannel = `#server-to-user-${userId}`;
+            addMessage(nodeNum, `Listening for events on user channel: ${userChannel}`, 'system');
+
+            // Bind global handler to catch all events sent to this user
+            pusher.user.bind_global(function(eventName, data) {
+                addMessage(nodeNum, `📨 User event received - ${eventName}: ${JSON.stringify(data)}`, 'received');
+            });
+        });
+
+        // Handle signin errors
+        pusher.bind('pusher:error', function(error) {
+            if (error.data && error.data.code) {
+                if (error.data.code === 4301) {
+                    addMessage(nodeNum, `❌ User authentication failed: ${error.data.message || 'Authentication error'}`, 'error');
+                } else {
+                    addMessage(nodeNum, `Error (${error.data.code}): ${error.data.message || error}`, 'error');
+                }
+            } else {
+                addMessage(nodeNum, `Error: ${JSON.stringify(error)}`, 'error');
+            }
         });
 
         pusher.connection.bind('error', function (error) {
@@ -953,30 +1022,58 @@
         return md5(text);
     }
 
+    // Generate auth for user authentication (signin)
+    async function generateUserAuth(socketId, nodeNum) {
+        const appKey = document.getElementById('app-key').value;
+        const appSecret = 'app-secret';
+
+        const userId = document.getElementById(`node${nodeNum}-user-id`).value;
+        const userName = document.getElementById(`node${nodeNum}-user-name`).value;
+        const userEmail = document.getElementById(`node${nodeNum}-user-email`).value;
+
+        // User data for authentication
+        const userData = {
+            id: userId,
+            user_info: {
+                name: userName,
+                email: userEmail
+            }
+        };
+
+        const userDataString = JSON.stringify(userData);
+        const stringToSign = `${socketId}::user::${userDataString}`;
+        const signature = await generateSignature(stringToSign, appSecret);
+
+        return {
+            auth: `${appKey}:${signature}`,
+            user_data: userDataString
+        };
+    }
+
     // Generate auth for presence channels
     async function generatePresenceAuth(channel, socketId, nodeNum) {
         const appKey = document.getElementById('app-key').value;
         const appSecret = 'app-secret';
-        
+
         const userData = getUserData(nodeNum);
         const channelData = JSON.stringify(userData);
         const stringToSign = `${socketId}:${channel}:${channelData}`;
         const signature = await generateSignature(stringToSign, appSecret);
-        
+
         return {
             auth: `${appKey}:${signature}`,
             channel_data: channelData
         };
     }
-    
+
     // Generate auth for private channels
     async function generatePrivateAuth(channel, socketId) {
         const appKey = document.getElementById('app-key').value;
         const appSecret = 'app-secret';
-        
+
         const stringToSign = `${socketId}:${channel}`;
         const signature = await generateSignature(stringToSign, appSecret);
-        
+
         return {
             auth: `${appKey}:${signature}`
         };
@@ -1077,6 +1174,88 @@
         document.getElementById('broadcast-message').value = '';
     }
 
+    async function sendUserMessage() {
+        const message = document.getElementById('user-message-content').value.trim();
+        if (!message) return;
+
+        const selectedNode = parseInt(document.getElementById('user-message-node').value);
+        const targetUserId = document.getElementById('target-user-id').value.trim();
+        const eventName = document.getElementById('user-message-event').value.trim() || 'user-message';
+
+        if (!targetUserId) {
+            alert('Please enter a target user ID');
+            return;
+        }
+
+        // The channel for user messages is #server-to-user-{userId}
+        const userChannel = `#server-to-user-${targetUserId}`;
+
+        const appKey = document.getElementById('app-key').value;
+        const appSecret = 'app-secret';
+        const appId = 'app-id';
+
+        const apiData = {
+            name: eventName,
+            channel: userChannel,
+            data: {
+                message: message,
+                from: `node${selectedNode}`,
+                timestamp: new Date().toISOString()
+            }
+        };
+
+        try {
+            const bodyStr = JSON.stringify(apiData);
+            const bodyMd5 = generateMD5(bodyStr);
+            const timestamp = Math.floor(Date.now() / 1000).toString();
+            const path = `/apps/${appId}/events`;
+
+            // Build query parameters for signature
+            const authParams = new URLSearchParams({
+                auth_key: appKey,
+                auth_timestamp: timestamp,
+                auth_version: '1.0',
+                body_md5: bodyMd5
+            });
+
+            // Create string to sign
+            const queryString = authParams.toString();
+            const stringToSign = `POST\n${path}\n${queryString}`;
+
+            // Generate signature
+            const signature = await generateSignature(stringToSign, appSecret);
+            authParams.append('auth_signature', signature);
+
+            // Get node configuration
+            const scheme = 'https';
+            const host = document.getElementById(`node${selectedNode}-host`).value;
+            const port = 444;
+            const url = `${scheme}://${host}:${port}${path}?${authParams.toString()}`;
+
+            // Add visual feedback
+            addMessage(selectedNode, `📤 Sending message to user ${targetUserId}: ${message}`, 'sent');
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: bodyStr
+            });
+
+            if (response.ok) {
+                addMessage(selectedNode, `✅ Message sent to user ${targetUserId}`, 'success');
+            } else {
+                const errorText = await response.text();
+                addMessage(selectedNode, `❌ Failed to send to user: ${response.status} ${errorText}`, 'error');
+            }
+        } catch (error) {
+            addMessage(selectedNode, `❌ Error sending to user: ${error.message}`, 'error');
+        }
+
+        document.getElementById('user-message-content').value = '';
+    }
+
     async function sendCacheEvent() {
         const message = document.getElementById('cache-message').value.trim();
         if (!message) return;
@@ -1084,7 +1263,7 @@
         const selectedNode = parseInt(document.getElementById('cache-node').value);
         const cacheChannelType = document.getElementById('cache-channel-type').value;
         const baseChannelName = document.getElementById('channel').value;
-        
+
         // Build the cache channel name
         let cacheChannelName;
         if (cacheChannelType === 'private-cache') {
@@ -1218,6 +1397,14 @@
 
         document.getElementById('broadcast-message').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') broadcastMessage();
+        });
+
+        document.getElementById('cache-message').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendCacheEvent();
+        });
+
+        document.getElementById('user-message-content').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendUserMessage();
         });
     }
 
