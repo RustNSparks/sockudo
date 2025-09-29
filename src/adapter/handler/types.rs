@@ -103,13 +103,12 @@ impl SignInRequest {
                 user_data: extract_field(data, "user_data")?,
                 auth: extract_field(data, "auth")?,
             }),
-            Some(MessageData::Structured { user_data, extra, .. }) => Ok(Self {
-                user_data: user_data
-                    .as_ref()
-                    .cloned()
-                    .ok_or_else(|| {
-                        crate::error::Error::Auth("Missing 'user_data' field in signin data".into())
-                    })?,
+            Some(MessageData::Structured {
+                user_data, extra, ..
+            }) => Ok(Self {
+                user_data: user_data.as_ref().cloned().ok_or_else(|| {
+                    crate::error::Error::Auth("Missing 'user_data' field in signin data".into())
+                })?,
                 auth: extra
                     .get("auth")
                     .and_then(Value::as_str)
