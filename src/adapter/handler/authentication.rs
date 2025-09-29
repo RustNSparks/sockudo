@@ -57,12 +57,19 @@ impl ConnectionHandler {
     ) -> Result<()> {
         let auth_validator = AuthValidator::new(self.app_manager.clone());
 
+        // Extract the signature from the auth string (format: "app-key:signature")
+        let signature = if let Some(colon_pos) = request.auth.find(':') {
+            &request.auth[colon_pos + 1..]
+        } else {
+            &request.auth
+        };
+
         let is_valid = auth_validator
             .validate_channel_auth(
                 socket_id.clone(),
                 &app_config.key,
                 &request.user_data,
-                &request.auth,
+                signature,
             )
             .await?;
 
