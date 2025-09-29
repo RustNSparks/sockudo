@@ -46,7 +46,9 @@ async fn test_realistic_socket_aggregation() -> Result<()> {
     adapter.start_listeners().await?;
 
     // Simulate discovered nodes for multi-node behavior
-    let adapter = adapter.with_discovered_nodes(vec!["node-1", "node-2"]).await?;
+    let adapter = adapter
+        .with_discovered_nodes(vec!["node-1", "node-2"])
+        .await?;
 
     let response = adapter
         .send_request("test-app", RequestType::Sockets, None, None, None)
@@ -84,7 +86,9 @@ async fn test_conflicting_data_handling() -> Result<()> {
     adapter.start_listeners().await?;
 
     // Simulate discovered nodes for multi-node behavior
-    let adapter = adapter.with_discovered_nodes(vec!["node-1", "node-2"]).await?;
+    let adapter = adapter
+        .with_discovered_nodes(vec!["node-1", "node-2"])
+        .await?;
 
     let response = adapter
         .send_request(
@@ -157,7 +161,9 @@ async fn test_send_request_timeout_with_partial_responses() -> Result<()> {
     adapter.start_listeners().await?;
 
     // Simulate discovered nodes for multi-node behavior
-    let adapter = adapter.with_discovered_nodes(vec!["node-1", "node-2", "node-3"]).await?;
+    let adapter = adapter
+        .with_discovered_nodes(vec!["node-1", "node-2", "node-3"])
+        .await?;
 
     let start = std::time::Instant::now();
 
@@ -226,16 +232,38 @@ async fn test_multi_node_socket_aggregation() -> Result<()> {
 
     // Default config: Node1[socket-1,socket-2,socket-shared] + Node2[socket-3,socket-4,socket-shared]
     // RequestType::Sockets returns unique socket IDs but raw total count across nodes
-    assert_eq!(response.sockets_count, 6, "Should count all sockets including duplicates across nodes");
-    assert_eq!(response.socket_ids.len(), 5, "Should return deduplicated socket IDs");
+    assert_eq!(
+        response.sockets_count, 6,
+        "Should count all sockets including duplicates across nodes"
+    );
+    assert_eq!(
+        response.socket_ids.len(),
+        5,
+        "Should return deduplicated socket IDs"
+    );
 
     // Verify all expected unique sockets are present
     let unique_sockets: HashSet<String> = response.socket_ids.into_iter().collect();
-    assert_eq!(unique_sockets.len(), 5, "Should have exactly 5 unique sockets");
+    assert_eq!(
+        unique_sockets.len(),
+        5,
+        "Should have exactly 5 unique sockets"
+    );
 
-    let expected_sockets: HashSet<String> = ["socket-1", "socket-2", "socket-3", "socket-4", "socket-shared"]
-        .iter().map(|s| s.to_string()).collect();
-    assert_eq!(unique_sockets, expected_sockets, "Should contain all expected sockets");
+    let expected_sockets: HashSet<String> = [
+        "socket-1",
+        "socket-2",
+        "socket-3",
+        "socket-4",
+        "socket-shared",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    assert_eq!(
+        unique_sockets, expected_sockets,
+        "Should contain all expected sockets"
+    );
 
     Ok(())
 }
@@ -458,7 +486,9 @@ async fn test_socket_existence_validation() -> Result<()> {
     adapter.start_listeners().await?;
 
     // Simulate discovered nodes for multi-node behavior
-    let adapter = adapter.with_discovered_nodes(vec!["node-1", "node-2"]).await?;
+    let adapter = adapter
+        .with_discovered_nodes(vec!["node-1", "node-2"])
+        .await?;
 
     // Test existing socket
     let response = adapter

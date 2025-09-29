@@ -117,7 +117,9 @@ where
         for node_id in node_ids {
             let node_id_string = node_id.to_string();
             if node_id_string != self.node_id {
-                horizontal.add_discovered_node_for_test(node_id_string).await;
+                horizontal
+                    .add_discovered_node_for_test(node_id_string)
+                    .await;
             }
         }
         drop(horizontal); // Release the lock

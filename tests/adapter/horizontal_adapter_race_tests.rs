@@ -391,7 +391,9 @@ async fn test_response_handler_race_conditions() -> Result<()> {
     adapter.start_listeners().await?;
 
     // Simulate discovered nodes for multi-node behavior
-    let adapter = adapter.with_discovered_nodes(vec!["node-1", "node-2"]).await?;
+    let adapter = adapter
+        .with_discovered_nodes(vec!["node-1", "node-2"])
+        .await?;
     let adapter = Arc::new(adapter);
 
     // Send multiple requests that will have mixed timing
