@@ -417,10 +417,11 @@ impl ChannelManager {
     }
 
     /// Batch unsubscribe operation - single lock acquisition for multiple operations
+    /// Returns results with channel names for explicit correlation
     pub async fn batch_unsubscribe(
         connection_manager: &Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
         operations: Vec<(String, String, String)>, // (socket_id, channel_name, app_id)
-    ) -> Result<Vec<Result<(bool, usize), Error>>, Error> {
+    ) -> Result<Vec<(String, Result<(bool, usize), Error>)>, Error> {
         if operations.is_empty() {
             return Ok(Vec::new());
         }
@@ -442,17 +443,17 @@ impl ChannelManager {
                     match conn_mgr.get_channel_sockets(&app_id, &channel_name).await {
                         Ok(sockets) => {
                             let remaining = sockets.len();
-                            results.push(Ok((was_removed, remaining)));
+                            results.push((channel_name.clone(), Ok((was_removed, remaining))));
 
                             // Mark for cleanup if empty
                             if remaining == 0 {
                                 channels_to_cleanup.push((app_id.clone(), channel_name.clone()));
                             }
                         }
-                        Err(e) => results.push(Err(e)),
+                        Err(e) => results.push((channel_name.clone(), Err(e))),
                     }
                 }
-                Err(e) => results.push(Err(e)),
+                Err(e) => results.push((channel_name.clone(), Err(e))),
             }
         }
 

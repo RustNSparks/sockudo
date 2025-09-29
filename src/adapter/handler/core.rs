@@ -525,29 +525,25 @@ impl ConnectionHandler {
         match ChannelManager::batch_unsubscribe(&self.connection_manager, operations).await {
             Ok(results) => {
                 // Process webhook events for each successful unsubscribe
-                let channels_vec: Vec<&String> = subscribed_channels.iter().collect();
-                for (i, result) in results.iter().enumerate() {
+                for (channel_name, result) in results {
                     match result {
                         Ok((was_removed, remaining_connections)) => {
-                            if *was_removed && i < channels_vec.len() {
-                                let channel_str = channels_vec[i];
+                            if was_removed {
                                 self.handle_post_unsubscribe_webhooks(
                                     app_config,
-                                    channel_str,
+                                    &channel_name,
                                     user_id,
-                                    *remaining_connections,
+                                    remaining_connections,
                                     socket_id,
                                 )
                                 .await?;
                             }
                         }
                         Err(e) => {
-                            if i < channels_vec.len() {
-                                error!(
-                                    "Error unsubscribing socket {} from channel {} during disconnect: {}",
-                                    socket_id, channels_vec[i], e
-                                );
-                            }
+                            error!(
+                                "Error unsubscribing socket {} from channel {} during disconnect: {}",
+                                socket_id, channel_name, e
+                            );
                         }
                     }
                 }
