@@ -6,10 +6,10 @@ use crate::error::Error;
 use crate::protocol::messages::{MessageData, PusherMessage};
 use crate::token::{Token, secure_compare};
 use crate::websocket::SocketId;
+use std::collections::HashMap;
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashMap as StdHashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
@@ -243,7 +243,7 @@ impl ChannelManager {
 
     fn extract_presence_member(
         data: &Value,
-        extra: &StdHashMap<String, Value>,
+        extra: &HashMap<String, Value>,
     ) -> Result<PresenceMember, Error> {
         // For structured data, channel_data is already parsed
         if let Some(channel_data_str) = data.get("channel_data").and_then(|v| v.as_str()) {
@@ -411,7 +411,7 @@ impl ChannelManager {
         connection_manager: &Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
         app_id: &str,
         channel: &str,
-    ) -> Result<StdHashMap<String, PresenceMemberInfo>, Error> {
+    ) -> Result<HashMap<String, PresenceMemberInfo>, Error> {
         let mut conn_mgr = connection_manager.lock().await;
         conn_mgr.get_channel_members(app_id, channel).await
     }
