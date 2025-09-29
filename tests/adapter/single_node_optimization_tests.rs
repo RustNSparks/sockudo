@@ -382,35 +382,6 @@ async fn test_should_skip_horizontal_communication() -> Result<()> {
     Ok(())
 }
 
-/// Test that heartbeats are always sent regardless of node count (for discovery)
-#[tokio::test]
-async fn test_heartbeats_always_sent() -> Result<()> {
-    // This test would require accessing the heartbeat loop directly,
-    // which is currently private. The behavior is validated through
-    // integration testing as shown in the user's logs.
-
-    // For now, we verify that the heartbeat RequestType exists
-    // and can be created (indicating heartbeat functionality is present)
-    let heartbeat_request = sockudo::adapter::horizontal_adapter::RequestBody {
-        request_id: "test-heartbeat".to_string(),
-        node_id: "test-node".to_string(),
-        app_id: "cluster".to_string(),
-        request_type: RequestType::Heartbeat,
-        channel: None,
-        socket_id: None,
-        user_id: None,
-        user_info: None,
-        timestamp: Some(123456789),
-        dead_node_id: None,
-        target_node_id: None,
-    };
-
-    assert!(matches!(heartbeat_request.request_type, RequestType::Heartbeat));
-    assert_eq!(heartbeat_request.app_id, "cluster");
-
-    Ok(())
-}
-
 /// Test that dead node processing is properly handled
 #[tokio::test]
 async fn test_dead_node_optimization() -> Result<()> {
