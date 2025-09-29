@@ -6,10 +6,10 @@ use crate::error::Error;
 use crate::protocol::messages::{MessageData, PusherMessage};
 use crate::token::{Token, secure_compare};
 use crate::websocket::SocketId;
-use std::collections::HashMap;
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
@@ -55,7 +55,7 @@ pub struct ChannelManager;
 static CHANNEL_TYPE_CACHE: std::sync::LazyLock<RwLock<LruCache<String, ChannelType>>> =
     std::sync::LazyLock::new(|| {
         RwLock::new(LruCache::new(
-            NonZeroUsize::new(1000).expect("Cache size must be non-zero")
+            NonZeroUsize::new(1000).expect("Cache size must be non-zero"),
         ))
     });
 
