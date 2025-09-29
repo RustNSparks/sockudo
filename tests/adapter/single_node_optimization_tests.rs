@@ -1,11 +1,11 @@
+use sockudo::adapter::connection_manager::{ConnectionManager, HorizontalAdapterInterface};
 use sockudo::adapter::horizontal_adapter::RequestType;
 use sockudo::adapter::horizontal_adapter_base::HorizontalAdapterBase;
-use sockudo::adapter::connection_manager::{ConnectionManager, HorizontalAdapterInterface};
-use sockudo::protocol::messages::{MessageData, PusherMessage};
 use sockudo::error::Result;
+use sockudo::protocol::messages::{MessageData, PusherMessage};
 use std::time::Duration;
 
-use super::horizontal_adapter_helpers::{MockConfig, MockTransport, MockNodeState};
+use super::horizontal_adapter_helpers::{MockConfig, MockNodeState, MockTransport};
 
 /// Test that single-node deployments skip horizontal communications
 #[tokio::test]
@@ -52,10 +52,7 @@ async fn test_single_node_skips_broadcast() -> Result<()> {
 async fn test_multi_node_sends_broadcast() -> Result<()> {
     // Create config with 2 nodes
     let config = MockConfig {
-        node_states: vec![
-            MockNodeState::new("node-1"),
-            MockNodeState::new("node-2"),
-        ],
+        node_states: vec![MockNodeState::new("node-1"), MockNodeState::new("node-2")],
         ..Default::default()
     };
 
@@ -139,10 +136,7 @@ async fn test_single_node_skips_requests() -> Result<()> {
 async fn test_multi_node_sends_requests() -> Result<()> {
     // Create config with 2 nodes
     let config = MockConfig {
-        node_states: vec![
-            MockNodeState::new("node-1"),
-            MockNodeState::new("node-2"),
-        ],
+        node_states: vec![MockNodeState::new("node-1"), MockNodeState::new("node-2")],
         ..Default::default()
     };
 
@@ -164,7 +158,7 @@ async fn test_multi_node_sends_requests() -> Result<()> {
     // Verify requests were published to transport
     let published_requests = adapter.transport.get_published_requests().await;
     assert!(
-        published_requests.len() >= 1,
+        !published_requests.is_empty(),
         "Multi-node should publish at least 1 request, got {}",
         published_requests.len()
     );
@@ -220,10 +214,7 @@ async fn test_single_node_skips_presence_broadcasts() -> Result<()> {
 async fn test_multi_node_sends_presence_broadcasts() -> Result<()> {
     // Create config with 2 nodes
     let config = MockConfig {
-        node_states: vec![
-            MockNodeState::new("node-1"),
-            MockNodeState::new("node-2"),
-        ],
+        node_states: vec![MockNodeState::new("node-1"), MockNodeState::new("node-2")],
         ..Default::default()
     };
 
@@ -265,8 +256,14 @@ async fn test_multi_node_sends_presence_broadcasts() -> Result<()> {
     let join_request = &published_requests[0];
     let leave_request = &published_requests[1];
 
-    assert!(matches!(join_request.request_type, RequestType::PresenceMemberJoined));
-    assert!(matches!(leave_request.request_type, RequestType::PresenceMemberLeft));
+    assert!(matches!(
+        join_request.request_type,
+        RequestType::PresenceMemberJoined
+    ));
+    assert!(matches!(
+        leave_request.request_type,
+        RequestType::PresenceMemberLeft
+    ));
 
     Ok(())
 }
@@ -302,7 +299,10 @@ async fn test_effective_node_count_detection() -> Result<()> {
         let horizontal = adapter.horizontal.lock().await;
         horizontal.get_effective_node_count().await
     };
-    assert_eq!(node_count, 2, "Node count should be 2 after adding heartbeat");
+    assert_eq!(
+        node_count, 2,
+        "Node count should be 2 after adding heartbeat"
+    );
 
     Ok(())
 }
@@ -333,7 +333,11 @@ async fn test_transition_single_to_multi_node() -> Result<()> {
         .await?;
 
     let published_broadcasts = adapter.transport.get_published_broadcasts().await;
-    assert_eq!(published_broadcasts.len(), 0, "Single node should skip broadcast");
+    assert_eq!(
+        published_broadcasts.len(),
+        0,
+        "Single node should skip broadcast"
+    );
 
     // Simulate second node joining
     {
@@ -348,7 +352,11 @@ async fn test_transition_single_to_multi_node() -> Result<()> {
         .await?;
 
     let published_broadcasts = adapter.transport.get_published_broadcasts().await;
-    assert_eq!(published_broadcasts.len(), 1, "Multi-node should send broadcast");
+    assert_eq!(
+        published_broadcasts.len(),
+        1,
+        "Multi-node should send broadcast"
+    );
 
     Ok(())
 }
@@ -399,8 +407,10 @@ async fn test_dead_node_optimization() -> Result<()> {
         let horizontal = adapter.horizontal.lock().await;
         let mut heartbeats = horizontal.node_heartbeats.write().await;
         // Add an old heartbeat (simulating dead node)
-        heartbeats.insert("dead-node".to_string(),
-            std::time::Instant::now() - std::time::Duration::from_secs(300));
+        heartbeats.insert(
+            "dead-node".to_string(),
+            std::time::Instant::now() - std::time::Duration::from_secs(300),
+        );
     }
 
     // Test get_dead_nodes method

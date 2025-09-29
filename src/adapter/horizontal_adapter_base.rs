@@ -42,12 +42,29 @@ pub struct HorizontalAdapterBase<T: HorizontalTransport> {
     pub cleanup_interval_ms: u64,
 }
 
+/// Check if we should skip horizontal communication (single node optimization)
+/// This is determined by checking if cluster health is enabled and
+/// if the effective node count is 1 or less.
+async fn should_skip_horizontal_communication_impl(
+    cluster_health_enabled: bool,
+    horizontal: &Arc<Mutex<HorizontalAdapter>>,
+) -> bool {
+    // Don't skip sending if cluster health is disabled, we have no way of knowing other nodes
+    if !cluster_health_enabled {
+        return false;
+    }
+    let horizontal_guard = horizontal.lock().await;
+    let effective_node_count = horizontal_guard.get_effective_node_count().await;
+    effective_node_count <= 1
+}
+
 impl<T: HorizontalTransport> HorizontalAdapterBase<T> {
     /// Check if we should skip horizontal communication (single node optimization)
-    async fn should_skip_horizontal_communication(&self) -> bool {
-        let horizontal = self.horizontal.lock().await;
-        let effective_node_count = horizontal.get_effective_node_count().await;
-        effective_node_count <= 1
+    /// This is determined by checking if cluster health is enabled and
+    /// if the effective node count is 1 or less.
+    pub async fn should_skip_horizontal_communication(&self) -> bool {
+        should_skip_horizontal_communication_impl(self.cluster_health_enabled, &self.horizontal)
+            .await
     }
 }
 
@@ -519,6 +536,7 @@ where
         let node_id = self.node_id.clone();
         let cleanup_interval_ms = self.cleanup_interval_ms;
         let node_timeout_ms = self.node_timeout_ms;
+        let cluster_health_enabled = self.cluster_health_enabled;
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_millis(cleanup_interval_ms));
@@ -607,12 +625,13 @@ where
                             }
 
                             // 4. Notify followers to clean their registries (skip if single node)
-                            let effective_node_count = {
-                                let horizontal_guard = horizontal.lock().await;
-                                horizontal_guard.get_effective_node_count().await
-                            };
+                            let should_skip = should_skip_horizontal_communication_impl(
+                                cluster_health_enabled,
+                                &horizontal,
+                            )
+                            .await;
 
-                            if effective_node_count > 1 {
+                            if !should_skip {
                                 let dead_node_request = RequestBody {
                                     request_id: generate_request_id(),
                                     node_id: node_id.clone(),
