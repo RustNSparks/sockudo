@@ -63,7 +63,6 @@ mockall = "0.13.1"
 rustls = { version = "0.23.29", features = ["ring"] }
 tower = "0.5.2"
 mimalloc = { version = "0.1.48", features = ["v3"] }
-lru = "0.12"
 
 
 [dependencies.uuid]

@@ -6,13 +6,12 @@ use crate::error::Error;
 use crate::protocol::messages::{MessageData, PusherMessage};
 use crate::token::{Token, secure_compare};
 use crate::websocket::SocketId;
-use lru::LruCache;
+use moka::future::Cache;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PresenceMember {
@@ -50,31 +49,24 @@ pub struct LeaveResponse {
 pub struct ChannelManager;
 
 // Static cache for channel types to avoid repeated parsing
-// Using LRU cache to prevent memory growth and improve cache efficiency
-// RwLock allows concurrent reads for better async performance
-static CHANNEL_TYPE_CACHE: std::sync::LazyLock<RwLock<LruCache<String, ChannelType>>> =
+// Using moka async cache for efficient concurrent access and proper LRU behavior
+static CHANNEL_TYPE_CACHE: std::sync::LazyLock<Cache<String, ChannelType>> =
     std::sync::LazyLock::new(|| {
-        RwLock::new(LruCache::new(
-            NonZeroUsize::new(1000).expect("Cache size must be non-zero"),
-        ))
+        Cache::builder()
+            .max_capacity(1000)
+            .build()
     });
 
 impl ChannelManager {
     async fn get_channel_type(channel_name: &str) -> ChannelType {
-        // First, try to read from cache with a read lock (allows concurrent reads)
-        {
-            let cache = CHANNEL_TYPE_CACHE.read().await;
-            if let Some(channel_type) = cache.peek(channel_name) {
-                return *channel_type;
-            }
-        } // Read lock is released here
+        // Try to get from cache, with proper LRU position update
+        if let Some(channel_type) = CHANNEL_TYPE_CACHE.get(channel_name).await {
+            return channel_type;
+        }
 
-        // Not found in cache, acquire write lock to insert
-        let mut cache = CHANNEL_TYPE_CACHE.write().await;
-
-        // Compute and insert the channel type
+        // Not found in cache, compute and insert
         let channel_type = ChannelType::from_name(channel_name);
-        cache.put(channel_name.to_string(), channel_type);
+        CHANNEL_TYPE_CACHE.insert(channel_name.to_string(), channel_type).await;
 
         channel_type
     }
