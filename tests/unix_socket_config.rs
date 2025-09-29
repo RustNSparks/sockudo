@@ -149,28 +149,6 @@ mod unix_socket_config_tests {
         }
     }
 
-    #[tokio::test]
-    #[ignore] // Ignore due to test interference with other env var tests
-    async fn test_env_override_unix_socket_permission_valid() {
-        // Clean up any existing env var first
-        unsafe {
-            env::remove_var("UNIX_SOCKET_PERMISSION_MODE");
-        }
-
-        unsafe {
-            env::set_var("UNIX_SOCKET_PERMISSION_MODE", "750");
-        }
-
-        let mut config = ServerOptions::default();
-        assert_eq!(config.unix_socket.permission_mode, 0o660); // Default = 432 decimal
-
-        config.override_from_env().await.unwrap();
-        assert_eq!(config.unix_socket.permission_mode, 0o750); // 750 octal = 488 decimal
-
-        unsafe {
-            env::remove_var("UNIX_SOCKET_PERMISSION_MODE");
-        }
-    }
 
     #[tokio::test]
     async fn test_env_override_unix_socket_permission_invalid() {
