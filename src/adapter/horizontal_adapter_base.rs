@@ -532,7 +532,6 @@ where
                 };
 
                 if !dead_nodes.is_empty() {
-
                     // Single leader election for entire cleanup round
                     let is_leader = {
                         let horizontal_guard = horizontal.lock().await;
@@ -628,7 +627,8 @@ where
                                     target_node_id: None,
                                 };
 
-                                if let Err(e) = transport.publish_request(&dead_node_request).await {
+                                if let Err(e) = transport.publish_request(&dead_node_request).await
+                                {
                                     error!("Failed to send dead node notification: {}", e);
                                 }
                             }
@@ -661,7 +661,6 @@ where
         let heartbeats = horizontal.node_heartbeats.read().await;
         heartbeats.clone()
     }
-
 }
 
 #[async_trait]
