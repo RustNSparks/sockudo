@@ -68,7 +68,7 @@ async fn test_request_publish_failure_recovery() -> Result<()> {
     adapter.start_listeners().await?;
 
     // Simulate discovered nodes for multi-node behavior
-    let mut adapter = adapter.with_discovered_nodes(vec!["node-1", "node-2"]).await?;
+    let adapter = adapter.with_discovered_nodes(vec!["node-1", "node-2"]).await?;
 
     // Request with failing app_id should fail
     let result = adapter
@@ -94,7 +94,7 @@ async fn test_partial_node_response_aggregation() -> Result<()> {
     adapter.start_listeners().await?;
 
     // Simulate discovered nodes for multi-node behavior
-    let mut adapter = adapter.with_discovered_nodes(vec!["node-1", "node-2", "node-3"]).await?;
+    let adapter = adapter.with_discovered_nodes(vec!["node-1", "node-2", "node-3"]).await?;
 
     let response = adapter
         .send_request(
@@ -163,7 +163,7 @@ async fn test_corrupted_response_filtering() -> Result<()> {
     adapter.start_listeners().await?;
 
     // Simulate discovered nodes for multi-node behavior
-    let mut adapter = adapter.with_discovered_nodes(vec!["node-1", "node-2"]).await?;
+    let adapter = adapter.with_discovered_nodes(vec!["node-1", "node-2"]).await?;
 
     let response = adapter
         .send_request("corrupt-test", RequestType::Sockets, None, None, None)
@@ -198,7 +198,7 @@ async fn test_memory_exhaustion_protection() -> Result<()> {
 
     // Simulate discovered nodes for multi-node behavior (10 nodes: node-0 to node-9)
     let node_ids: Vec<&str> = (0..10).map(|i| Box::leak(format!("node-{}", i).into_boxed_str()) as &str).collect();
-    let mut adapter = adapter.with_discovered_nodes(node_ids).await?;
+    let adapter = adapter.with_discovered_nodes(node_ids).await?;
 
     // This tests whether the adapter can handle large responses without crashing
     let response = adapter
@@ -552,7 +552,7 @@ async fn test_request_timeout_boundary_conditions() -> Result<()> {
     adapter.start_listeners().await?;
 
     // Simulate discovered nodes for multi-node behavior
-    let mut adapter = adapter.with_discovered_nodes(vec!["node-1"]).await?;
+    let adapter = adapter.with_discovered_nodes(vec!["node-1"]).await?;
 
     let start = std::time::Instant::now();
     let response = adapter

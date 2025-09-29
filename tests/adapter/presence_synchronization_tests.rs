@@ -27,7 +27,7 @@ async fn test_presence_member_join_broadcast() {
     adapter_mut.start_listeners().await.unwrap();
 
     // Simulate discovered nodes for multi-node behavior
-    let mut adapter_mut = adapter_mut.with_discovered_nodes(vec!["node-1", "node-2"]).await.unwrap();
+    let adapter_mut = adapter_mut.with_discovered_nodes(vec!["node-1", "node-2"]).await.unwrap();
 
     let user_info = json!({"name": "Alice", "status": "online"});
 
@@ -87,7 +87,7 @@ async fn test_presence_member_leave_broadcast() {
     adapter_mut.start_listeners().await.unwrap();
 
     // Simulate discovered nodes for multi-node behavior
-    let mut adapter_mut = adapter_mut.with_discovered_nodes(vec!["node-1", "node-2"]).await.unwrap();
+    let adapter_mut = adapter_mut.with_discovered_nodes(vec!["node-1", "node-2"]).await.unwrap();
 
     // Broadcast presence leave
     let result = adapter_mut
@@ -273,7 +273,7 @@ async fn test_multiple_presence_members_same_channel() {
     adapter_mut.start_listeners().await.unwrap();
 
     // Simulate discovered nodes for multi-node behavior
-    let mut adapter_mut = adapter_mut.with_discovered_nodes(vec!["node-1", "node-2"]).await.unwrap();
+    let adapter_mut = adapter_mut.with_discovered_nodes(vec!["node-1", "node-2"]).await.unwrap();
 
     // Add multiple presence members to same channel
     let users = vec![
@@ -368,7 +368,7 @@ async fn test_presence_state_consistency_across_join_leave() {
     adapter_mut.start_listeners().await.unwrap();
 
     // Simulate discovered nodes for multi-node behavior
-    let mut adapter_mut = adapter_mut.with_discovered_nodes(vec!["node-1", "node-2"]).await.unwrap();
+    let adapter_mut = adapter_mut.with_discovered_nodes(vec!["node-1", "node-2"]).await.unwrap();
 
     let user_info = json!({"name": "Test User", "status": "online"});
 
