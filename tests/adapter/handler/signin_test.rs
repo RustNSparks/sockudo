@@ -11,30 +11,152 @@ use crate::mocks::connection_handler_mock::{
 };
 
 #[tokio::test]
-async fn test_signin_request_parsing_with_app_key_prefix() {
-    // Test that SignInRequest correctly parses user_data from the Structured variant
+async fn test_signin_request_from_message_json_format() {
+    use sockudo::protocol::messages::{MessageData, PusherMessage};
+
     let user_data = json!({
         "id": "test-user-123",
         "user_info": {
             "name": "Test User",
             "email": "test@example.com"
         }
+    });
+
+    let message_data = json!({
+        "user_data": user_data.to_string(),
+        "auth": "app-key:signature_here"
+    });
+
+    let message = PusherMessage {
+        event: Some("pusher:signin".to_string()),
+        data: Some(MessageData::Json(message_data)),
+        channel: None,
+        name: None,
+        user_id: None,
+    };
+
+    let request = SignInRequest::from_message(&message).unwrap();
+
+    assert_eq!(request.user_data, user_data.to_string());
+    assert_eq!(request.auth, "app-key:signature_here");
+}
+
+#[tokio::test]
+async fn test_signin_request_from_message_structured_format() {
+    use serde_json::Value;
+    use sockudo::protocol::messages::{MessageData, PusherMessage};
+    use std::collections::HashMap;
+
+    let user_data = json!({
+        "id": "test-user-456",
+        "user_info": {
+            "name": "Another User"
+        }
     })
     .to_string();
 
-    let auth_string = "app-key:signature_here".to_string();
+    let mut extra = HashMap::new();
+    extra.insert(
+        "auth".to_string(),
+        Value::String("app-key:another_signature".to_string()),
+    );
 
-    let request = SignInRequest {
-        user_data: user_data.clone(),
-        auth: auth_string.clone(),
+    let message = PusherMessage {
+        event: Some("pusher:signin".to_string()),
+        data: Some(MessageData::Structured {
+            channel: None,
+            channel_data: None,
+            user_data: Some(user_data.clone()),
+            extra,
+        }),
+        channel: None,
+        name: None,
+        user_id: None,
     };
 
-    // Verify the request holds the correct data
+    let request = SignInRequest::from_message(&message).unwrap();
+
     assert_eq!(request.user_data, user_data);
-    assert_eq!(request.auth, auth_string);
+    assert_eq!(request.auth, "app-key:another_signature");
+}
+
+#[tokio::test]
+async fn test_signin_request_from_message_missing_user_data_json() {
+    use sockudo::protocol::messages::{MessageData, PusherMessage};
+
+    let message_data = json!({
+        "auth": "app-key:signature_here"
+        // Missing user_data
+    });
+
+    let message = PusherMessage {
+        event: Some("pusher:signin".to_string()),
+        data: Some(MessageData::Json(message_data)),
+        channel: None,
+        name: None,
+        user_id: None,
+    };
+
+    let result = SignInRequest::from_message(&message);
+    assert!(result.is_err());
     assert!(
-        request.auth.contains(':'),
-        "Auth should contain app-key:signature format"
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Missing 'user_data' field")
+    );
+}
+
+#[tokio::test]
+async fn test_signin_request_from_message_missing_auth_structured() {
+    use sockudo::protocol::messages::{MessageData, PusherMessage};
+    use std::collections::HashMap;
+
+    let user_data = json!({"id": "test-user"}).to_string();
+    let extra = HashMap::new(); // Empty extra, missing auth
+
+    let message = PusherMessage {
+        event: Some("pusher:signin".to_string()),
+        data: Some(MessageData::Structured {
+            channel: None,
+            channel_data: None,
+            user_data: Some(user_data),
+            extra,
+        }),
+        channel: None,
+        name: None,
+        user_id: None,
+    };
+
+    let result = SignInRequest::from_message(&message);
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Missing 'auth' field")
+    );
+}
+
+#[tokio::test]
+async fn test_signin_request_from_message_invalid_format() {
+    use sockudo::protocol::messages::{MessageData, PusherMessage};
+
+    let message = PusherMessage {
+        event: Some("pusher:signin".to_string()),
+        data: Some(MessageData::String("invalid string data".to_string())),
+        channel: None,
+        name: None,
+        user_id: None,
+    };
+
+    let result = SignInRequest::from_message(&message);
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid signin data format")
     );
 }
 
@@ -166,6 +288,199 @@ async fn test_auth_validator_with_different_user_data() {
     assert!(
         result.is_err(),
         "Should fail when user_data doesn't match signature"
+    );
+}
+
+// Integration tests for handle_signin_request function
+
+#[tokio::test]
+async fn test_handle_signin_request_parse_and_validate_user_data() {
+    // Test the parse_and_validate_user_data method which is called by handle_signin_request
+    let mock_app_manager = MockAppManager::new();
+    let handler = create_test_connection_handler_with_app_manager(mock_app_manager);
+
+    let user_data = json!({
+        "id": "user-123",
+        "user_info": {
+            "name": "Test User"
+        },
+        "watchlist": ["channel1", "channel2"]
+    })
+    .to_string();
+
+    let result = handler.parse_and_validate_user_data(&user_data);
+    assert!(result.is_ok(), "Should parse valid user data");
+
+    let user_info = result.unwrap();
+    assert_eq!(user_info.id, "user-123");
+    assert!(user_info.watchlist.is_some());
+    assert_eq!(user_info.watchlist.unwrap(), vec!["channel1", "channel2"]);
+}
+
+#[tokio::test]
+async fn test_handle_signin_request_authentication_disabled() {
+    let socket_id = SocketId::new();
+    let mut app = create_test_app();
+    app.enable_user_authentication = Some(false); // Disable signin
+
+    let mock_app_manager = MockAppManager::new();
+    let handler = create_test_connection_handler_with_app_manager(mock_app_manager);
+
+    let request = SignInRequest {
+        user_data: json!({"id": "user-123"}).to_string(),
+        auth: "test-app-key:signature".to_string(),
+    };
+
+    let result = handler
+        .handle_signin_request(&socket_id, &app, request)
+        .await;
+    assert!(
+        result.is_err(),
+        "Should fail when authentication is disabled"
+    );
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("User authentication is disabled")
+    );
+}
+
+#[tokio::test]
+async fn test_handle_signin_request_invalid_user_data() {
+    let socket_id = SocketId::new();
+    let mut app = create_test_app();
+    app.enable_user_authentication = Some(true);
+
+    let mock_app_manager = MockAppManager::new();
+    let handler = create_test_connection_handler_with_app_manager(mock_app_manager);
+
+    let request = SignInRequest {
+        user_data: "invalid json".to_string(), // Invalid JSON
+        auth: "test-app-key:signature".to_string(),
+    };
+
+    let result = handler
+        .handle_signin_request(&socket_id, &app, request)
+        .await;
+    assert!(result.is_err(), "Should fail with invalid JSON user_data");
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid user_data JSON")
+    );
+}
+
+#[tokio::test]
+async fn test_handle_signin_request_missing_user_id() {
+    let socket_id = SocketId::new();
+    let mut app = create_test_app();
+    app.enable_user_authentication = Some(true);
+
+    let mock_app_manager = MockAppManager::new();
+    let handler = create_test_connection_handler_with_app_manager(mock_app_manager);
+
+    let user_data = json!({
+        "user_info": {
+            "name": "Test User"
+        }
+        // Missing 'id' field
+    })
+    .to_string();
+
+    let request = SignInRequest {
+        user_data,
+        auth: "test-app-key:signature".to_string(),
+    };
+
+    let result = handler
+        .handle_signin_request(&socket_id, &app, request)
+        .await;
+    assert!(
+        result.is_err(),
+        "Should fail when user_data lacks 'id' field"
+    );
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Missing 'id' field")
+    );
+}
+
+#[tokio::test]
+async fn test_handle_signin_request_invalid_signature() {
+    let socket_id = SocketId::new();
+    let mut app = create_test_app();
+    app.enable_user_authentication = Some(true);
+
+    let mut mock_app_manager = MockAppManager::new();
+    mock_app_manager.expect_find_by_key("test-app-key".to_string(), app.clone());
+    let handler = create_test_connection_handler_with_app_manager(mock_app_manager);
+
+    let user_data = json!({"id": "user-123"}).to_string();
+
+    let request = SignInRequest {
+        user_data,
+        auth: "test-app-key:invalid_signature_here".to_string(),
+    };
+
+    let result = handler
+        .handle_signin_request(&socket_id, &app, request)
+        .await;
+    assert!(result.is_err(), "Should fail with invalid signature");
+}
+
+#[tokio::test]
+async fn test_handle_signin_request_early_validation_flow() {
+    // Test the early validation parts of handle_signin_request that don't require connection state
+    let socket_id = SocketId::new();
+    let mut app = create_test_app();
+
+    // Test 1: Authentication disabled
+    app.enable_user_authentication = Some(false);
+    let mock_app_manager = MockAppManager::new();
+    let handler = create_test_connection_handler_with_app_manager(mock_app_manager);
+
+    let request = SignInRequest {
+        user_data: json!({"id": "user-123"}).to_string(),
+        auth: "test-app-key:signature".to_string(),
+    };
+
+    let result = handler
+        .handle_signin_request(&socket_id, &app, request)
+        .await;
+    assert!(
+        result.is_err(),
+        "Should fail when authentication is disabled"
+    );
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("User authentication is disabled")
+    );
+
+    // Test 2: Invalid user data
+    app.enable_user_authentication = Some(true);
+    let mock_app_manager2 = MockAppManager::new();
+    let handler2 = create_test_connection_handler_with_app_manager(mock_app_manager2);
+
+    let invalid_request = SignInRequest {
+        user_data: "invalid json".to_string(),
+        auth: "test-app-key:signature".to_string(),
+    };
+
+    let result2 = handler2
+        .handle_signin_request(&socket_id, &app, invalid_request)
+        .await;
+    assert!(result2.is_err(), "Should fail with invalid JSON");
+    assert!(
+        result2
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid user_data JSON")
     );
 }
 
