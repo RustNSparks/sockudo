@@ -51,11 +51,7 @@ pub struct ChannelManager;
 // Static cache for channel types to avoid repeated parsing
 // Using moka async cache for efficient concurrent access and proper LRU behavior
 static CHANNEL_TYPE_CACHE: std::sync::LazyLock<Cache<String, ChannelType>> =
-    std::sync::LazyLock::new(|| {
-        Cache::builder()
-            .max_capacity(1000)
-            .build()
-    });
+    std::sync::LazyLock::new(|| Cache::builder().max_capacity(1000).build());
 
 impl ChannelManager {
     async fn get_channel_type(channel_name: &str) -> ChannelType {
@@ -66,7 +62,9 @@ impl ChannelManager {
 
         // Not found in cache, compute and insert
         let channel_type = ChannelType::from_name(channel_name);
-        CHANNEL_TYPE_CACHE.insert(channel_name.to_string(), channel_type).await;
+        CHANNEL_TYPE_CACHE
+            .insert(channel_name.to_string(), channel_type)
+            .await;
 
         channel_type
     }
