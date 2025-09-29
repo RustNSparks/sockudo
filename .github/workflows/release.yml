@@ -123,7 +123,7 @@ jobs:
       target_name: Linux x86_64 (GNU)
       target_triple: x86_64-unknown-linux-gnu
       runner_os: ubuntu-24.04
-      archive_ext: tar.gz
+      archive_ext: tgz
       binary_name: sockudo
       version: ${{ needs.prepare.outputs.version }}
 
@@ -134,7 +134,7 @@ jobs:
       target_name: Linux ARM64 (GNU)
       target_triple: aarch64-unknown-linux-gnu
       runner_os: ubuntu-24.04-arm
-      archive_ext: tar.gz
+      archive_ext: tgz
       binary_name: sockudo
       version: ${{ needs.prepare.outputs.version }}
 
@@ -157,7 +157,7 @@ jobs:
       target_name: macOS x86_64
       target_triple: x86_64-apple-darwin
       runner_os: macos-13
-      archive_ext: tar.gz
+      archive_ext: tgz
       binary_name: sockudo
       version: ${{ needs.prepare.outputs.version }}
 
@@ -168,7 +168,7 @@ jobs:
       target_name: macOS ARM64
       target_triple: aarch64-apple-darwin
       runner_os: macos-latest
-      archive_ext: tar.gz
+      archive_ext: tgz
       binary_name: sockudo
       version: ${{ needs.prepare.outputs.version }}
 
