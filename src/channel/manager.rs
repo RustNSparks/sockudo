@@ -121,42 +121,32 @@ impl ChannelManager {
             None
         };
 
-        // Check if already subscribed (minimal lock scope)
-        let is_subscribed = {
+        // Use add_to_channel's idempotent behavior to atomically handle subscription
+        // This eliminates the race condition by combining check and add operations
+        let (was_newly_added, total_connections) = {
             let mut conn_mgr = connection_manager.lock().await;
-            conn_mgr
-                .is_in_channel(app_id, channel_name, &socket_id_owned)
-                .await?
-        };
 
-        if is_subscribed {
-            // Get channel size (separate lock scope)
-            let channel_size = {
-                let mut conn_mgr = connection_manager.lock().await;
-                conn_mgr
-                    .get_channel_sockets(app_id, channel_name)
-                    .await?
-                    .len()
-            };
-            return Ok(Self::create_success_join_response(channel_size, None));
-        }
-
-        // Add socket to channel and get final count (atomic operation)
-        let total_connections = {
-            let mut conn_mgr = connection_manager.lock().await;
-            conn_mgr
+            // add_to_channel returns true if newly added, false if already existed
+            let newly_added = conn_mgr
                 .add_to_channel(app_id, channel_name, &socket_id_owned)
                 .await?;
 
-            conn_mgr
+            // Get the total connection count
+            let total = conn_mgr
                 .get_channel_sockets(app_id, channel_name)
                 .await?
-                .len()
+                .len();
+
+            (newly_added, total)
         };
+
+        // If socket was already subscribed, return without the member data
+        // (member data is only sent on initial subscription)
+        let response_member = if was_newly_added { member } else { None };
 
         Ok(Self::create_success_join_response(
             total_connections,
-            member,
+            response_member,
         ))
     }
 
