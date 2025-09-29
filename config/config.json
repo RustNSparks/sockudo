@@ -52,6 +52,7 @@
           "secret": "app-secret",
           "max_connections": 10000,
           "enable_client_messages": true,
+          "enable_user_authentication": false,
           "enabled": true,
           "max_client_events_per_second": 1000,
           "allowed_origins": ["*"]
