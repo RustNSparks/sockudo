@@ -811,7 +811,8 @@ impl HorizontalAdapter {
             RequestType::ChannelSockets | RequestType::Sockets
         ) {
             combined_response.socket_ids = unique_socket_ids.into_iter().collect();
-            // Update sockets_count to reflect unique count for these request types
+            // Update sockets_count to reflect unique count only for ChannelSockets
+            // RequestType::Sockets keeps the raw sum to distinguish from unique socket IDs
             if matches!(request_type, RequestType::ChannelSockets) {
                 combined_response.sockets_count = combined_response.socket_ids.len();
             }
