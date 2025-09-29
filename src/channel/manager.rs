@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap as StdHashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PresenceMember {
@@ -51,26 +51,29 @@ pub struct ChannelManager;
 
 // Static cache for channel types to avoid repeated parsing
 // Using LRU cache to prevent memory growth and improve cache efficiency
-static CHANNEL_TYPE_CACHE: std::sync::LazyLock<std::sync::Mutex<LruCache<String, ChannelType>>> =
+// RwLock allows concurrent reads for better async performance
+static CHANNEL_TYPE_CACHE: std::sync::LazyLock<RwLock<LruCache<String, ChannelType>>> =
     std::sync::LazyLock::new(|| {
-        std::sync::Mutex::new(LruCache::new(
+        RwLock::new(LruCache::new(
             NonZeroUsize::new(1000).expect("Cache size must be non-zero")
         ))
     });
 
 impl ChannelManager {
-    fn get_channel_type(channel_name: &str) -> ChannelType {
-        let mut cache = CHANNEL_TYPE_CACHE.lock().unwrap();
+    async fn get_channel_type(channel_name: &str) -> ChannelType {
+        // First, try to read from cache with a read lock (allows concurrent reads)
+        {
+            let cache = CHANNEL_TYPE_CACHE.read().await;
+            if let Some(channel_type) = cache.peek(channel_name) {
+                return *channel_type;
+            }
+        } // Read lock is released here
 
-        // Check if already in cache (LRU will move to front)
-        if let Some(channel_type) = cache.get(channel_name) {
-            return *channel_type;
-        }
+        // Not found in cache, acquire write lock to insert
+        let mut cache = CHANNEL_TYPE_CACHE.write().await;
 
-        // Not in cache, compute the channel type
+        // Compute and insert the channel type
         let channel_type = ChannelType::from_name(channel_name);
-
-        // Insert into LRU cache (automatically evicts least recently used if full)
         cache.put(channel_name.to_string(), channel_type);
 
         channel_type
@@ -111,7 +114,7 @@ impl ChannelManager {
         is_authenticated: bool,
         app_id: &str,
     ) -> Result<JoinResponse, Error> {
-        let channel_type = Self::get_channel_type(channel_name);
+        let channel_type = Self::get_channel_type(channel_name).await;
 
         if channel_type.requires_authentication() && !is_authenticated {
             return Err(Error::Auth("Channel requires authentication".into()));
@@ -163,7 +166,7 @@ impl ChannelManager {
         user_id: Option<&str>,
     ) -> Result<LeaveResponse, Error> {
         let socket_id_owned = SocketId(socket_id.to_string());
-        let channel_type = Self::get_channel_type(channel_name);
+        let channel_type = Self::get_channel_type(channel_name).await;
 
         // Get presence member info before removal if needed (separate lock scope)
         let member = if channel_type == ChannelType::Presence {
