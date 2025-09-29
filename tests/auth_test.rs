@@ -1,4 +1,5 @@
 use chrono::Utc;
+use sockudo::adapter::handler::types::SignInRequest;
 use sockudo::app::auth::AuthValidator;
 use sockudo::app::config::App;
 use sockudo::app::manager::AppManager;
@@ -9,6 +10,11 @@ use sockudo::token::Token;
 use sockudo::websocket::SocketId;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+
+mod mocks;
+use mocks::connection_handler_mock::{
+    MockAppManager, create_test_connection_handler_with_app_manager,
+};
 
 async fn create_test_app_manager() -> Arc<dyn AppManager> {
     let manager = MemoryAppManager::new();
@@ -90,9 +96,38 @@ async fn test_validate_channel_auth_valid() {
 
 #[tokio::test]
 async fn test_validate_channel_auth_with_app_key_prefix() {
-    let app_manager = create_test_app_manager().await;
-    let auth_validator = AuthValidator::new(app_manager);
     let socket_id = SocketId::new();
+
+    // Setup test app
+    let app = App {
+        id: "test-app-id".to_string(),
+        key: "test-app-key".to_string(),
+        secret: "test-app-secret".to_string(),
+        max_connections: 1000,
+        enable_client_messages: true,
+        enabled: true,
+        max_backend_events_per_second: Some(1000),
+        max_client_events_per_second: 100,
+        max_read_requests_per_second: Some(1000),
+        max_presence_members_per_channel: None,
+        max_presence_member_size_in_kb: None,
+        max_channel_name_length: None,
+        max_event_channels_at_once: None,
+        max_event_name_length: None,
+        max_event_payload_in_kb: None,
+        max_event_batch_size: None,
+        enable_user_authentication: None,
+        webhooks: Some(vec![]),
+        enable_watchlist_events: None,
+        allowed_origins: None,
+    };
+
+    // Create mock app manager and configure it
+    let mut mock_app_manager = MockAppManager::new();
+    mock_app_manager.expect_find_by_key("test-app-key".to_string(), app.clone());
+
+    // Create connection handler with the configured mock
+    let handler = create_test_connection_handler_with_app_manager(mock_app_manager);
 
     // Generate a valid signature with app-key prefix (as sent by real clients)
     let user_data = r#"{"id":"test-user","user_info":{"name":"Test User"}}"#;
@@ -103,22 +138,20 @@ async fn test_validate_channel_auth_with_app_key_prefix() {
     // Client sends auth in format: "app-key:signature"
     let auth_with_prefix = format!("test-app-key:{}", signature);
 
-    // Extract just the signature (simulating what verify_signin_authentication does)
-    let extracted_signature = if let Some(colon_pos) = auth_with_prefix.find(':') {
-        &auth_with_prefix[colon_pos + 1..]
-    } else {
-        &auth_with_prefix
+    let signin_request = SignInRequest {
+        user_data: user_data.to_string(),
+        auth: auth_with_prefix,
     };
 
-    let result = auth_validator
-        .validate_channel_auth(socket_id, "test-app-key", user_data, extracted_signature)
+    let result = handler
+        .verify_signin_authentication(&socket_id, &app, &signin_request)
         .await;
 
     assert!(
         result.is_ok(),
-        "Authentication should succeed with extracted signature"
+        "Authentication should succeed: {:?}",
+        result
     );
-    assert!(result.unwrap(), "Signature should be valid");
 }
 
 #[tokio::test]
