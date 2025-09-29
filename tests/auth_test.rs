@@ -114,7 +114,10 @@ async fn test_validate_channel_auth_with_app_key_prefix() {
         .validate_channel_auth(socket_id, "test-app-key", user_data, extracted_signature)
         .await;
 
-    assert!(result.is_ok(), "Authentication should succeed with extracted signature");
+    assert!(
+        result.is_ok(),
+        "Authentication should succeed with extracted signature"
+    );
     assert!(result.unwrap(), "Signature should be valid");
 }
 

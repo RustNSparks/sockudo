@@ -324,8 +324,13 @@ impl ConnectionHandler {
                             break;
                         } else {
                             // Send pusher:error for non-fatal errors
-                            if let Err(send_err) = self.send_error(&app_config.id, socket_id, &e, None).await {
-                                error!("Failed to send error to socket {}: {}", socket_id, send_err);
+                            if let Err(send_err) =
+                                self.send_error(&app_config.id, socket_id, &e, None).await
+                            {
+                                error!(
+                                    "Failed to send error to socket {}: {}",
+                                    socket_id, send_err
+                                );
                             }
                         }
                     }
