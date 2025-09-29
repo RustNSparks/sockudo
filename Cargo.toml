@@ -83,6 +83,8 @@ pkg-fmt = "tgz"
 supported-targets = [
     "x86_64-unknown-linux-gnu",
     "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-unknown-linux-musl",
     "x86_64-apple-darwin",
     "aarch64-apple-darwin",
     "x86_64-pc-windows-msvc"
@@ -94,8 +96,16 @@ pkg-fmt = "zip"
 
 [package.metadata.binstall.overrides.x86_64-unknown-linux-gnu]
 pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.tar.gz"
-pkg-fmt = "tgz"
+pkg-fmt = "tar.gz"
+
+[package.metadata.binstall.overrides.aarch64-unknown-linux-gnu]
+pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.tar.gz"
+pkg-fmt = "tar.gz"
 
 [package.metadata.binstall.overrides.x86_64-unknown-linux-musl]
-pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.tar.gz"
+pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.tgz"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.aarch64-unknown-linux-musl]
+pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.tgz"
 pkg-fmt = "tgz"
