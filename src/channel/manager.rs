@@ -6,10 +6,11 @@ use crate::error::Error;
 use crate::protocol::messages::{MessageData, PusherMessage};
 use crate::token::{Token, secure_compare};
 use crate::websocket::SocketId;
-use ahash::{HashMap, HashMapExt};
+use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap as StdHashMap;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -49,24 +50,28 @@ pub struct LeaveResponse {
 pub struct ChannelManager;
 
 // Static cache for channel types to avoid repeated parsing
-static CHANNEL_TYPE_CACHE: std::sync::LazyLock<std::sync::Mutex<HashMap<String, ChannelType>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::with_capacity(256)));
+// Using LRU cache to prevent memory growth and improve cache efficiency
+static CHANNEL_TYPE_CACHE: std::sync::LazyLock<std::sync::Mutex<LruCache<String, ChannelType>>> =
+    std::sync::LazyLock::new(|| {
+        std::sync::Mutex::new(LruCache::new(
+            NonZeroUsize::new(1000).expect("Cache size must be non-zero")
+        ))
+    });
 
 impl ChannelManager {
     fn get_channel_type(channel_name: &str) -> ChannelType {
         let mut cache = CHANNEL_TYPE_CACHE.lock().unwrap();
 
+        // Check if already in cache (LRU will move to front)
         if let Some(channel_type) = cache.get(channel_name) {
             return *channel_type;
         }
 
+        // Not in cache, compute the channel type
         let channel_type = ChannelType::from_name(channel_name);
 
-        // Limit cache size to prevent unbounded growth
-        if cache.len() >= 1000 {
-            cache.clear();
-        }
-        cache.insert(channel_name.to_string(), channel_type);
+        // Insert into LRU cache (automatically evicts least recently used if full)
+        cache.put(channel_name.to_string(), channel_type);
 
         channel_type
     }
