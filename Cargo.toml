@@ -78,7 +78,7 @@ codegen-units = 1
 lto = true
 
 [package.metadata.binstall]
-pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.{archive_ext}"
+pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}{archive-suffix}"
 pkg-fmt = "tgz"
 supported-targets = [
     "x86_64-unknown-linux-gnu",
