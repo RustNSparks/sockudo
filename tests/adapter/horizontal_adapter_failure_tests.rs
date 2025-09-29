@@ -584,6 +584,9 @@ async fn test_request_timeout_boundary_conditions() -> Result<()> {
     let adapter2 = HorizontalAdapterBase::<MockTransport>::new(long_timeout_config).await?;
     adapter2.start_listeners().await?;
 
+    // Simulate discovered nodes for multi-node behavior
+    let adapter2 = adapter2.with_discovered_nodes(vec!["node-1", "node-2"]).await?;
+
     let start = std::time::Instant::now();
     let response = adapter2
         .send_request("long-timeout-test", RequestType::Sockets, None, None, None)
