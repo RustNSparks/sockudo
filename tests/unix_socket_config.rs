@@ -149,7 +149,6 @@ mod unix_socket_config_tests {
         }
     }
 
-
     #[tokio::test]
     async fn test_env_override_unix_socket_permission_invalid() {
         unsafe {
