@@ -89,6 +89,36 @@ async fn test_validate_channel_auth_valid() {
 }
 
 #[tokio::test]
+async fn test_validate_channel_auth_with_app_key_prefix() {
+    let app_manager = create_test_app_manager().await;
+    let auth_validator = AuthValidator::new(app_manager);
+    let socket_id = SocketId::new();
+
+    // Generate a valid signature with app-key prefix (as sent by real clients)
+    let user_data = r#"{"id":"test-user","user_info":{"name":"Test User"}}"#;
+    let string_to_sign = format!("{}::user::{}", socket_id.0, user_data);
+    let token = Token::new("test-app-key".to_string(), "test-app-secret".to_string());
+    let signature = token.sign(&string_to_sign);
+
+    // Client sends auth in format: "app-key:signature"
+    let auth_with_prefix = format!("test-app-key:{}", signature);
+
+    // Extract just the signature (simulating what verify_signin_authentication does)
+    let extracted_signature = if let Some(colon_pos) = auth_with_prefix.find(':') {
+        &auth_with_prefix[colon_pos + 1..]
+    } else {
+        &auth_with_prefix
+    };
+
+    let result = auth_validator
+        .validate_channel_auth(socket_id, "test-app-key", user_data, extracted_signature)
+        .await;
+
+    assert!(result.is_ok(), "Authentication should succeed with extracted signature");
+    assert!(result.unwrap(), "Signature should be valid");
+}
+
+#[tokio::test]
 async fn test_validate_channel_auth_invalid_key() {
     let app_manager = create_test_app_manager().await;
     let auth_validator = AuthValidator::new(app_manager);
