@@ -263,7 +263,11 @@ mod tests {
         assert!(validate_channel_name(&app, "test-123").await.is_ok());
         assert!(validate_channel_name(&app, "user@domain").await.is_ok());
         assert!(validate_channel_name(&app, "channel.name").await.is_ok());
-        assert!(validate_channel_name(&app, "#server-to-user-123").await.is_ok());
+        assert!(
+            validate_channel_name(&app, "#server-to-user-123")
+                .await
+                .is_ok()
+        );
 
         // Test invalid channel names
         assert!(
