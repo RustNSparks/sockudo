@@ -110,6 +110,20 @@ where
         self.event_bus = Some(event_sender);
     }
 
+    /// Configure this adapter with discovered nodes for testing
+    /// This simulates that node discovery has already happened and sets up multi-node behavior
+    pub async fn with_discovered_nodes(self, node_ids: Vec<&str>) -> Result<Self> {
+        let horizontal = self.horizontal.lock().await;
+        for node_id in node_ids {
+            let node_id_string = node_id.to_string();
+            if node_id_string != self.node_id {
+                horizontal.add_discovered_node_for_test(node_id_string).await;
+            }
+        }
+        drop(horizontal); // Release the lock
+        Ok(self)
+    }
+
     pub async fn set_cluster_health(&mut self, cluster_health: &ClusterHealthConfig) -> Result<()> {
         // Validate cluster health configuration first
         if let Err(validation_error) = cluster_health.validate() {

@@ -114,8 +114,7 @@ async fn test_conflicting_data_handling() -> Result<()> {
 #[tokio::test]
 async fn test_channel_socket_overlap_aggregation() -> Result<()> {
     // Test channel membership with overlapping sockets
-    let config = MockConfig::default();
-    let adapter = HorizontalAdapterBase::<MockTransport>::new(config).await?;
+    let adapter = MockConfig::create_multi_node_adapter().await?;
     adapter.start_listeners().await?;
 
     let response = adapter
@@ -229,8 +228,7 @@ async fn test_large_scale_aggregation() -> Result<()> {
 
 #[tokio::test]
 async fn test_concurrent_request_isolation() -> Result<()> {
-    let config = MockConfig::default();
-    let adapter = Arc::new(HorizontalAdapterBase::<MockTransport>::new(config).await?);
+    let adapter = Arc::new(MockConfig::create_multi_node_adapter().await?);
     adapter.start_listeners().await?;
 
     // Send multiple concurrent requests of different types
@@ -333,8 +331,7 @@ async fn test_dynamic_node_count_handling() -> Result<()> {
 #[tokio::test]
 async fn test_user_socket_aggregation() -> Result<()> {
     // Test user-specific socket aggregation across nodes
-    let config = MockConfig::default();
-    let adapter = HorizontalAdapterBase::<MockTransport>::new(config).await?;
+    let adapter = MockConfig::create_multi_node_adapter().await?;
     adapter.start_listeners().await?;
 
     // Query for shared-user who has sockets on both nodes
@@ -359,8 +356,7 @@ async fn test_user_socket_aggregation() -> Result<()> {
 
 #[tokio::test]
 async fn test_broadcast_message_verification() -> Result<()> {
-    let config = MockConfig::default();
-    let mut adapter = HorizontalAdapterBase::<MockTransport>::new(config).await?;
+    let mut adapter = MockConfig::create_multi_node_adapter().await?;
     adapter.init().await;
     adapter.start_listeners().await?;
 

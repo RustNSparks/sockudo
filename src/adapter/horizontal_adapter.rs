@@ -1073,6 +1073,14 @@ impl HorizontalAdapter {
         let heartbeats = self.node_heartbeats.read().await;
         heartbeats.len() + 1 // +1 for ourselves
     }
+
+    /// Add a discovered node for testing purposes
+    /// This simulates that node discovery has already happened
+    pub async fn add_discovered_node_for_test(&self, node_id: String) {
+        use std::time::Instant;
+        let mut heartbeats = self.node_heartbeats.write().await;
+        heartbeats.insert(node_id, Instant::now());
+    }
 }
 
 /// Generate unique request ID
