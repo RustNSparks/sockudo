@@ -1,4 +1,4 @@
-use crate::adapter::horizontal_adapter_helpers::{MockConfig, MockTransport};
+use crate::adapter::horizontal_adapter_helpers::{MockConfig, MockNodeState, MockTransport};
 use sockudo::adapter::horizontal_adapter::{RequestType, ResponseBody};
 use sockudo::adapter::horizontal_adapter_base::HorizontalAdapterBase;
 use std::collections::{HashMap, HashSet};
@@ -334,7 +334,11 @@ async fn test_exists_flag_aggregation_logic() {
 
 #[tokio::test]
 async fn test_request_with_no_other_nodes_returns_immediately() {
-    let config = MockConfig::default();
+    // Create config with only 1 node for true single-node behavior
+    let config = MockConfig {
+        node_states: vec![MockNodeState::new("single-node")],
+        ..Default::default()
+    };
     let adapter = HorizontalAdapterBase::<MockTransport>::new(config)
         .await
         .unwrap();

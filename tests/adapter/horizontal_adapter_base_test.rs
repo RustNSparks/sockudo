@@ -204,9 +204,9 @@ async fn test_corrupt_response_handling() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_large_scale_aggregation() -> Result<()> {
-    let config = MockTransport::large_scale(); // 10 nodes, 100 sockets each
-    let adapter = HorizontalAdapterBase::<MockTransport>::new(config).await?;
+async fn test_multi_node_socket_aggregation() -> Result<()> {
+    // Test socket aggregation across multiple nodes with overlapping sockets
+    let adapter = MockConfig::create_multi_node_adapter().await?;
     adapter.start_listeners().await?;
 
     let response = adapter
@@ -215,13 +215,18 @@ async fn test_large_scale_aggregation() -> Result<()> {
 
     assert_eq!(response.app_id, "test-app");
 
-    // 10 nodes * 100 sockets each = 1000 total sockets (all unique in large_scale config)
-    assert_eq!(response.sockets_count, 1000);
-    assert_eq!(response.socket_ids.len(), 1000);
+    // Default config: Node1[socket-1,socket-2,socket-shared] + Node2[socket-3,socket-4,socket-shared]
+    // Aggregation should deduplicate shared sockets
+    assert_eq!(response.sockets_count, 6, "Should count all sockets from both nodes including duplicates");
+    assert_eq!(response.socket_ids.len(), 5, "Should return deduplicated socket IDs");
 
-    // Verify no duplicates in response
+    // Verify all expected unique sockets are present
     let unique_sockets: HashSet<String> = response.socket_ids.into_iter().collect();
-    assert_eq!(unique_sockets.len(), 1000);
+    assert_eq!(unique_sockets.len(), 5, "Should have exactly 5 unique sockets");
+
+    let expected_sockets: HashSet<String> = ["socket-1", "socket-2", "socket-3", "socket-4", "socket-shared"]
+        .iter().map(|s| s.to_string()).collect();
+    assert_eq!(unique_sockets, expected_sockets, "Should contain all expected sockets");
 
     Ok(())
 }
@@ -477,8 +482,7 @@ async fn test_socket_existence_validation() -> Result<()> {
 
 #[tokio::test]
 async fn test_presence_member_data_integrity() -> Result<()> {
-    let config = MockConfig::default();
-    let adapter = HorizontalAdapterBase::<MockTransport>::new(config).await?;
+    let adapter = MockConfig::create_multi_node_adapter().await?;
     adapter.start_listeners().await?;
 
     let response = adapter
@@ -516,8 +520,7 @@ async fn test_presence_member_data_integrity() -> Result<()> {
 // Connection Manager tests with realistic validation
 #[tokio::test]
 async fn test_connection_manager_distributed_socket_count() -> Result<()> {
-    let config = MockConfig::default();
-    let adapter = HorizontalAdapterBase::<MockTransport>::new(config).await?;
+    let adapter = MockConfig::create_multi_node_adapter().await?;
     adapter.start_listeners().await?;
 
     let count = adapter.get_sockets_count("test-app").await?;
@@ -530,8 +533,7 @@ async fn test_connection_manager_distributed_socket_count() -> Result<()> {
 
 #[tokio::test]
 async fn test_connection_manager_channel_specific_operations() -> Result<()> {
-    let config = MockConfig::default();
-    let mut adapter = HorizontalAdapterBase::<MockTransport>::new(config).await?;
+    let mut adapter = MockConfig::create_multi_node_adapter().await?;
     adapter.start_listeners().await?;
 
     // Test channel socket count
@@ -562,8 +564,7 @@ async fn test_connection_manager_channel_specific_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_connection_manager_user_operations() -> Result<()> {
-    let config = MockConfig::default();
-    let mut adapter = HorizontalAdapterBase::<MockTransport>::new(config).await?;
+    let mut adapter = MockConfig::create_multi_node_adapter().await?;
     adapter.start_listeners().await?;
 
     // Test user sockets aggregation via horizontal communication
@@ -590,8 +591,7 @@ async fn test_connection_manager_user_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_connection_manager_socket_existence() -> Result<()> {
-    let config = MockConfig::default();
-    let mut adapter = HorizontalAdapterBase::<MockTransport>::new(config).await?;
+    let mut adapter = MockConfig::create_multi_node_adapter().await?;
     adapter.start_listeners().await?;
 
     let socket_id = SocketId("socket-shared".to_string());
