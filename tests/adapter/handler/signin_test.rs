@@ -1,6 +1,14 @@
 use serde_json::json;
 use sockudo::adapter::handler::types::SignInRequest;
+use sockudo::app::auth::AuthValidator;
+use sockudo::app::config::App;
 use sockudo::token::Token;
+use sockudo::websocket::SocketId;
+use std::sync::Arc;
+
+use crate::mocks::connection_handler_mock::{
+    MockAppManager, create_test_connection_handler_with_app_manager,
+};
 
 #[tokio::test]
 async fn test_signin_request_parsing_with_app_key_prefix() {
@@ -31,90 +39,157 @@ async fn test_signin_request_parsing_with_app_key_prefix() {
 }
 
 #[tokio::test]
-async fn test_auth_signature_extraction() {
-    // Test the signature extraction logic from verify_signin_authentication
-    let auth_with_prefix = "test-app-key:abc123def456";
+async fn test_verify_signin_authentication_with_prefix() {
+    let socket_id = SocketId::new();
+    let app = create_test_app();
 
-    // Simulate the extraction logic
-    let signature = if let Some(colon_pos) = auth_with_prefix.find(':') {
-        &auth_with_prefix[colon_pos + 1..]
-    } else {
-        auth_with_prefix
+    let mut mock_app_manager = MockAppManager::new();
+    mock_app_manager.expect_find_by_key("test-app-key".to_string(), app.clone());
+    let handler = create_test_connection_handler_with_app_manager(mock_app_manager);
+
+    let user_data = json!({"id": "user-123"}).to_string();
+    let string_to_sign = format!("{}::user::{}", socket_id.0, user_data);
+    let token = Token::new("test-app-key".to_string(), "test-app-secret".to_string());
+    let signature = token.sign(&string_to_sign);
+
+    let auth_with_prefix = format!("test-app-key:{}", signature);
+    let request = SignInRequest {
+        user_data,
+        auth: auth_with_prefix,
     };
 
-    assert_eq!(
-        signature, "abc123def456",
-        "Should extract signature after colon"
-    );
-
-    // Test with no prefix
-    let auth_no_prefix = "just_a_signature";
-    let signature2 = if let Some(colon_pos) = auth_no_prefix.find(':') {
-        &auth_no_prefix[colon_pos + 1..]
-    } else {
-        auth_no_prefix
-    };
-
-    assert_eq!(
-        signature2, "just_a_signature",
-        "Should return full string if no colon"
+    let result = handler
+        .verify_signin_authentication(&socket_id, &app, &request)
+        .await;
+    assert!(
+        result.is_ok(),
+        "Should succeed with app-key:signature format"
     );
 }
 
 #[tokio::test]
-async fn test_signin_string_format() {
-    // Test that the signing string format matches Pusher spec
+async fn test_verify_signin_authentication_without_prefix() {
+    let socket_id = SocketId::new();
+    let app = create_test_app();
+
+    let mut mock_app_manager = MockAppManager::new();
+    mock_app_manager.expect_find_by_key("test-app-key".to_string(), app.clone());
+    let handler = create_test_connection_handler_with_app_manager(mock_app_manager);
+
+    let user_data = json!({"id": "user-123"}).to_string();
+    let string_to_sign = format!("{}::user::{}", socket_id.0, user_data);
+    let token = Token::new("test-app-key".to_string(), "test-app-secret".to_string());
+    let signature = token.sign(&string_to_sign);
+
+    let request = SignInRequest {
+        user_data,
+        auth: signature, // No prefix
+    };
+
+    let result = handler
+        .verify_signin_authentication(&socket_id, &app, &request)
+        .await;
+    assert!(result.is_ok(), "Should succeed with signature-only format");
+}
+
+#[tokio::test]
+async fn test_auth_validator_sign_in_token_generation() {
+    let app = create_test_app();
+    let auth_validator = AuthValidator::new(Arc::new(MockAppManager::new()));
     let socket_id = "123.456";
     let user_data = json!({"id": "user-1", "user_info": {"name": "Alice"}}).to_string();
 
-    let string_to_sign = format!("{}::user::{}", socket_id, user_data);
+    let generated_signature =
+        auth_validator.sign_in_token_for_user_data(socket_id, &user_data, app.clone());
 
-    // Verify format matches: {socket_id}::user::{user_data}
-    assert!(string_to_sign.starts_with("123.456::user::"));
-    assert!(string_to_sign.contains(r#""id":"user-1""#));
+    // Test that the same inputs produce the same signature
+    let second_signature = auth_validator.sign_in_token_for_user_data(socket_id, &user_data, app);
+    assert_eq!(
+        generated_signature, second_signature,
+        "Signatures should be deterministic"
+    );
     assert!(
-        string_to_sign.contains("::user::"),
-        "Should have ::user:: delimiter"
+        !generated_signature.is_empty(),
+        "Signature should not be empty"
     );
 }
 
 #[tokio::test]
-async fn test_user_data_validation() {
-    // Test that user data can be parsed as JSON and contains required fields
-    let valid_user_data = json!({"id": "user-123", "user_info": {"name": "Test"}}).to_string();
-    let parsed: serde_json::Value = serde_json::from_str(&valid_user_data).expect("Should parse");
+async fn test_verify_signin_authentication_with_invalid_signature() {
+    let socket_id = SocketId::new();
+    let app = create_test_app();
 
-    assert!(parsed.get("id").is_some(), "Should have id field");
-    assert_eq!(parsed["id"], "user-123");
+    let mut mock_app_manager = MockAppManager::new();
+    mock_app_manager.expect_find_by_key("test-app-key".to_string(), app.clone());
+    let handler = create_test_connection_handler_with_app_manager(mock_app_manager);
 
-    // Test invalid user data without id
-    let invalid_user_data = json!({"user_info": {"name": "Test"}}).to_string();
-    let parsed2: serde_json::Value =
-        serde_json::from_str(&invalid_user_data).expect("Should parse");
+    let user_data = json!({"id": "user-123"}).to_string();
+    let invalid_signature = "invalid_signature_here";
 
-    assert!(parsed2.get("id").is_none(), "Should not have id field");
+    let request = SignInRequest {
+        user_data,
+        auth: format!("test-app-key:{}", invalid_signature),
+    };
+
+    let result = handler
+        .verify_signin_authentication(&socket_id, &app, &request)
+        .await;
+    assert!(result.is_err(), "Should fail with invalid signature");
 }
 
 #[tokio::test]
-async fn test_token_signing() {
-    // Test that Token generates consistent HMAC-SHA256 signatures
-    let key = "test-key".to_string();
-    let secret = "test-secret".to_string();
-    let token = Token::new(key, secret);
+async fn test_auth_validator_with_different_user_data() {
+    let socket_id = SocketId::new();
+    let app = create_test_app();
 
-    let data1 = "test_string";
-    let signature1 = token.sign(data1);
-    let signature2 = token.sign(data1);
+    let mut mock_app_manager = MockAppManager::new();
+    mock_app_manager.expect_find_by_key("test-app-key".to_string(), app.clone());
+    let handler = create_test_connection_handler_with_app_manager(mock_app_manager);
 
-    // Same input should produce same signature
-    assert_eq!(signature1, signature2, "Signatures should be deterministic");
-    assert!(!signature1.is_empty(), "Signature should not be empty");
+    let user_data1 = json!({"id": "user-1"}).to_string();
+    let user_data2 = json!({"id": "user-2"}).to_string();
 
-    // Different input should produce different signature
-    let data2 = "different_string";
-    let signature3 = token.sign(data2);
-    assert_ne!(
-        signature1, signature3,
-        "Different inputs should produce different signatures"
+    // Generate valid signature for user_data1
+    let string_to_sign = format!("{}::user::{}", socket_id.0, user_data1);
+    let token = Token::new("test-app-key".to_string(), "test-app-secret".to_string());
+    let signature = token.sign(&string_to_sign);
+
+    // Try to use signature for user_data1 with user_data2 (should fail)
+    let request = SignInRequest {
+        user_data: user_data2,
+        auth: format!("test-app-key:{}", signature),
+    };
+
+    let result = handler
+        .verify_signin_authentication(&socket_id, &app, &request)
+        .await;
+    assert!(
+        result.is_err(),
+        "Should fail when user_data doesn't match signature"
     );
+}
+
+fn create_test_app() -> App {
+    App {
+        id: "test-app-id".to_string(),
+        key: "test-app-key".to_string(),
+        secret: "test-app-secret".to_string(),
+        max_connections: 1000,
+        enable_client_messages: true,
+        enabled: true,
+        max_backend_events_per_second: Some(1000),
+        max_client_events_per_second: 100,
+        max_read_requests_per_second: Some(1000),
+        max_presence_members_per_channel: None,
+        max_presence_member_size_in_kb: None,
+        max_channel_name_length: None,
+        max_event_channels_at_once: None,
+        max_event_name_length: None,
+        max_event_payload_in_kb: None,
+        max_event_batch_size: None,
+        enable_user_authentication: None,
+        webhooks: Some(vec![]),
+        enable_watchlist_events: None,
+        allowed_origins: None,
+    }
 }
