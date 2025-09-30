@@ -6,10 +6,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and extract the binary from tar.gz
-COPY sockudo-x86_64-unknown-linux-gnu.tar.gz /tmp/
-RUN tar -xzf /tmp/sockudo-x86_64-unknown-linux-gnu.tar.gz -C /usr/local/bin/ && \
-    rm /tmp/sockudo-x86_64-unknown-linux-gnu.tar.gz
+# Copy and extract the binary from tgz
+COPY sockudo-x86_64-unknown-linux-gnu.tgz /tmp/
+RUN tar -xzf /tmp/sockudo-x86_64-unknown-linux-gnu.tgz -C /usr/local/bin/ && \
+    rm /tmp/sockudo-x86_64-unknown-linux-gnu.tgz
 
 # Make it executable
 RUN chmod +x /usr/local/bin/sockudo

@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use sockudo::adapter::horizontal_adapter::{
     BroadcastMessage, RequestBody, RequestType, ResponseBody,
 };
+use sockudo::adapter::horizontal_adapter_base::HorizontalAdapterBase;
 use sockudo::adapter::horizontal_transport::{
     HorizontalTransport, TransportConfig, TransportHandlers,
 };
@@ -279,6 +280,22 @@ impl MockTransport {
             healthy: true,
             node_states: vec![node1, node2],
         }
+    }
+}
+
+impl MockConfig {
+    /// Create a multi-node adapter with discovered nodes for testing
+    /// This is a convenience method that creates the adapter and sets up multi-node behavior
+    pub async fn create_multi_node_adapter() -> Result<HorizontalAdapterBase<MockTransport>> {
+        let config = MockConfig::default();
+        let node_ids: Vec<String> = config
+            .node_states
+            .iter()
+            .map(|n| n.node_id.clone())
+            .collect();
+        let adapter = HorizontalAdapterBase::<MockTransport>::new(config).await?;
+        let node_id_refs: Vec<&str> = node_ids.iter().map(|s| s.as_str()).collect();
+        adapter.with_discovered_nodes(node_id_refs).await
     }
 }
 

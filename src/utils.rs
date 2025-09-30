@@ -74,6 +74,7 @@ pub async fn validate_channel_name(app: &App, channel: &str) -> crate::error::Re
             || c == '@'
             || c == '.'
             || c == ':'
+            || c == '#'
     }) {
         return Err(Error::Channel(
             "Channel name contains invalid characters".to_string(),
@@ -263,10 +264,15 @@ mod tests {
         assert!(validate_channel_name(&app, "test-123").await.is_ok());
         assert!(validate_channel_name(&app, "user@domain").await.is_ok());
         assert!(validate_channel_name(&app, "channel.name").await.is_ok());
+        assert!(
+            validate_channel_name(&app, "#server-to-user-123")
+                .await
+                .is_ok()
+        );
 
         // Test invalid channel names
         assert!(
-            validate_channel_name(&app, "invalid#channel")
+            validate_channel_name(&app, "invalid$channel")
                 .await
                 .is_err()
         );

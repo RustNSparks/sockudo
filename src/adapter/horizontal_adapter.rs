@@ -811,7 +811,8 @@ impl HorizontalAdapter {
             RequestType::ChannelSockets | RequestType::Sockets
         ) {
             combined_response.socket_ids = unique_socket_ids.into_iter().collect();
-            // Update sockets_count to reflect unique count for these request types
+            // Update sockets_count to reflect unique count only for ChannelSockets
+            // RequestType::Sockets keeps the raw sum to distinguish from unique socket IDs
             if matches!(request_type, RequestType::ChannelSockets) {
                 combined_response.sockets_count = combined_response.socket_ids.len();
             }
@@ -1066,6 +1067,20 @@ impl HorizontalAdapter {
             "Removed presence entry: socket {} in channel {} for node {}",
             socket_id, channel, node_id
         );
+    }
+
+    /// Get count of active nodes (including ourselves)
+    pub async fn get_effective_node_count(&self) -> usize {
+        let heartbeats = self.node_heartbeats.read().await;
+        heartbeats.len() + 1 // +1 for ourselves
+    }
+
+    /// Add a discovered node for testing purposes
+    /// This simulates that node discovery has already happened
+    pub async fn add_discovered_node_for_test(&self, node_id: String) {
+        use std::time::Instant;
+        let mut heartbeats = self.node_heartbeats.write().await;
+        heartbeats.insert(node_id, Instant::now());
     }
 }
 

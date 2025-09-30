@@ -387,8 +387,14 @@ async fn test_response_handler_race_conditions() -> Result<()> {
         node_states: vec![node1, node2],
     };
 
-    let adapter = Arc::new(HorizontalAdapterBase::<MockTransport>::new(config).await?);
+    let adapter = HorizontalAdapterBase::<MockTransport>::new(config).await?;
     adapter.start_listeners().await?;
+
+    // Simulate discovered nodes for multi-node behavior
+    let adapter = adapter
+        .with_discovered_nodes(vec!["node-1", "node-2"])
+        .await?;
+    let adapter = Arc::new(adapter);
 
     // Send multiple requests that will have mixed timing
     let mut handles = Vec::new();

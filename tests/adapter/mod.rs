@@ -45,3 +45,6 @@ mod presence_state_consistency_tests;
 
 #[cfg(test)]
 mod local_adapter_fallback_tests;
+
+#[cfg(test)]
+mod single_node_optimization_tests;

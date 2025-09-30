@@ -8,6 +8,38 @@ use tracing::{info, warn};
 use crate::adapter::nats_adapter::DEFAULT_PREFIX as NATS_DEFAULT_PREFIX;
 use crate::adapter::redis_cluster_adapter::DEFAULT_PREFIX as REDIS_CLUSTER_DEFAULT_PREFIX;
 
+// Custom deserializer for octal permission mode (string format only, like chmod)
+fn deserialize_octal_permission<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self};
+
+    let s = String::deserialize(deserializer)?;
+
+    // Validate that the string contains only octal digits
+    if !s.chars().all(|c| c.is_digit(8)) {
+        return Err(de::Error::custom(format!(
+            "invalid octal permission mode '{}': must contain only digits 0-7",
+            s
+        )));
+    }
+
+    // Parse as octal
+    let mode = u32::from_str_radix(&s, 8)
+        .map_err(|_| de::Error::custom(format!("invalid octal permission mode: {}", s)))?;
+
+    // Validate it's within valid Unix permission range
+    if mode > 0o777 {
+        return Err(de::Error::custom(format!(
+            "permission mode '{}' exceeds maximum value 777",
+            s
+        )));
+    }
+
+    Ok(mode)
+}
+
 // Helper function to parse driver enums with fallback behavior (matches main.rs)
 fn parse_driver_enum<T: FromStr + Clone + std::fmt::Debug>(
     driver_str: String,
@@ -262,6 +294,7 @@ pub struct ServerOptions {
     pub cleanup: crate::cleanup::CleanupConfig,
     pub activity_timeout: u64,
     pub cluster_health: ClusterHealthConfig,
+    pub unix_socket: UnixSocketConfig,
 }
 
 // --- Configuration Sub-Structs ---
@@ -593,6 +626,15 @@ pub struct ClusterHealthConfig {
     pub cleanup_interval_ms: u64,   // How often to check for dead nodes
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UnixSocketConfig {
+    pub enabled: bool,
+    pub path: String,
+    #[serde(deserialize_with = "deserialize_octal_permission")]
+    pub permission_mode: u32, // Octal file permissions (e.g., "755" string, 755 number, or 0o755 literal)
+}
+
 // --- Default Implementations ---
 
 impl Default for ServerOptions {
@@ -626,6 +668,7 @@ impl Default for ServerOptions {
             cleanup: crate::cleanup::CleanupConfig::default(),
             activity_timeout: 120,
             cluster_health: ClusterHealthConfig::default(),
+            unix_socket: UnixSocketConfig::default(),
         }
     }
 }
@@ -960,6 +1003,16 @@ impl Default for ClusterHealthConfig {
     }
 }
 
+impl Default for UnixSocketConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            path: "/var/run/sockudo/sockudo.sock".to_string(),
+            permission_mode: 0o660, // rw-rw---- (most restrictive reasonable default)
+        }
+    }
+}
+
 impl ClusterHealthConfig {
     /// Validate cluster health configuration and return helpful error messages
     pub fn validate(&self) -> Result<(), String> {
@@ -1152,6 +1205,37 @@ impl ServerOptions {
         self.ssl.redirect_http = parse_bool_env("SSL_REDIRECT_HTTP", self.ssl.redirect_http);
         if let Some(port) = parse_env_optional::<u16>("SSL_HTTP_PORT") {
             self.ssl.http_port = Some(port);
+        }
+
+        // --- Unix Socket Configuration ---
+        self.unix_socket.enabled = parse_bool_env("UNIX_SOCKET_ENABLED", self.unix_socket.enabled);
+        if let Ok(path) = std::env::var("UNIX_SOCKET_PATH") {
+            self.unix_socket.path = path;
+        }
+        if let Ok(mode_str) = std::env::var("UNIX_SOCKET_PERMISSION_MODE") {
+            // Only accept octal string format (like chmod)
+            if mode_str.chars().all(|c| c.is_digit(8)) {
+                if let Ok(mode) = u32::from_str_radix(&mode_str, 8) {
+                    if mode <= 0o777 {
+                        self.unix_socket.permission_mode = mode;
+                    } else {
+                        warn!(
+                            "UNIX_SOCKET_PERMISSION_MODE '{}' exceeds maximum value 777. Using default: {:o}",
+                            mode_str, self.unix_socket.permission_mode
+                        );
+                    }
+                } else {
+                    warn!(
+                        "Failed to parse UNIX_SOCKET_PERMISSION_MODE '{}' as octal. Using default: {:o}",
+                        mode_str, self.unix_socket.permission_mode
+                    );
+                }
+            } else {
+                warn!(
+                    "UNIX_SOCKET_PERMISSION_MODE '{}' must contain only octal digits (0-7). Using default: {:o}",
+                    mode_str, self.unix_socket.permission_mode
+                );
+            }
         }
 
         // --- Metrics ---
@@ -1454,6 +1538,91 @@ impl ServerOptions {
             "CLUSTER_HEALTH_CLEANUP_INTERVAL",
             self.cluster_health.cleanup_interval_ms,
         );
+
+        Ok(())
+    }
+
+    /// Validate configuration for logical consistency
+    pub fn validate(&self) -> Result<(), String> {
+        // Unix socket validation
+        if self.unix_socket.enabled {
+            // Unix socket path validation
+            if self.unix_socket.path.is_empty() {
+                return Err(
+                    "Unix socket path cannot be empty when Unix socket is enabled".to_string(),
+                );
+            }
+
+            // Security validation: Check for dangerous socket paths
+            self.validate_unix_socket_security()?;
+
+            // Warn about potential conflicts with SSL when Unix socket is enabled
+            if self.ssl.enabled {
+                // This is just a warning - technically both can be enabled but it's unusual
+                tracing::warn!(
+                    "Both Unix socket and SSL are enabled. This is unusual as Unix sockets are typically used behind reverse proxies that handle SSL termination."
+                );
+            }
+
+            // Validate permission mode (should be valid octal)
+            if self.unix_socket.permission_mode > 0o777 {
+                return Err(format!(
+                    "Unix socket permission_mode ({:o}) is invalid. Must be a valid octal mode (0o000 to 0o777)",
+                    self.unix_socket.permission_mode
+                ));
+            }
+        }
+
+        // Validate cleanup configuration if present
+        if let Err(e) = self.cleanup.validate() {
+            return Err(format!("Invalid cleanup configuration: {}", e));
+        }
+
+        Ok(())
+    }
+
+    /// Validate Unix socket security settings
+    fn validate_unix_socket_security(&self) -> Result<(), String> {
+        let path = &self.unix_socket.path;
+
+        // Prevent directory traversal attacks
+        if path.contains("../") || path.contains("..\\") {
+            return Err(
+                "Unix socket path contains directory traversal sequences (../). This is not allowed for security reasons.".to_string()
+            );
+        }
+
+        // Warn about world-writable permissions
+        if self.unix_socket.permission_mode & 0o002 != 0 {
+            warn!(
+                "Unix socket permission mode ({:o}) allows world write access. This may be a security risk. Consider using more restrictive permissions like 0o660 or 0o750.",
+                self.unix_socket.permission_mode
+            );
+        }
+
+        // Warn about overly permissive permissions for others
+        if self.unix_socket.permission_mode & 0o007 > 0o005 {
+            warn!(
+                "Unix socket permission mode ({:o}) grants write permissions to others. Consider using more restrictive permissions.",
+                self.unix_socket.permission_mode
+            );
+        }
+
+        // Warn about /tmp usage in production
+        if self.mode == "production" && path.starts_with("/tmp/") {
+            warn!(
+                "Unix socket path '{}' is in /tmp directory. In production, consider using a more permanent location like /var/run/sockudo/ for better security and persistence.",
+                path
+            );
+        }
+
+        // Validate path is absolute
+        if !path.starts_with('/') {
+            return Err(
+                "Unix socket path must be absolute (start with /) for security and reliability."
+                    .to_string(),
+            );
+        }
 
         Ok(())
     }

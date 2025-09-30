@@ -10,9 +10,9 @@ This directory contains Docker-based tests for different Sockudo binary variants
 ## Setup
 
 1. **Download the tar archives** from GitHub Actions and place them in this directory:
-   - `sockudo-x86_64-unknown-linux-gnu.tar.gz`
+   - `sockudo-x86_64-unknown-linux-gnu.tgz`
    - `sockudo-x86_64-unknown-linux-musl.tgz`
-   - `sockudo-aarch64-unknown-linux-gnu.tar.gz`
+   - `sockudo-aarch64-unknown-linux-gnu.tgz`
    - `sockudo-aarch64-unknown-linux-musl.tgz`
    
    Note: Each archive contains a binary named `sockudo`

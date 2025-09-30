@@ -14,22 +14,16 @@ use sockudo::metrics::MetricsInterface;
 use sockudo::namespace::Namespace;
 use sockudo::options::ServerOptions;
 use sockudo::protocol::messages::PusherMessage;
-use sockudo::rate_limiter::{RateLimitResult, RateLimiter};
 use sockudo::websocket::{SocketId, WebSocketRef};
 use sonic_rs::Value;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::io::WriteHalf;
 use tokio::sync::Mutex;
 
-pub struct MockAdapter {
-    signature_valid: AtomicBool,
-    expected_channel: Option<String>,
-    expected_auth: Option<String>,
-}
+pub struct MockAdapter;
 
 impl Default for MockAdapter {
     fn default() -> Self {
@@ -39,20 +33,7 @@ impl Default for MockAdapter {
 
 impl MockAdapter {
     pub fn new() -> Self {
-        Self {
-            signature_valid: AtomicBool::new(true),
-            expected_channel: None,
-            expected_auth: None,
-        }
-    }
-
-    pub fn expect_channel_auth(&mut self, channel: String, auth: String) {
-        self.expected_channel = Some(channel);
-        self.expected_auth = Some(auth);
-    }
-
-    pub fn set_signature_valid(&mut self, valid: bool) {
-        self.signature_valid.store(valid, Ordering::SeqCst);
+        Self
     }
 }
 
@@ -252,6 +233,7 @@ impl MockAppManager {
         self.app_to_return = Some(app);
     }
 
+    #[allow(dead_code)]
     pub fn expect_find_by_id(&mut self, id: String, app: App) {
         self.expected_id = Some(id);
         self.app_to_return = Some(app);
@@ -289,75 +271,6 @@ impl AppManager for MockAppManager {
     }
     async fn check_health(&self) -> Result<()> {
         Ok(())
-    }
-}
-
-pub struct MockChannelManager {
-    signature_valid: AtomicBool,
-    expected_signature: Option<String>,
-    expected_message: Option<PusherMessage>,
-}
-
-impl Clone for MockChannelManager {
-    fn clone(&self) -> Self {
-        Self {
-            signature_valid: AtomicBool::new(self.signature_valid.load(Ordering::SeqCst)),
-            expected_signature: self.expected_signature.clone(),
-            expected_message: self.expected_message.clone(),
-        }
-    }
-}
-
-impl Default for MockChannelManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl MockChannelManager {
-    pub fn new() -> Self {
-        Self {
-            signature_valid: AtomicBool::new(true),
-            expected_signature: None,
-            expected_message: None,
-        }
-    }
-
-    pub fn expect_signature_validation(
-        &mut self,
-        signature: String,
-        message: PusherMessage,
-        valid: bool,
-    ) {
-        self.expected_signature = Some(signature);
-        self.expected_message = Some(message);
-        self.signature_valid.store(valid, Ordering::SeqCst);
-    }
-
-    pub fn signature_is_valid(
-        &self,
-        _app: App,
-        _socket_id: &SocketId,
-        signature: &str,
-        message: PusherMessage,
-    ) -> bool {
-        if let Some(expected_signature) = &self.expected_signature {
-            assert_eq!(
-                signature, expected_signature,
-                "Unexpected signature in validation"
-            );
-        }
-        if let Some(expected_message) = &self.expected_message {
-            assert_eq!(
-                message.channel, expected_message.channel,
-                "Unexpected channel in message"
-            );
-            assert_eq!(
-                message.event, expected_message.event,
-                "Unexpected event in message"
-            );
-        }
-        self.signature_valid.load(Ordering::SeqCst)
     }
 }
 
@@ -472,46 +385,8 @@ impl MetricsInterface for MockMetricsInterface {
     async fn clear(&self) {}
 }
 
-pub struct MockRateLimiter;
-impl Default for MockRateLimiter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl MockRateLimiter {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-#[async_trait]
-impl RateLimiter for MockRateLimiter {
-    async fn check(&self, _key: &str) -> Result<RateLimitResult> {
-        Ok(RateLimitResult {
-            allowed: true,
-            remaining: u32::MAX,
-            reset_after: 0,
-            limit: u32::MAX,
-        })
-    }
-    async fn increment(&self, _key: &str) -> Result<RateLimitResult> {
-        Ok(RateLimitResult {
-            allowed: true,
-            remaining: u32::MAX,
-            reset_after: 0,
-            limit: u32::MAX,
-        })
-    }
-    async fn reset(&self, _key: &str) -> Result<()> {
-        Ok(())
-    }
-    async fn get_remaining(&self, _key: &str) -> Result<u32> {
-        Ok(u32::MAX)
-    }
-}
-
 // Helper function to create a test ConnectionHandler with configurable mocks
+#[allow(dead_code)]
 pub fn create_test_connection_handler() -> (ConnectionHandler, MockAppManager) {
     let app_manager = MockAppManager::new();
 

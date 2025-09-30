@@ -18,7 +18,7 @@ on:
       archive_ext:
         required: true
         type: string
-        description: 'Archive extension (tar.gz, tgz, zip)'
+        description: 'Archive extension (tgz, zip)'
       binary_name:
         required: true
         type: string

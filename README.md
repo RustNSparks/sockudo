@@ -25,7 +25,7 @@ A high-performance, scalable WebSocket server implementing the Pusher protocol i
 
 ```bash
 # Clone and start with Docker Compose
-git clone https://github.com/Sockudo/sockudo.git
+git clone https://github.com/RustNSparks/sockudo.git
 cd sockudo
 make up
 
@@ -40,7 +40,7 @@ make up
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # Build and run
-git clone https://github.com/Sockudo/sockudo.git
+git clone https://github.com/RustNSparks/sockudo.git
 cd sockudo
 cargo run --release
 ```
@@ -53,15 +53,15 @@ Connect using any Pusher-compatible client:
 import Pusher from 'pusher-js';
 
 const pusher = new Pusher('app-key', {
-  wsHost: 'localhost',
-  wsPort: 6001,
-  cluster: '',
-  forceTLS: false
+    wsHost: 'localhost',
+    wsPort: 6001,
+    cluster: '',
+    forceTLS: false
 });
 
 const channel = pusher.subscribe('my-channel');
 channel.bind('my-event', (data) => {
-  console.log('Received:', data);
+    console.log('Received:', data);
 });
 ```
 
@@ -160,7 +160,7 @@ Licensed under the [MIT License](LICENSE).
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/Sockudo/sockudo/issues)
+- **Issues**: [GitHub Issues](https://github.com/RustNSparks/sockudo/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/RustNSparks/sockudo/discussions)
 - **Documentation**: [sockudo.app](https://sockudo.app)
 - **Discord**: [Join our Discord](https://discord.gg/ySfNxfh2gZ)

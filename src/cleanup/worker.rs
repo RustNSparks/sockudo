@@ -174,7 +174,7 @@ impl CleanupWorker {
 
             match ChannelManager::batch_unsubscribe(&self.connection_manager, operations).await {
                 Ok(results) => {
-                    for result in results {
+                    for (_channel_name, result) in results {
                         match result {
                             Ok(_) => total_success += 1,
                             Err(e) => {

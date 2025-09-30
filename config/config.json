@@ -8,6 +8,11 @@
   "websocket_max_payload_kb": 64,
   "user_authentication_timeout": 3600,
   "activity_timeout": 120,
+  "unix_socket": {
+    "enabled": false,
+    "path": "/var/run/sockudo/sockudo.sock",
+    "permission_mode": "660"
+  },
   "adapter": {
     "driver": "local",
     "redis": {
@@ -47,6 +52,7 @@
           "secret": "app-secret",
           "max_connections": 10000,
           "enable_client_messages": true,
+          "enable_user_authentication": false,
           "enabled": true,
           "max_client_events_per_second": 1000,
           "allowed_origins": ["*"]

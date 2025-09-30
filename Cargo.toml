@@ -1,6 +1,6 @@
 [package]
 name = "sockudo"
-version = "2.7.5"
+version = "2.7.6"
 edition = "2024"
 repository = "https://github.com/RustNSparks/sockudo"
 license-file = "LICENSE"
@@ -78,24 +78,17 @@ codegen-units = 1
 lto = true
 
 [package.metadata.binstall]
-pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.{archive_ext}"
+pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}{archive-suffix}"
 pkg-fmt = "tgz"
 supported-targets = [
     "x86_64-unknown-linux-gnu",
     "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-unknown-linux-musl",
     "x86_64-apple-darwin",
     "aarch64-apple-darwin",
     "x86_64-pc-windows-msvc"
 ]
 
 [package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
-pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.zip"
 pkg-fmt = "zip"
-
-[package.metadata.binstall.overrides.x86_64-unknown-linux-gnu]
-pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.tar.gz"
-pkg-fmt = "tgz"
-
-[package.metadata.binstall.overrides.x86_64-unknown-linux-musl]
-pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}.tar.gz"
-pkg-fmt = "tgz"

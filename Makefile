@@ -172,6 +172,45 @@ test: ## Run basic connectivity tests
 	@echo "$(YELLOW)Testing Redis connection...$(RESET)"
 	@docker-compose exec -T redis redis-cli ping || echo "$(RED)Redis test failed$(RESET)"
 
+.PHONY: unix-socket-up
+unix-socket-up: ## Start Unix socket test environment with Nginx proxy
+	@echo "$(BLUE)Starting Unix socket test environment...$(RESET)"
+	@docker-compose -f docker-compose.unix-socket.yml up -d --build
+	@echo "$(GREEN)Unix socket test environment started!$(RESET)"
+	@echo "$(YELLOW)Nginx HTTP proxy: http://localhost:82$(RESET)"
+	@echo "$(YELLOW)Nginx HTTPS proxy: https://localhost:444$(RESET)"
+	@echo "$(YELLOW)Client interface: http://localhost:82/client$(RESET)"
+	@echo "$(YELLOW)Direct metrics: http://localhost:9601/metrics$(RESET)"
+
+.PHONY: unix-socket-down
+unix-socket-down: ## Stop Unix socket test environment
+	@echo "$(BLUE)Stopping Unix socket test environment...$(RESET)"
+	@docker-compose -f docker-compose.unix-socket.yml down -v
+
+.PHONY: unix-socket-logs
+unix-socket-logs: ## Show logs from Unix socket test environment
+	@docker-compose -f docker-compose.unix-socket.yml logs -f
+
+.PHONY: unix-socket-test
+unix-socket-test: ## Test Unix socket connectivity through Nginx
+	@echo "$(BLUE)Testing Unix socket connectivity...$(RESET)"
+	@echo "$(YELLOW)Testing HTTP proxy health endpoint...$(RESET)"
+	@curl -f http://localhost:82/health || echo "$(RED)Nginx health check failed$(RESET)"
+	@echo "$(YELLOW)Testing Sockudo through Unix socket (HTTP)...$(RESET)"
+	@curl -f http://localhost:82/up/test-app || echo "$(RED)Unix socket HTTP test failed$(RESET)"
+	@echo "$(YELLOW)Testing Sockudo through Unix socket (HTTPS)...$(RESET)"
+	@curl -kf https://localhost:444/up/test-app || echo "$(RED)Unix socket HTTPS test failed$(RESET)"
+	@echo "$(YELLOW)Testing direct metrics endpoint...$(RESET)"
+	@curl -f http://localhost:9601/metrics || echo "$(RED)Direct metrics test failed$(RESET)"
+
+.PHONY: unix-socket-shell
+unix-socket-shell: ## Access Unix socket container shell
+	@docker-compose -f docker-compose.unix-socket.yml exec sockudo-unix-socket bash
+
+.PHONY: unix-socket-supervisorctl
+unix-socket-supervisorctl: ## Access supervisor control in Unix socket container
+	@docker-compose -f docker-compose.unix-socket.yml exec sockudo-unix-socket supervisorctl
+
 .PHONY: shell-sockudo
 shell-sockudo: ## Access Sockudo container shell
 	@docker-compose exec sockudo sh
