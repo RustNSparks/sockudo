@@ -174,7 +174,7 @@ async fn test_verify_signin_authentication_with_prefix() {
     let token = Token::new("test-app-key".to_string(), "test-app-secret".to_string());
     let signature = token.sign(&string_to_sign);
 
-    let auth_with_prefix = format!("test-app-key:{}", signature);
+    let auth_with_prefix = format!("test-app-key:{signature}");
     let request = SignInRequest {
         user_data,
         auth: auth_with_prefix,
@@ -250,7 +250,7 @@ async fn test_verify_signin_authentication_with_invalid_signature() {
 
     let request = SignInRequest {
         user_data,
-        auth: format!("test-app-key:{}", invalid_signature),
+        auth: format!("test-app-key:{invalid_signature}"),
     };
 
     let result = handler
@@ -279,7 +279,7 @@ async fn test_auth_validator_with_different_user_data() {
     // Try to use signature for user_data1 with user_data2 (should fail)
     let request = SignInRequest {
         user_data: user_data2,
-        auth: format!("test-app-key:{}", signature),
+        auth: format!("test-app-key:{signature}"),
     };
 
     let result = handler
