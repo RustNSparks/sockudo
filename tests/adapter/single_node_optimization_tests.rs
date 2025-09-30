@@ -4,7 +4,7 @@ use sockudo::adapter::horizontal_adapter_base::HorizontalAdapterBase;
 use sockudo::error::Result;
 use sockudo::protocol::messages::{MessageData, PusherMessage};
 use std::time::Duration;
-
+use sonic_rs::json;
 use super::horizontal_adapter_helpers::{MockConfig, MockNodeState, MockTransport};
 
 /// Test that single-node deployments skip horizontal communications
@@ -189,7 +189,7 @@ async fn test_single_node_skips_presence_broadcasts() -> Result<()> {
             "presence-channel",
             "user123",
             "socket123",
-            Some(serde_json::json!({"name": "Alice"})),
+            Some(json!({"name": "Alice"})),
         )
         .await?;
 
@@ -235,7 +235,7 @@ async fn test_multi_node_sends_presence_broadcasts() -> Result<()> {
             "presence-channel",
             "user123",
             "socket123",
-            Some(serde_json::json!({"name": "Alice"})),
+            Some(json!({"name": "Alice"})),
         )
         .await?;
 

@@ -3077,7 +3077,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19f5c3e5da784cd8c69d32cdc84673f3204536ca56e1fa01be31a74b92c932ac"
 dependencies = [
  "bytes",
- "hashbrown 0.15.3",
+ "hashbrown 0.15.5",
  "indexmap",
  "munge",
  "ptr_meta",
@@ -3602,8 +3602,8 @@ dependencies = [
  "rustls 0.23.31",
  "serde",
  "serde_urlencoded",
- "sonic-rs",
  "sha2 0.11.0-rc.2",
+ "sonic-rs",
  "sqlx",
  "sysinfo",
  "thiserror 2.0.16",
@@ -3646,7 +3646,7 @@ dependencies = [
  "simdutf8",
  "sonic-number",
  "sonic-simd",
- "thiserror 2.0.12",
+ "thiserror 2.0.16",
 ]
 
 [[package]]

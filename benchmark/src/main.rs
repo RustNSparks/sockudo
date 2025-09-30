@@ -1,6 +1,6 @@
 use clap::Parser;
 use pushers::{Channel, Config, Pusher};
-use sonic_rs::json;
+use serde_json::json;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time;
