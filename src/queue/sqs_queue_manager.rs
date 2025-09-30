@@ -250,9 +250,8 @@ impl SqsQueueManager {
                             for message in messages {
                                 if let Some(body) = message.body() {
                                     // Process the message
-                                    match serde_json::from_str::<crate::webhook::types::JobData>(
-                                        body,
-                                    ) {
+                                    match sonic_rs::from_str::<crate::webhook::types::JobData>(body)
+                                    {
                                         Ok(job_data) => {
                                             // Call the processor
                                             match processor(job_data).await {
@@ -350,7 +349,7 @@ impl QueueInterface for SqsQueueManager {
         let queue_url = self.get_queue_url(queue_name).await?;
 
         // Serialize the job data
-        let data_json = serde_json::to_string(&data)
+        let data_json = sonic_rs::to_string(&data)
             .map_err(|e| Error::Queue(format!("Failed to serialize job data: {e}")))?;
 
         // Build send message request

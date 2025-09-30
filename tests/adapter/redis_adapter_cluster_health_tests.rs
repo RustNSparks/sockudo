@@ -1,9 +1,9 @@
-use serde_json::json;
 use sockudo::adapter::ConnectionManager;
 use sockudo::adapter::connection_manager::HorizontalAdapterInterface;
 use sockudo::adapter::redis_adapter::{RedisAdapter, RedisAdapterOptions};
 use sockudo::options::ClusterHealthConfig;
 use sockudo::websocket::SocketId;
+use sonic_rs::json;
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;

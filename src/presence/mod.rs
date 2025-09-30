@@ -22,7 +22,7 @@ impl PresenceManager {
         app_config: &App,
         channel: &str,
         user_id: &str,
-        user_info: Option<&serde_json::Value>,
+        user_info: Option<&sonic_rs::Value>,
         excluding_socket: Option<&SocketId>,
     ) -> Result<()> {
         debug!(

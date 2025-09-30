@@ -89,14 +89,14 @@ async fn test_channel_members_aggregation_deduplication() {
         "user-1".to_string(),
         sockudo::channel::PresenceMemberInfo {
             user_id: "user-1".to_string(),
-            user_info: Some(serde_json::json!({"name": "Alice", "node": "node-1"})),
+            user_info: Some(sonic_rs::json!({"name": "Alice", "node": "node-1"})),
         },
     );
     members1.insert(
         "user-2".to_string(),
         sockudo::channel::PresenceMemberInfo {
             user_id: "user-2".to_string(),
-            user_info: Some(serde_json::json!({"name": "Bob", "node": "node-1"})),
+            user_info: Some(sonic_rs::json!({"name": "Bob", "node": "node-1"})),
         },
     );
 
@@ -119,14 +119,14 @@ async fn test_channel_members_aggregation_deduplication() {
         "user-1".to_string(),
         sockudo::channel::PresenceMemberInfo {
             user_id: "user-1".to_string(),
-            user_info: Some(serde_json::json!({"name": "Alice", "node": "node-2"})), // Different data
+            user_info: Some(sonic_rs::json!({"name": "Alice", "node": "node-2"})), // Different data
         },
     );
     members2.insert(
         "user-3".to_string(),
         sockudo::channel::PresenceMemberInfo {
             user_id: "user-3".to_string(),
-            user_info: Some(serde_json::json!({"name": "Carol", "node": "node-2"})),
+            user_info: Some(sonic_rs::json!({"name": "Carol", "node": "node-2"})),
         },
     );
 

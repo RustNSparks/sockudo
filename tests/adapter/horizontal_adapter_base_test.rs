@@ -6,6 +6,7 @@ use sockudo::adapter::horizontal_transport::{HorizontalTransport, TransportConfi
 use sockudo::error::Result;
 use sockudo::protocol::messages::{MessageData, PusherMessage};
 use sockudo::websocket::SocketId;
+use sonic_rs::JsonValueTrait;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;

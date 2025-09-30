@@ -1,6 +1,6 @@
 use crate::channel::ChannelType;
 use crate::protocol::messages::{MessageData, PusherMessage};
-use serde_json::Value;
+use sonic_rs::{JsonValueTrait, Value};
 use std::option::Option;
 
 #[derive(Debug)]
@@ -55,7 +55,7 @@ impl SubscriptionRequest {
                 (ch.to_string(), auth, channel_data)
             }
             Some(MessageData::String(s)) => {
-                let data: Value = serde_json::from_str(s).map_err(|_| {
+                let data: Value = sonic_rs::from_str(s).map_err(|_| {
                     crate::error::Error::InvalidMessageFormat(
                         "Failed to parse subscription data".into(),
                     )

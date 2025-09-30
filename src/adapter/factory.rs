@@ -1,3 +1,4 @@
+use sonic_rs::JsonValueTrait;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 // src/adapter/factory.rs

@@ -1,8 +1,8 @@
 use crate::adapter::horizontal_adapter_helpers::{MockConfig, MockTransport};
-use serde_json::json;
 use sockudo::adapter::connection_manager::HorizontalAdapterInterface;
 use sockudo::adapter::horizontal_adapter_base::HorizontalAdapterBase;
 use sockudo::options::ClusterHealthConfig;
+use sonic_rs::json;
 
 #[tokio::test]
 async fn test_presence_member_join_broadcast() {

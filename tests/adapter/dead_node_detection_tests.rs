@@ -193,7 +193,7 @@ async fn test_dead_node_cleanup_removes_presence_data() {
                 "socket-123",
                 "user-456",
                 "test-app",
-                Some(serde_json::json!({"name": "Doomed User"})),
+                Some(sonic_rs::json!({"name": "Doomed User"})),
             )
             .await;
 
@@ -204,7 +204,7 @@ async fn test_dead_node_cleanup_removes_presence_data() {
                 "socket-789",
                 "user-999",
                 "test-app",
-                Some(serde_json::json!({"name": "Another Doomed User"})),
+                Some(sonic_rs::json!({"name": "Another Doomed User"})),
             )
             .await;
     }
@@ -283,7 +283,7 @@ async fn test_dead_node_event_structure_contains_required_data() {
                 "socket-abc",
                 "user-def",
                 "my-app",
-                Some(serde_json::json!({"display_name": "Test User", "status": "online"})),
+                Some(sonic_rs::json!({"display_name": "Test User", "status": "online"})),
             )
             .await;
     }
@@ -361,7 +361,7 @@ async fn test_follower_cleanup_only_removes_registry_data() {
                 "socket-1",
                 "user-1",
                 "test-app",
-                Some(serde_json::json!({"name": "User 1"})),
+                Some(sonic_rs::json!({"name": "User 1"})),
             )
             .await;
 

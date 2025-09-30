@@ -235,5 +235,5 @@ pub struct WebhookEvent {
     pub app_id: String,
     pub channel: String,
     pub user_id: Option<String>,
-    pub data: serde_json::Value,
+    pub data: sonic_rs::Value,
 }

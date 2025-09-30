@@ -11,7 +11,7 @@ use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use sonic_rs::Value;
 use std::collections::{HashMap, HashSet};
 use std::error::Error as StdError;
 use std::fmt::Debug;
@@ -420,7 +420,7 @@ impl MessageSender {
     }
 
     pub fn send_json<T: serde::Serialize>(&self, message: &T) -> Result<()> {
-        let payload = serde_json::to_vec(message)
+        let payload = sonic_rs::to_vec(message)
             .map_err(|e| Error::InvalidMessageFormat(format!("Serialization failed: {e}")))?;
 
         let frame = Frame::text(Payload::from(payload));

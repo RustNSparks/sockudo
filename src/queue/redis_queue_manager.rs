@@ -76,7 +76,7 @@ impl QueueInterface for RedisQueueManager {
         JobData: Serialize, // Ensure JobData can be serialized
     {
         let queue_key = self.format_key(queue_name).await;
-        let data_json = serde_json::to_string(&data)?; // Propagate serialization error
+        let data_json = sonic_rs::to_string(&data)?; // Propagate serialization error
 
         let mut conn = self.redis_connection.lock().await;
 
@@ -146,7 +146,7 @@ impl QueueInterface for RedisQueueManager {
                     match blpop_result {
                         // Successfully received a job
                         Ok(Some((_key, job_data_str))) => {
-                            match serde_json::from_str::<JobData>(&job_data_str) {
+                            match sonic_rs::from_str::<JobData>(&job_data_str) {
                                 Ok(job_data) => {
                                     // Execute the job processing callback
                                     match worker_processor(job_data).await {

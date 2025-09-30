@@ -347,8 +347,8 @@ impl Default for AdapterConfig {
 pub struct RedisAdapterConfig {
     pub requests_timeout: u64,
     pub prefix: String,
-    pub redis_pub_options: HashMap<String, serde_json::Value>,
-    pub redis_sub_options: HashMap<String, serde_json::Value>,
+    pub redis_pub_options: HashMap<String, sonic_rs::Value>,
+    pub redis_sub_options: HashMap<String, sonic_rs::Value>,
     pub cluster_mode: bool,
 }
 
@@ -1052,7 +1052,7 @@ impl ClusterHealthConfig {
 impl ServerOptions {
     pub async fn load_from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let content = tokio::fs::read_to_string(path).await?;
-        let options: Self = serde_json::from_str(&content)?;
+        let options: Self = sonic_rs::from_str(&content)?;
         Ok(options)
     }
 
@@ -1460,7 +1460,7 @@ impl ServerOptions {
         if let Ok(redis_url_env) = std::env::var("REDIS_URL") {
             info!("Applying REDIS_URL environment variable override");
 
-            let redis_url_json = serde_json::json!(redis_url_env);
+            let redis_url_json = sonic_rs::json!(redis_url_env);
 
             // Adapter uses HashMap approach (for flexible configuration)
             self.adapter
