@@ -1,11 +1,11 @@
+use super::horizontal_adapter_helpers::{MockConfig, MockNodeState, MockTransport};
 use sockudo::adapter::connection_manager::{ConnectionManager, HorizontalAdapterInterface};
 use sockudo::adapter::horizontal_adapter::RequestType;
 use sockudo::adapter::horizontal_adapter_base::HorizontalAdapterBase;
 use sockudo::error::Result;
 use sockudo::protocol::messages::{MessageData, PusherMessage};
-use std::time::Duration;
 use sonic_rs::json;
-use super::horizontal_adapter_helpers::{MockConfig, MockNodeState, MockTransport};
+use std::time::Duration;
 
 /// Test that single-node deployments skip horizontal communications
 #[tokio::test]

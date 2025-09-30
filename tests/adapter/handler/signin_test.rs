@@ -1,10 +1,10 @@
-use std::str::FromStr;
-use sonic_rs::json;
 use sockudo::adapter::handler::types::SignInRequest;
 use sockudo::app::auth::AuthValidator;
 use sockudo::app::config::App;
 use sockudo::token::Token;
 use sockudo::websocket::SocketId;
+use sonic_rs::json;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::mocks::connection_handler_mock::{
@@ -44,8 +44,8 @@ async fn test_signin_request_from_message_json_format() {
 
 #[tokio::test]
 async fn test_signin_request_from_message_structured_format() {
-    use sonic_rs::Value;
     use sockudo::protocol::messages::{MessageData, PusherMessage};
+    use sonic_rs::Value;
     use std::collections::HashMap;
 
     let user_data = json!({

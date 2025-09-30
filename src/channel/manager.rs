@@ -1,14 +1,14 @@
-use super::types::ChannelType;
 use super::PresenceMemberInfo;
+use super::types::ChannelType;
 use crate::adapter::ConnectionManager;
 use crate::app::config::App;
 use crate::error::Error;
 use crate::protocol::messages::{MessageData, PusherMessage};
-use crate::token::{secure_compare, Token};
+use crate::token::{Token, secure_compare};
 use crate::websocket::SocketId;
 use moka::future::Cache;
 use serde::{Deserialize, Serialize};
-use sonic_rs::{json, JsonValueTrait, Value};
+use sonic_rs::{JsonValueTrait, Value, json};
 use std::collections::HashMap as StdHashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
