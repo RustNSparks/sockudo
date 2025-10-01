@@ -1,3 +1,6 @@
+use crate::adapter::binary_protocol::{
+    BinaryBroadcastMessage, BinaryRequestBody, BinaryResponseBody,
+};
 use crate::adapter::horizontal_adapter::{BroadcastMessage, RequestBody, ResponseBody};
 use crate::adapter::horizontal_transport::{
     HorizontalTransport, TransportConfig, TransportHandlers,
@@ -8,7 +11,7 @@ use async_nats::{Client as NatsClient, ConnectOptions as NatsOptions, Subject};
 use async_trait::async_trait;
 use futures::StreamExt;
 use std::time::Duration;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// NATS transport implementation
 #[derive(Clone)]
@@ -82,8 +85,10 @@ impl HorizontalTransport for NatsTransport {
     }
 
     async fn publish_broadcast(&self, message: &BroadcastMessage) -> Result<()> {
-        let message_data = serde_json::to_vec(message)
-            .map_err(|e| Error::Other(format!("Failed to serialize broadcast message: {e}")))?;
+        // Convert to binary format
+        let binary_msg: BinaryBroadcastMessage = message.clone().into();
+        let message_data = bincode::serialize(&binary_msg)
+            .map_err(|e| Error::Other(format!("Failed to serialize broadcast: {}", e)))?;
 
         self.client
             .publish(
@@ -98,8 +103,10 @@ impl HorizontalTransport for NatsTransport {
     }
 
     async fn publish_request(&self, request: &RequestBody) -> Result<()> {
-        let request_data = serde_json::to_vec(request)
-            .map_err(|e| Error::Other(format!("Failed to serialize request: {e}")))?;
+        // Convert to binary format
+        let binary_req: BinaryRequestBody = request.clone().try_into()?;
+        let request_data = bincode::serialize(&binary_req)
+            .map_err(|e| Error::Other(format!("Failed to serialize request: {}", e)))?;
 
         self.client
             .publish(
@@ -114,8 +121,10 @@ impl HorizontalTransport for NatsTransport {
     }
 
     async fn publish_response(&self, response: &ResponseBody) -> Result<()> {
-        let response_data = serde_json::to_vec(response)
-            .map_err(|e| Error::Other(format!("Failed to serialize response: {e}")))?;
+        // Convert to binary format
+        let binary_resp: BinaryResponseBody = response.clone().try_into()?;
+        let response_data = bincode::serialize(&binary_resp)
+            .map_err(|e| Error::Other(format!("Failed to serialize response: {}", e)))?;
 
         self.client
             .publish(
@@ -167,7 +176,9 @@ impl HorizontalTransport for NatsTransport {
         let broadcast_handler = handlers.on_broadcast.clone();
         tokio::spawn(async move {
             while let Some(msg) = broadcast_subscription.next().await {
-                if let Ok(broadcast) = serde_json::from_slice::<BroadcastMessage>(&msg.payload) {
+                if let Ok(binary_msg) = bincode::deserialize::<BinaryBroadcastMessage>(&msg.payload)
+                {
+                    let broadcast: BroadcastMessage = binary_msg.into();
                     broadcast_handler(broadcast).await;
                 }
             }
@@ -177,18 +188,23 @@ impl HorizontalTransport for NatsTransport {
         let request_handler = handlers.on_request.clone();
         tokio::spawn(async move {
             while let Some(msg) = request_subscription.next().await {
-                if let Ok(request) = serde_json::from_slice::<RequestBody>(&msg.payload) {
-                    let response_result = request_handler(request).await;
+                if let Ok(binary_req) = bincode::deserialize::<BinaryRequestBody>(&msg.payload) {
+                    if let Ok(request) = RequestBody::try_from(binary_req) {
+                        let response_result = request_handler(request).await;
 
-                    if let Ok(response) = response_result
-                        && let Ok(response_data) = serde_json::to_vec(&response)
-                    {
-                        let _ = response_client
-                            .publish(
-                                Subject::from(response_subject.clone()),
-                                response_data.into(),
-                            )
-                            .await;
+                        if let Ok(response) = response_result {
+                            // Serialize response to binary
+                            if let Ok(binary_resp) = BinaryResponseBody::try_from(response) {
+                                if let Ok(response_data) = bincode::serialize(&binary_resp) {
+                                    let _ = response_client
+                                        .publish(
+                                            Subject::from(response_subject.clone()),
+                                            response_data.into(),
+                                        )
+                                        .await;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -198,8 +214,12 @@ impl HorizontalTransport for NatsTransport {
         let response_handler = handlers.on_response.clone();
         tokio::spawn(async move {
             while let Some(msg) = response_subscription.next().await {
-                if let Ok(response) = serde_json::from_slice::<ResponseBody>(&msg.payload) {
-                    response_handler(response).await;
+                if let Ok(binary_resp) = bincode::deserialize::<BinaryResponseBody>(&msg.payload) {
+                    if let Ok(response) = ResponseBody::try_from(binary_resp) {
+                        response_handler(response).await;
+                    }
+                } else {
+                    warn!("Failed to parse binary response message");
                 }
             }
         });

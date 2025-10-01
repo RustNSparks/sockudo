@@ -1,3 +1,6 @@
+use crate::adapter::binary_protocol::{
+    BinaryBroadcastMessage, BinaryRequestBody, BinaryResponseBody,
+};
 use crate::adapter::horizontal_adapter::{BroadcastMessage, RequestBody, ResponseBody};
 use crate::adapter::horizontal_transport::{
     HorizontalTransport, TransportConfig, TransportHandlers,
@@ -94,7 +97,10 @@ impl HorizontalTransport for RedisTransport {
     }
 
     async fn publish_broadcast(&self, message: &BroadcastMessage) -> Result<()> {
-        let broadcast_json = serde_json::to_string(message)?;
+        // Convert to binary format
+        let binary_msg: BinaryBroadcastMessage = message.clone().into();
+        let broadcast_bytes = bincode::serialize(&binary_msg)
+            .map_err(|e| Error::Other(format!("Failed to serialize broadcast: {}", e)))?;
 
         // Retry broadcast with exponential backoff to handle connection recovery
         let mut retry_delay = 100u64; // Start with 100ms
@@ -104,7 +110,7 @@ impl HorizontalTransport for RedisTransport {
         for attempt in 0..=MAX_RETRIES {
             let mut conn = self.events_connection.clone();
             match conn
-                .publish::<_, _, i32>(&self.broadcast_channel, &broadcast_json)
+                .publish::<_, _, i32>(&self.broadcast_channel, &broadcast_bytes)
                 .await
             {
                 Ok(_subscriber_count) => {
@@ -141,12 +147,14 @@ impl HorizontalTransport for RedisTransport {
     }
 
     async fn publish_request(&self, request: &RequestBody) -> Result<()> {
-        let request_json = serde_json::to_string(request)
-            .map_err(|e| Error::Other(format!("Failed to serialize request: {e}")))?;
+        // Convert to binary format
+        let binary_req: BinaryRequestBody = request.clone().try_into()?;
+        let request_bytes = bincode::serialize(&binary_req)
+            .map_err(|e| Error::Other(format!("Failed to serialize request: {}", e)))?;
 
         let mut conn = self.connection.clone();
         let subscriber_count: i32 = conn
-            .publish(&self.request_channel, &request_json)
+            .publish(&self.request_channel, &request_bytes)
             .await
             .map_err(|e| Error::Redis(format!("Failed to publish request: {e}")))?;
 
@@ -158,12 +166,14 @@ impl HorizontalTransport for RedisTransport {
     }
 
     async fn publish_response(&self, response: &ResponseBody) -> Result<()> {
-        let response_json = serde_json::to_string(response)
-            .map_err(|e| Error::Other(format!("Failed to serialize response: {e}")))?;
+        // Convert to binary format
+        let binary_resp: BinaryResponseBody = response.clone().try_into()?;
+        let response_bytes = bincode::serialize(&binary_resp)
+            .map_err(|e| Error::Other(format!("Failed to serialize response: {}", e)))?;
 
         let mut conn = self.connection.clone();
         let _: () = conn
-            .publish(&self.response_channel, response_json)
+            .publish(&self.response_channel, response_bytes)
             .await
             .map_err(|e| Error::Redis(format!("Failed to publish response: {e}")))?;
 
@@ -237,36 +247,51 @@ impl HorizontalTransport for RedisTransport {
 
                         tokio::spawn(async move {
                             if channel == broadcast_channel_clone {
-                                // Handle broadcast message
-                                if let Ok(broadcast) =
-                                    serde_json::from_str::<BroadcastMessage>(&payload)
-                                {
+                                // Handle broadcast message - deserialize from binary
+                                if let Ok(binary_msg) = bincode::deserialize::<BinaryBroadcastMessage>(
+                                    payload.as_bytes(),
+                                ) {
+                                    let broadcast: BroadcastMessage = binary_msg.into();
                                     broadcast_handler(broadcast).await;
                                 }
                             } else if channel == request_channel_clone {
-                                // Handle request message
-                                if let Ok(request) = serde_json::from_str::<RequestBody>(&payload) {
-                                    let response_result = request_handler(request).await;
+                                // Handle request message - deserialize from binary
+                                if let Ok(binary_req) =
+                                    bincode::deserialize::<BinaryRequestBody>(payload.as_bytes())
+                                {
+                                    if let Ok(request) = RequestBody::try_from(binary_req) {
+                                        let response_result = request_handler(request).await;
 
-                                    if let Ok(response) = response_result
-                                        && let Ok(response_json) = serde_json::to_string(&response)
-                                    {
-                                        let mut conn = pub_connection_clone.clone();
-                                        let _ = conn
-                                            .publish::<_, _, ()>(
-                                                &response_channel_clone,
-                                                response_json,
-                                            )
-                                            .await;
+                                        if let Ok(response) = response_result {
+                                            // Serialize response to binary
+                                            if let Ok(binary_resp) =
+                                                BinaryResponseBody::try_from(response)
+                                            {
+                                                if let Ok(response_bytes) =
+                                                    bincode::serialize(&binary_resp)
+                                                {
+                                                    let mut conn = pub_connection_clone.clone();
+                                                    let _ = conn
+                                                        .publish::<_, _, ()>(
+                                                            &response_channel_clone,
+                                                            response_bytes,
+                                                        )
+                                                        .await;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             } else if channel == response_channel_clone {
-                                // Handle response message
-                                if let Ok(response) = serde_json::from_str::<ResponseBody>(&payload)
+                                // Handle response message - deserialize from binary
+                                if let Ok(binary_resp) =
+                                    bincode::deserialize::<BinaryResponseBody>(payload.as_bytes())
                                 {
-                                    response_handler(response).await;
+                                    if let Ok(response) = ResponseBody::try_from(binary_resp) {
+                                        response_handler(response).await;
+                                    }
                                 } else {
-                                    warn!("Failed to parse response message: {}", payload);
+                                    warn!("Failed to parse binary response message");
                                 }
                             }
                         });
