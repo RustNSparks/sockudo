@@ -77,7 +77,7 @@ impl HorizontalTransport for RedisClusterTransport {
     async fn publish_broadcast(&self, message: &BroadcastMessage) -> Result<()> {
         // Convert to binary format
         let binary_msg: BinaryBroadcastMessage = message.clone().into();
-        let broadcast_bytes = bincode::encode_to_vec(&binary_msg, bincode::config::standard())
+        let broadcast_bytes = bincode::serialize(&binary_msg)
             .map_err(|e| Error::Other(format!("Failed to serialize broadcast: {}", e)))?;
 
         // Use client's internal connection pooling - this is efficient
@@ -97,7 +97,7 @@ impl HorizontalTransport for RedisClusterTransport {
     async fn publish_request(&self, request: &RequestBody) -> Result<()> {
         // Convert to binary format
         let binary_req: BinaryRequestBody = request.clone().try_into()?;
-        let request_bytes = bincode::encode_to_vec(&binary_req, bincode::config::standard())
+        let request_bytes = bincode::serialize(&binary_req)
             .map_err(|e| Error::Other(format!("Failed to serialize request: {}", e)))?;
 
         // Use client's internal connection pooling - this is efficient for cluster
@@ -121,7 +121,7 @@ impl HorizontalTransport for RedisClusterTransport {
     async fn publish_response(&self, response: &ResponseBody) -> Result<()> {
         // Convert to binary format
         let binary_resp: BinaryResponseBody = response.clone().try_into()?;
-        let response_bytes = bincode::encode_to_vec(&binary_resp, bincode::config::standard())
+        let response_bytes = bincode::serialize(&binary_resp)
             .map_err(|e| Error::Other(format!("Failed to serialize response: {}", e)))?;
 
         // Use client's internal connection pooling - this is efficient for cluster
@@ -222,16 +222,16 @@ impl HorizontalTransport for RedisClusterTransport {
                 tokio::spawn(async move {
                     if channel == broadcast_channel_clone {
                         // Handle broadcast message - deserialize from binary
-                        if let Ok((binary_msg, _)) =
-                            bincode::decode_from_slice::<BinaryBroadcastMessage, _>(&payload_bytes, bincode::config::standard())
+                        if let Ok(binary_msg) =
+                            bincode::deserialize::<BinaryBroadcastMessage>(&payload_bytes)
                         {
                             let broadcast: BroadcastMessage = binary_msg.into();
                             broadcast_handler(broadcast).await;
                         }
                     } else if channel == request_channel_clone {
                         // Handle request message - deserialize from binary
-                        if let Ok((binary_req, _)) =
-                            bincode::decode_from_slice::<BinaryRequestBody, _>(&payload_bytes, bincode::config::standard())
+                        if let Ok(binary_req) =
+                            bincode::deserialize::<BinaryRequestBody>(&payload_bytes)
                         {
                             if let Ok(request) = RequestBody::try_from(binary_req) {
                                 let response_result = request_handler(request).await;
@@ -240,7 +240,7 @@ impl HorizontalTransport for RedisClusterTransport {
                                     // Serialize response to binary
                                     if let Ok(binary_resp) = BinaryResponseBody::try_from(response)
                                     {
-                                        if let Ok(response_bytes) = bincode::encode_to_vec(&binary_resp, bincode::config::standard())
+                                        if let Ok(response_bytes) = bincode::serialize(&binary_resp)
                                         {
                                             // Use client's connection pooling for response publishing
                                             if let Ok(mut conn) =
@@ -260,8 +260,8 @@ impl HorizontalTransport for RedisClusterTransport {
                         }
                     } else if channel == response_channel_clone {
                         // Handle response message - deserialize from binary
-                        if let Ok((binary_resp, _)) =
-                            bincode::decode_from_slice::<BinaryResponseBody, _>(&payload_bytes, bincode::config::standard())
+                        if let Ok(binary_resp) =
+                            bincode::deserialize::<BinaryResponseBody>(&payload_bytes)
                         {
                             if let Ok(response) = ResponseBody::try_from(binary_resp) {
                                 response_handler(response).await;

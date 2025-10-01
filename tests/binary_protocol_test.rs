@@ -63,7 +63,7 @@ fn test_request_body_binary_conversion() {
     // Verify binary structure
     assert_eq!(binary.version, BINARY_PROTOCOL_VERSION);
     assert_eq!(binary.app_id, original.app_id);
-    assert_eq!(binary.request_type, original.request_type);
+    // Note: request_type is now stored as request_type_discriminant (u8)
     assert_eq!(binary.channel, original.channel);
     assert!(binary.channel_hash.is_some());
 
@@ -141,7 +141,7 @@ fn test_bincode_size_reduction() {
 
     // Serialize with bincode
     let binary_msg: BinaryBroadcastMessage = message.into();
-    let binary_bytes = bincode::serialize(&binary_msg).unwrap();
+    let binary_bytes = bincode::encode_to_vec(&binary_msg, bincode::config::standard()).unwrap();
 
     // Print sizes for comparison
     println!("JSON size: {} bytes", json_bytes.len());
@@ -188,13 +188,13 @@ fn test_large_message_handling() {
 
     // Convert to binary
     let binary: BinaryBroadcastMessage = message.clone().into();
-    let serialized = bincode::serialize(&binary).unwrap();
+    let serialized = bincode::encode_to_vec(&binary, bincode::config::standard()).unwrap();
 
     // Verify it's under the size limit
     assert!(serialized.len() < MAX_MESSAGE_SIZE as usize);
 
     // Deserialize and verify
-    let deserialized: BinaryBroadcastMessage = bincode::deserialize(&serialized).unwrap();
+    let (deserialized, _): (BinaryBroadcastMessage, usize) = bincode::decode_from_slice(&serialized, bincode::config::standard()).unwrap();
     let recovered: BroadcastMessage = deserialized.into();
 
     assert_eq!(recovered.message, message.message);

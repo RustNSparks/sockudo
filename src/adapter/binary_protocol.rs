@@ -3,8 +3,7 @@ use crate::adapter::horizontal_adapter::{
 };
 use crate::channel::PresenceMemberInfo;
 use crate::error::{Error, Result};
-use bincode::Options;
-use serde::{Deserialize, Serialize};
+use bincode::{Decode, Encode};
 use std::collections::{HashMap, HashSet};
 
 /// Protocol version for backward compatibility during rolling upgrades
@@ -14,17 +13,17 @@ pub const BINARY_PROTOCOL_VERSION: u8 = 1;
 pub const MAX_MESSAGE_SIZE: u64 = 10 * 1024 * 1024;
 
 /// Get the bincode configuration for consistent serialization
-/// Uses DefaultOptions with a size limit for safety
-pub fn bincode_options() -> impl bincode::Options {
-    bincode::DefaultOptions::new()
-        .with_limit(MAX_MESSAGE_SIZE)
+/// Uses standard config with variable-length encoding for optimal size
+pub fn bincode_config() -> impl bincode::config::Config {
+    bincode::config::standard()
         .with_little_endian()
-        .with_varint_encoding()
+        .with_variable_int_encoding()
+        .with_limit::<{ MAX_MESSAGE_SIZE as usize }>()
 }
 
 /// Binary envelope for broadcast messages
 /// Wraps the original JSON client payload without re-parsing
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct BinaryBroadcastMessage {
     /// Protocol version for backward compatibility
     pub version: u8,
@@ -53,7 +52,7 @@ pub struct BinaryBroadcastMessage {
 }
 
 /// Binary envelope for request messages
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct BinaryRequestBody {
     /// Protocol version
     pub version: u8,
@@ -67,8 +66,8 @@ pub struct BinaryRequestBody {
     /// App ID
     pub app_id: String,
 
-    /// Request type (enum serialized efficiently)
-    pub request_type: RequestType,
+    /// Request type (enum needs custom encoding - we'll use u8)
+    pub request_type_discriminant: u8,
 
     /// Channel name (optional)
     pub channel: Option<String>,
@@ -82,7 +81,7 @@ pub struct BinaryRequestBody {
     /// User ID (optional)
     pub user_id: Option<String>,
 
-    /// Serialized user info (as bytes instead of JSON Value)
+    /// Serialized user info (as JSON bytes)
     pub user_info_bytes: Option<Vec<u8>>,
 
     /// Timestamp for heartbeat
@@ -96,7 +95,7 @@ pub struct BinaryRequestBody {
 }
 
 /// Binary envelope for response messages
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct BinaryResponseBody {
     /// Protocol version
     pub version: u8,
@@ -110,11 +109,11 @@ pub struct BinaryResponseBody {
     /// App ID
     pub app_id: String,
 
-    /// Serialized members map (as bytes)
+    /// Serialized members map (as JSON bytes, contains serde_json::Value)
     pub members_bytes: Option<Vec<u8>>,
 
-    /// Serialized channels with socket count (as bytes)
-    pub channels_with_sockets_count_bytes: Option<Vec<u8>>,
+    /// Serialized channels with socket count (as bincode bytes)
+    pub channels_with_sockets_count: HashMap<String, usize>,
 
     /// Socket IDs
     pub socket_ids: Vec<String>,
@@ -147,6 +146,51 @@ fn bytes_to_uuid(bytes: &[u8; 16]) -> String {
 /// Calculate xxh3 hash of a string for fast routing
 pub fn calculate_channel_hash(channel: &str) -> u64 {
     xxhash_rust::xxh3::xxh3_64(channel.as_bytes())
+}
+
+/// Convert RequestType to u8 discriminant for efficient binary encoding
+fn request_type_to_u8(request_type: &RequestType) -> u8 {
+    match request_type {
+        RequestType::ChannelMembers => 0,
+        RequestType::ChannelSockets => 1,
+        RequestType::ChannelSocketsCount => 2,
+        RequestType::SocketExistsInChannel => 3,
+        RequestType::TerminateUserConnections => 4,
+        RequestType::ChannelsWithSocketsCount => 5,
+        RequestType::Sockets => 6,
+        RequestType::Channels => 7,
+        RequestType::SocketsCount => 8,
+        RequestType::ChannelMembersCount => 9,
+        RequestType::CountUserConnectionsInChannel => 10,
+        RequestType::PresenceMemberJoined => 11,
+        RequestType::PresenceMemberLeft => 12,
+        RequestType::Heartbeat => 13,
+        RequestType::NodeDead => 14,
+        RequestType::PresenceStateSync => 15,
+    }
+}
+
+/// Convert u8 discriminant back to RequestType
+fn u8_to_request_type(discriminant: u8) -> Result<RequestType> {
+    match discriminant {
+        0 => Ok(RequestType::ChannelMembers),
+        1 => Ok(RequestType::ChannelSockets),
+        2 => Ok(RequestType::ChannelSocketsCount),
+        3 => Ok(RequestType::SocketExistsInChannel),
+        4 => Ok(RequestType::TerminateUserConnections),
+        5 => Ok(RequestType::ChannelsWithSocketsCount),
+        6 => Ok(RequestType::Sockets),
+        7 => Ok(RequestType::Channels),
+        8 => Ok(RequestType::SocketsCount),
+        9 => Ok(RequestType::ChannelMembersCount),
+        10 => Ok(RequestType::CountUserConnectionsInChannel),
+        11 => Ok(RequestType::PresenceMemberJoined),
+        12 => Ok(RequestType::PresenceMemberLeft),
+        13 => Ok(RequestType::Heartbeat),
+        14 => Ok(RequestType::NodeDead),
+        15 => Ok(RequestType::PresenceStateSync),
+        _ => Err(Error::Other(format!("Unknown request type discriminant: {}", discriminant))),
+    }
 }
 
 impl From<BroadcastMessage> for BinaryBroadcastMessage {
@@ -190,8 +234,9 @@ impl TryFrom<RequestBody> for BinaryRequestBody {
         let request_id_bytes = uuid_to_bytes(&req.request_id)?;
         let node_id_bytes = uuid_to_bytes(&req.node_id)?;
         let channel_hash = req.channel.as_ref().map(|c| calculate_channel_hash(c));
+        let request_type_discriminant = request_type_to_u8(&req.request_type);
 
-        // Serialize user_info to JSON string first, then to bytes
+        // Serialize user_info to JSON bytes
         let user_info_bytes = req
             .user_info
             .map(|v| serde_json::to_vec(&v))
@@ -203,7 +248,7 @@ impl TryFrom<RequestBody> for BinaryRequestBody {
             request_id_bytes,
             node_id_bytes,
             app_id: req.app_id,
-            request_type: req.request_type,
+            request_type_discriminant,
             channel: req.channel,
             channel_hash,
             socket_id: req.socket_id,
@@ -222,6 +267,7 @@ impl TryFrom<BinaryRequestBody> for RequestBody {
     fn try_from(binary: BinaryRequestBody) -> Result<Self> {
         let request_id = bytes_to_uuid(&binary.request_id_bytes);
         let node_id = bytes_to_uuid(&binary.node_id_bytes);
+        let request_type = u8_to_request_type(binary.request_type_discriminant)?;
 
         // Deserialize user_info from JSON bytes if present
         let user_info = binary
@@ -234,7 +280,7 @@ impl TryFrom<BinaryRequestBody> for RequestBody {
             request_id,
             node_id,
             app_id: binary.app_id,
-            request_type: binary.request_type,
+            request_type,
             channel: binary.channel,
             socket_id: binary.socket_id,
             user_id: binary.user_id,
@@ -263,27 +309,13 @@ impl TryFrom<ResponseBody> for BinaryResponseBody {
             None
         };
 
-        // Serialize channels_with_sockets_count using bincode (no JSON values)
-        let channels_with_sockets_count_bytes = if !resp.channels_with_sockets_count.is_empty() {
-            Some(
-                bincode::serialize(&resp.channels_with_sockets_count).map_err(|e| {
-                    Error::Other(format!(
-                        "Failed to serialize channels_with_sockets_count: {}",
-                        e
-                    ))
-                })?,
-            )
-        } else {
-            None
-        };
-
         Ok(Self {
             version: BINARY_PROTOCOL_VERSION,
             request_id_bytes,
             node_id_bytes,
             app_id: resp.app_id,
             members_bytes,
-            channels_with_sockets_count_bytes,
+            channels_with_sockets_count: resp.channels_with_sockets_count,
             socket_ids: resp.socket_ids,
             sockets_count: resp.sockets_count,
             exists: resp.exists,
@@ -308,25 +340,12 @@ impl TryFrom<BinaryResponseBody> for ResponseBody {
             .map_err(|e| Error::Other(format!("Failed to deserialize members: {}", e)))?
             .unwrap_or_default();
 
-        // Deserialize channels_with_sockets_count from bincode bytes if present
-        let channels_with_sockets_count = binary
-            .channels_with_sockets_count_bytes
-            .map(|bytes| bincode::deserialize::<HashMap<String, usize>>(&bytes))
-            .transpose()
-            .map_err(|e| {
-                Error::Other(format!(
-                    "Failed to deserialize channels_with_sockets_count: {}",
-                    e
-                ))
-            })?
-            .unwrap_or_default();
-
         Ok(Self {
             request_id,
             node_id,
             app_id: binary.app_id,
             members,
-            channels_with_sockets_count,
+            channels_with_sockets_count: binary.channels_with_sockets_count,
             socket_ids: binary.socket_ids,
             sockets_count: binary.sockets_count,
             exists: binary.exists,
@@ -400,7 +419,7 @@ mod tests {
 
         let json_size = serde_json::to_vec(&msg).unwrap().len();
         let binary: BinaryBroadcastMessage = msg.into();
-        let binary_size = bincode::serialize(&binary).unwrap().len();
+        let binary_size = bincode::encode_to_vec(&binary, bincode_config()).unwrap().len();
 
         // Binary should be smaller or similar in size
         println!("JSON size: {}, Binary size: {}", json_size, binary_size);

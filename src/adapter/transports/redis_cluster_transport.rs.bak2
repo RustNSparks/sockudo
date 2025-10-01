@@ -222,7 +222,7 @@ impl HorizontalTransport for RedisClusterTransport {
                 tokio::spawn(async move {
                     if channel == broadcast_channel_clone {
                         // Handle broadcast message - deserialize from binary
-                        if let Ok((binary_msg, _)) =
+                        if let Ok(binary_msg) =
                             bincode::decode_from_slice::<BinaryBroadcastMessage, _>(&payload_bytes, bincode::config::standard())
                         {
                             let broadcast: BroadcastMessage = binary_msg.into();
@@ -230,7 +230,7 @@ impl HorizontalTransport for RedisClusterTransport {
                         }
                     } else if channel == request_channel_clone {
                         // Handle request message - deserialize from binary
-                        if let Ok((binary_req, _)) =
+                        if let Ok(binary_req) =
                             bincode::decode_from_slice::<BinaryRequestBody, _>(&payload_bytes, bincode::config::standard())
                         {
                             if let Ok(request) = RequestBody::try_from(binary_req) {
@@ -260,7 +260,7 @@ impl HorizontalTransport for RedisClusterTransport {
                         }
                     } else if channel == response_channel_clone {
                         // Handle response message - deserialize from binary
-                        if let Ok((binary_resp, _)) =
+                        if let Ok(binary_resp) =
                             bincode::decode_from_slice::<BinaryResponseBody, _>(&payload_bytes, bincode::config::standard())
                         {
                             if let Ok(response) = ResponseBody::try_from(binary_resp) {
