@@ -264,27 +264,29 @@ impl HorizontalTransport for RedisTransport {
                                         payload.as_bytes(),
                                         bincode::config::standard(),
                                     )
-                                    && let Ok(request) = RequestBody::try_from(binary_req) {
-                                        let response_result = request_handler(request).await;
+                                    && let Ok(request) = RequestBody::try_from(binary_req)
+                                {
+                                    let response_result = request_handler(request).await;
 
-                                        if let Ok(response) = response_result {
-                                            // Serialize response to binary
-                                            if let Ok(binary_resp) =
-                                                BinaryResponseBody::try_from(response)
-                                                && let Ok(response_bytes) = bincode::encode_to_vec(
-                                                    &binary_resp,
-                                                    bincode::config::standard(),
-                                                ) {
-                                                    let mut conn = pub_connection_clone.clone();
-                                                    let _ = conn
-                                                        .publish::<_, _, ()>(
-                                                            &response_channel_clone,
-                                                            response_bytes,
-                                                        )
-                                                        .await;
-                                                }
+                                    if let Ok(response) = response_result {
+                                        // Serialize response to binary
+                                        if let Ok(binary_resp) =
+                                            BinaryResponseBody::try_from(response)
+                                            && let Ok(response_bytes) = bincode::encode_to_vec(
+                                                &binary_resp,
+                                                bincode::config::standard(),
+                                            )
+                                        {
+                                            let mut conn = pub_connection_clone.clone();
+                                            let _ = conn
+                                                .publish::<_, _, ()>(
+                                                    &response_channel_clone,
+                                                    response_bytes,
+                                                )
+                                                .await;
                                         }
                                     }
+                                }
                             } else if channel == response_channel_clone {
                                 // Handle response message - deserialize from binary
                                 if let Ok((binary_resp, _)) =

@@ -193,26 +193,25 @@ impl HorizontalTransport for NatsTransport {
                 if let Ok((binary_req, _)) = bincode::decode_from_slice::<BinaryRequestBody, _>(
                     &msg.payload,
                     bincode::config::standard(),
-                )
-                    && let Ok(request) = RequestBody::try_from(binary_req) {
-                        let response_result = request_handler(request).await;
+                ) && let Ok(request) = RequestBody::try_from(binary_req)
+                {
+                    let response_result = request_handler(request).await;
 
-                        if let Ok(response) = response_result {
-                            // Serialize response to binary
-                            if let Ok(binary_resp) = BinaryResponseBody::try_from(response)
-                                && let Ok(response_data) = bincode::encode_to_vec(
-                                    &binary_resp,
-                                    bincode::config::standard(),
-                                ) {
-                                    let _ = response_client
-                                        .publish(
-                                            Subject::from(response_subject.clone()),
-                                            response_data.into(),
-                                        )
-                                        .await;
-                                }
+                    if let Ok(response) = response_result {
+                        // Serialize response to binary
+                        if let Ok(binary_resp) = BinaryResponseBody::try_from(response)
+                            && let Ok(response_data) =
+                                bincode::encode_to_vec(&binary_resp, bincode::config::standard())
+                        {
+                            let _ = response_client
+                                .publish(
+                                    Subject::from(response_subject.clone()),
+                                    response_data.into(),
+                                )
+                                .await;
                         }
                     }
+                }
             }
         });
 
