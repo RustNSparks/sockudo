@@ -194,7 +194,8 @@ fn test_large_message_handling() {
     assert!(serialized.len() < MAX_MESSAGE_SIZE as usize);
 
     // Deserialize and verify
-    let (deserialized, _): (BinaryBroadcastMessage, usize) = bincode::decode_from_slice(&serialized, bincode::config::standard()).unwrap();
+    let (deserialized, _): (BinaryBroadcastMessage, usize) =
+        bincode::decode_from_slice(&serialized, bincode::config::standard()).unwrap();
     let recovered: BroadcastMessage = deserialized.into();
 
     assert_eq!(recovered.message, message.message);

@@ -189,7 +189,10 @@ fn u8_to_request_type(discriminant: u8) -> Result<RequestType> {
         13 => Ok(RequestType::Heartbeat),
         14 => Ok(RequestType::NodeDead),
         15 => Ok(RequestType::PresenceStateSync),
-        _ => Err(Error::Other(format!("Unknown request type discriminant: {}", discriminant))),
+        _ => Err(Error::Other(format!(
+            "Unknown request type discriminant: {}",
+            discriminant
+        ))),
     }
 }
 
@@ -419,7 +422,9 @@ mod tests {
 
         let json_size = serde_json::to_vec(&msg).unwrap().len();
         let binary: BinaryBroadcastMessage = msg.into();
-        let binary_size = bincode::encode_to_vec(&binary, bincode_config()).unwrap().len();
+        let binary_size = bincode::encode_to_vec(&binary, bincode_config())
+            .unwrap()
+            .len();
 
         // Binary should be smaller or similar in size
         println!("JSON size: {}, Binary size: {}", json_size, binary_size);

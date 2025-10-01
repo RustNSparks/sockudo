@@ -248,16 +248,22 @@ impl HorizontalTransport for RedisTransport {
                         tokio::spawn(async move {
                             if channel == broadcast_channel_clone {
                                 // Handle broadcast message - deserialize from binary
-                                if let Ok((binary_msg, _)) = bincode::decode_from_slice::<BinaryBroadcastMessage, _>(
-                                    payload.as_bytes(), bincode::config::standard()
-                                ) {
+                                if let Ok((binary_msg, _)) =
+                                    bincode::decode_from_slice::<BinaryBroadcastMessage, _>(
+                                        payload.as_bytes(),
+                                        bincode::config::standard(),
+                                    )
+                                {
                                     let broadcast: BroadcastMessage = binary_msg.into();
                                     broadcast_handler(broadcast).await;
                                 }
                             } else if channel == request_channel_clone {
                                 // Handle request message - deserialize from binary
                                 if let Ok((binary_req, _)) =
-                                    bincode::decode_from_slice::<BinaryRequestBody, _>(payload.as_bytes(), bincode::config::standard())
+                                    bincode::decode_from_slice::<BinaryRequestBody, _>(
+                                        payload.as_bytes(),
+                                        bincode::config::standard(),
+                                    )
                                 {
                                     if let Ok(request) = RequestBody::try_from(binary_req) {
                                         let response_result = request_handler(request).await;
@@ -267,9 +273,10 @@ impl HorizontalTransport for RedisTransport {
                                             if let Ok(binary_resp) =
                                                 BinaryResponseBody::try_from(response)
                                             {
-                                                if let Ok(response_bytes) =
-                                                    bincode::encode_to_vec(&binary_resp, bincode::config::standard())
-                                                {
+                                                if let Ok(response_bytes) = bincode::encode_to_vec(
+                                                    &binary_resp,
+                                                    bincode::config::standard(),
+                                                ) {
                                                     let mut conn = pub_connection_clone.clone();
                                                     let _ = conn
                                                         .publish::<_, _, ()>(
@@ -285,7 +292,10 @@ impl HorizontalTransport for RedisTransport {
                             } else if channel == response_channel_clone {
                                 // Handle response message - deserialize from binary
                                 if let Ok((binary_resp, _)) =
-                                    bincode::decode_from_slice::<BinaryResponseBody, _>(payload.as_bytes(), bincode::config::standard())
+                                    bincode::decode_from_slice::<BinaryResponseBody, _>(
+                                        payload.as_bytes(),
+                                        bincode::config::standard(),
+                                    )
                                 {
                                     if let Ok(response) = ResponseBody::try_from(binary_resp) {
                                         response_handler(response).await;

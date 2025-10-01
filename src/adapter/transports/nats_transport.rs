@@ -176,8 +176,10 @@ impl HorizontalTransport for NatsTransport {
         let broadcast_handler = handlers.on_broadcast.clone();
         tokio::spawn(async move {
             while let Some(msg) = broadcast_subscription.next().await {
-                if let Ok((binary_msg, _)) = bincode::decode_from_slice::<BinaryBroadcastMessage, _>(&msg.payload, bincode::config::standard())
-                {
+                if let Ok((binary_msg, _)) = bincode::decode_from_slice::<BinaryBroadcastMessage, _>(
+                    &msg.payload,
+                    bincode::config::standard(),
+                ) {
                     let broadcast: BroadcastMessage = binary_msg.into();
                     broadcast_handler(broadcast).await;
                 }
@@ -188,14 +190,20 @@ impl HorizontalTransport for NatsTransport {
         let request_handler = handlers.on_request.clone();
         tokio::spawn(async move {
             while let Some(msg) = request_subscription.next().await {
-                if let Ok((binary_req, _)) = bincode::decode_from_slice::<BinaryRequestBody, _>(&msg.payload, bincode::config::standard()) {
+                if let Ok((binary_req, _)) = bincode::decode_from_slice::<BinaryRequestBody, _>(
+                    &msg.payload,
+                    bincode::config::standard(),
+                ) {
                     if let Ok(request) = RequestBody::try_from(binary_req) {
                         let response_result = request_handler(request).await;
 
                         if let Ok(response) = response_result {
                             // Serialize response to binary
                             if let Ok(binary_resp) = BinaryResponseBody::try_from(response) {
-                                if let Ok(response_data) = bincode::encode_to_vec(&binary_resp, bincode::config::standard()) {
+                                if let Ok(response_data) = bincode::encode_to_vec(
+                                    &binary_resp,
+                                    bincode::config::standard(),
+                                ) {
                                     let _ = response_client
                                         .publish(
                                             Subject::from(response_subject.clone()),
@@ -214,7 +222,10 @@ impl HorizontalTransport for NatsTransport {
         let response_handler = handlers.on_response.clone();
         tokio::spawn(async move {
             while let Some(msg) = response_subscription.next().await {
-                if let Ok((binary_resp, _)) = bincode::decode_from_slice::<BinaryResponseBody, _>(&msg.payload, bincode::config::standard()) {
+                if let Ok((binary_resp, _)) = bincode::decode_from_slice::<BinaryResponseBody, _>(
+                    &msg.payload,
+                    bincode::config::standard(),
+                ) {
                     if let Ok(response) = ResponseBody::try_from(binary_resp) {
                         response_handler(response).await;
                     }
