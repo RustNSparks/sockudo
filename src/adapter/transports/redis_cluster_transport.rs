@@ -238,15 +238,13 @@ impl HorizontalTransport for RedisClusterTransport {
                                 &payload_bytes,
                                 bincode::config::standard(),
                             )
-                        {
-                            if let Ok(request) = RequestBody::try_from(binary_req) {
+                            && let Ok(request) = RequestBody::try_from(binary_req) {
                                 let response_result = request_handler(request).await;
 
                                 if let Ok(response) = response_result {
                                     // Serialize response to binary
                                     if let Ok(binary_resp) = BinaryResponseBody::try_from(response)
-                                    {
-                                        if let Ok(response_bytes) = bincode::encode_to_vec(
+                                        && let Ok(response_bytes) = bincode::encode_to_vec(
                                             &binary_resp,
                                             bincode::config::standard(),
                                         ) {
@@ -262,10 +260,8 @@ impl HorizontalTransport for RedisClusterTransport {
                                                     .await;
                                             }
                                         }
-                                    }
                                 }
                             }
-                        }
                     } else if channel == response_channel_clone {
                         // Handle response message - deserialize from binary
                         if let Ok((binary_resp, _)) =
