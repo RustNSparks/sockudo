@@ -420,9 +420,9 @@ mod tests {
             timestamp_ms: Some(1234567890.123),
         };
 
-        let json_size = serde_json::to_vec(&msg).unwrap().len();
+        let _json_size = serde_json::to_vec(&msg).unwrap().len();
         let binary: BinaryBroadcastMessage = msg.into();
-        let binary_size = bincode::encode_to_vec(&binary, bincode_config())
+        let _binary_size = bincode::encode_to_vec(&binary, bincode_config())
             .unwrap()
             .len();
     }
