@@ -110,7 +110,7 @@ impl HorizontalTransport for RedisTransport {
         for attempt in 0..=MAX_RETRIES {
             let mut conn = self.events_connection.clone();
             match conn
-                .publish::<_, _, i32>(&self.broadcast_channel, &broadcast_bytes)
+                .publish::<_, _, i32>(&self.broadcast_channel, broadcast_bytes.as_slice())
                 .await
             {
                 Ok(_subscriber_count) => {
@@ -154,7 +154,7 @@ impl HorizontalTransport for RedisTransport {
 
         let mut conn = self.connection.clone();
         let subscriber_count: i32 = conn
-            .publish(&self.request_channel, &request_bytes)
+            .publish(&self.request_channel, request_bytes.as_slice())
             .await
             .map_err(|e| Error::Redis(format!("Failed to publish request: {e}")))?;
 
@@ -173,7 +173,7 @@ impl HorizontalTransport for RedisTransport {
 
         let mut conn = self.connection.clone();
         let _: () = conn
-            .publish(&self.response_channel, response_bytes)
+            .publish(&self.response_channel, response_bytes.as_slice())
             .await
             .map_err(|e| Error::Redis(format!("Failed to publish response: {e}")))?;
 
@@ -234,7 +234,7 @@ impl HorizontalTransport for RedisTransport {
 
                 while let Some(msg) = message_stream.next().await {
                     let channel: String = msg.get_channel_name().to_string();
-                    let payload_result: redis::RedisResult<String> = msg.get_payload();
+                    let payload_result: redis::RedisResult<Vec<u8>> = msg.get_payload();
 
                     if let Ok(payload) = payload_result {
                         let broadcast_handler = handlers.on_broadcast.clone();
@@ -250,7 +250,7 @@ impl HorizontalTransport for RedisTransport {
                                 // Handle broadcast message - deserialize from binary
                                 if let Ok((binary_msg, _)) =
                                     bincode::decode_from_slice::<BinaryBroadcastMessage, _>(
-                                        payload.as_bytes(),
+                                        &payload,
                                         bincode_config(),
                                     )
                                 {
@@ -261,7 +261,7 @@ impl HorizontalTransport for RedisTransport {
                                 // Handle request message - deserialize from binary
                                 if let Ok((binary_req, _)) =
                                     bincode::decode_from_slice::<BinaryRequestBody, _>(
-                                        payload.as_bytes(),
+                                        &payload,
                                         bincode_config(),
                                     )
                                     && let Ok(request) = RequestBody::try_from(binary_req)
@@ -281,7 +281,7 @@ impl HorizontalTransport for RedisTransport {
                                             let _ = conn
                                                 .publish::<_, _, ()>(
                                                     &response_channel_clone,
-                                                    response_bytes,
+                                                    response_bytes.as_slice(),
                                                 )
                                                 .await;
                                         }
@@ -291,7 +291,7 @@ impl HorizontalTransport for RedisTransport {
                                 // Handle response message - deserialize from binary
                                 if let Ok((binary_resp, _)) =
                                     bincode::decode_from_slice::<BinaryResponseBody, _>(
-                                        payload.as_bytes(),
+                                        &payload,
                                         bincode_config(),
                                     )
                                 {

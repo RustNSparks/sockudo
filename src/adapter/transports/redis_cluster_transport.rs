@@ -87,7 +87,7 @@ impl HorizontalTransport for RedisClusterTransport {
             ))
         })?;
 
-        conn.publish::<_, _, ()>(&self.broadcast_channel, broadcast_bytes)
+        conn.publish::<_, _, ()>(&self.broadcast_channel, broadcast_bytes.as_slice())
             .await
             .map_err(|e| Error::Redis(format!("Failed to publish broadcast: {e}")))?;
 
@@ -106,7 +106,7 @@ impl HorizontalTransport for RedisClusterTransport {
         })?;
 
         let subscriber_count: i32 = conn
-            .publish(&self.request_channel, &request_bytes)
+            .publish(&self.request_channel, request_bytes.as_slice())
             .await
             .map_err(|e| Error::Redis(format!("Failed to publish request: {e}")))?;
 
@@ -131,7 +131,7 @@ impl HorizontalTransport for RedisClusterTransport {
             ))
         })?;
 
-        conn.publish::<_, _, ()>(&self.response_channel, response_bytes)
+        conn.publish::<_, _, ()>(&self.response_channel, response_bytes.as_slice())
             .await
             .map_err(|e| Error::Redis(format!("Failed to publish response: {e}")))?;
 
@@ -254,7 +254,7 @@ impl HorizontalTransport for RedisClusterTransport {
                                         let _ = conn
                                             .publish::<_, _, ()>(
                                                 &response_channel_clone,
-                                                response_bytes,
+                                                response_bytes.as_slice(),
                                             )
                                             .await;
                                     }
