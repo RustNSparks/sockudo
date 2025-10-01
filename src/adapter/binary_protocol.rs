@@ -425,8 +425,5 @@ mod tests {
         let binary_size = bincode::encode_to_vec(&binary, bincode_config())
             .unwrap()
             .len();
-
-        // Binary should be smaller or similar in size
-        println!("JSON size: {}, Binary size: {}", json_size, binary_size);
     }
 }
