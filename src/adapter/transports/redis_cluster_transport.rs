@@ -1,5 +1,5 @@
 use crate::adapter::binary_protocol::{
-    BinaryBroadcastMessage, BinaryRequestBody, BinaryResponseBody,
+    BinaryBroadcastMessage, BinaryRequestBody, BinaryResponseBody, bincode_config,
 };
 use crate::adapter::horizontal_adapter::{BroadcastMessage, RequestBody, ResponseBody};
 use crate::adapter::horizontal_transport::{
@@ -77,7 +77,7 @@ impl HorizontalTransport for RedisClusterTransport {
     async fn publish_broadcast(&self, message: &BroadcastMessage) -> Result<()> {
         // Convert to binary format
         let binary_msg: BinaryBroadcastMessage = message.clone().into();
-        let broadcast_bytes = bincode::encode_to_vec(&binary_msg, bincode::config::standard())
+        let broadcast_bytes = bincode::encode_to_vec(&binary_msg, bincode_config())
             .map_err(|e| Error::Other(format!("Failed to serialize broadcast: {}", e)))?;
 
         // Use client's internal connection pooling - this is efficient
@@ -97,7 +97,7 @@ impl HorizontalTransport for RedisClusterTransport {
     async fn publish_request(&self, request: &RequestBody) -> Result<()> {
         // Convert to binary format
         let binary_req: BinaryRequestBody = request.clone().try_into()?;
-        let request_bytes = bincode::encode_to_vec(&binary_req, bincode::config::standard())
+        let request_bytes = bincode::encode_to_vec(&binary_req, bincode_config())
             .map_err(|e| Error::Other(format!("Failed to serialize request: {}", e)))?;
 
         // Use client's internal connection pooling - this is efficient for cluster
@@ -121,7 +121,7 @@ impl HorizontalTransport for RedisClusterTransport {
     async fn publish_response(&self, response: &ResponseBody) -> Result<()> {
         // Convert to binary format
         let binary_resp: BinaryResponseBody = response.clone().try_into()?;
-        let response_bytes = bincode::encode_to_vec(&binary_resp, bincode::config::standard())
+        let response_bytes = bincode::encode_to_vec(&binary_resp, bincode_config())
             .map_err(|e| Error::Other(format!("Failed to serialize response: {}", e)))?;
 
         // Use client's internal connection pooling - this is efficient for cluster
@@ -225,7 +225,7 @@ impl HorizontalTransport for RedisClusterTransport {
                         if let Ok((binary_msg, _)) =
                             bincode::decode_from_slice::<BinaryBroadcastMessage, _>(
                                 &payload_bytes,
-                                bincode::config::standard(),
+                                bincode_config(),
                             )
                         {
                             let broadcast: BroadcastMessage = binary_msg.into();
@@ -236,7 +236,7 @@ impl HorizontalTransport for RedisClusterTransport {
                         if let Ok((binary_req, _)) =
                             bincode::decode_from_slice::<BinaryRequestBody, _>(
                                 &payload_bytes,
-                                bincode::config::standard(),
+                                bincode_config(),
                             )
                             && let Ok(request) = RequestBody::try_from(binary_req)
                         {
@@ -245,10 +245,8 @@ impl HorizontalTransport for RedisClusterTransport {
                             if let Ok(response) = response_result {
                                 // Serialize response to binary
                                 if let Ok(binary_resp) = BinaryResponseBody::try_from(response)
-                                    && let Ok(response_bytes) = bincode::encode_to_vec(
-                                        &binary_resp,
-                                        bincode::config::standard(),
-                                    )
+                                    && let Ok(response_bytes) =
+                                        bincode::encode_to_vec(&binary_resp, bincode_config())
                                 {
                                     // Use client's connection pooling for response publishing
                                     if let Ok(mut conn) = client_clone.get_async_connection().await
@@ -268,7 +266,7 @@ impl HorizontalTransport for RedisClusterTransport {
                         if let Ok((binary_resp, _)) =
                             bincode::decode_from_slice::<BinaryResponseBody, _>(
                                 &payload_bytes,
-                                bincode::config::standard(),
+                                bincode_config(),
                             )
                         {
                             if let Ok(response) = ResponseBody::try_from(binary_resp) {

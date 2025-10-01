@@ -1,5 +1,5 @@
 use crate::adapter::binary_protocol::{
-    BinaryBroadcastMessage, BinaryRequestBody, BinaryResponseBody,
+    BinaryBroadcastMessage, BinaryRequestBody, BinaryResponseBody, bincode_config,
 };
 use crate::adapter::horizontal_adapter::{BroadcastMessage, RequestBody, ResponseBody};
 use crate::adapter::horizontal_transport::{
@@ -99,7 +99,7 @@ impl HorizontalTransport for RedisTransport {
     async fn publish_broadcast(&self, message: &BroadcastMessage) -> Result<()> {
         // Convert to binary format
         let binary_msg: BinaryBroadcastMessage = message.clone().into();
-        let broadcast_bytes = bincode::encode_to_vec(&binary_msg, bincode::config::standard())
+        let broadcast_bytes = bincode::encode_to_vec(&binary_msg, bincode_config())
             .map_err(|e| Error::Other(format!("Failed to serialize broadcast: {}", e)))?;
 
         // Retry broadcast with exponential backoff to handle connection recovery
@@ -149,7 +149,7 @@ impl HorizontalTransport for RedisTransport {
     async fn publish_request(&self, request: &RequestBody) -> Result<()> {
         // Convert to binary format
         let binary_req: BinaryRequestBody = request.clone().try_into()?;
-        let request_bytes = bincode::encode_to_vec(&binary_req, bincode::config::standard())
+        let request_bytes = bincode::encode_to_vec(&binary_req, bincode_config())
             .map_err(|e| Error::Other(format!("Failed to serialize request: {}", e)))?;
 
         let mut conn = self.connection.clone();
@@ -168,7 +168,7 @@ impl HorizontalTransport for RedisTransport {
     async fn publish_response(&self, response: &ResponseBody) -> Result<()> {
         // Convert to binary format
         let binary_resp: BinaryResponseBody = response.clone().try_into()?;
-        let response_bytes = bincode::encode_to_vec(&binary_resp, bincode::config::standard())
+        let response_bytes = bincode::encode_to_vec(&binary_resp, bincode_config())
             .map_err(|e| Error::Other(format!("Failed to serialize response: {}", e)))?;
 
         let mut conn = self.connection.clone();
@@ -251,7 +251,7 @@ impl HorizontalTransport for RedisTransport {
                                 if let Ok((binary_msg, _)) =
                                     bincode::decode_from_slice::<BinaryBroadcastMessage, _>(
                                         payload.as_bytes(),
-                                        bincode::config::standard(),
+                                        bincode_config(),
                                     )
                                 {
                                     let broadcast: BroadcastMessage = binary_msg.into();
@@ -262,7 +262,7 @@ impl HorizontalTransport for RedisTransport {
                                 if let Ok((binary_req, _)) =
                                     bincode::decode_from_slice::<BinaryRequestBody, _>(
                                         payload.as_bytes(),
-                                        bincode::config::standard(),
+                                        bincode_config(),
                                     )
                                     && let Ok(request) = RequestBody::try_from(binary_req)
                                 {
@@ -274,7 +274,7 @@ impl HorizontalTransport for RedisTransport {
                                             BinaryResponseBody::try_from(response)
                                             && let Ok(response_bytes) = bincode::encode_to_vec(
                                                 &binary_resp,
-                                                bincode::config::standard(),
+                                                bincode_config(),
                                             )
                                         {
                                             let mut conn = pub_connection_clone.clone();
@@ -292,7 +292,7 @@ impl HorizontalTransport for RedisTransport {
                                 if let Ok((binary_resp, _)) =
                                     bincode::decode_from_slice::<BinaryResponseBody, _>(
                                         payload.as_bytes(),
-                                        bincode::config::standard(),
+                                        bincode_config(),
                                     )
                                 {
                                     if let Ok(response) = ResponseBody::try_from(binary_resp) {
