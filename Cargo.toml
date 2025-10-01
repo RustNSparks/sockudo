@@ -79,9 +79,6 @@ features = [
 codegen-units = 1
 lto = true
 
-[build]
-rustflags = ["-C", "target-cpu=native"]
-
 [package.metadata.binstall]
 pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}{archive-suffix}"
 pkg-fmt = "tgz"
