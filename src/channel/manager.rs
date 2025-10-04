@@ -8,8 +8,8 @@ use crate::token::{Token, secure_compare};
 use crate::websocket::SocketId;
 use moka::future::Cache;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use std::collections::HashMap;
+use sonic_rs::{JsonValueTrait, Value, json};
+use std::collections::HashMap as StdHashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -221,7 +221,7 @@ impl ChannelManager {
                     .ok_or_else(|| Error::Channel("Missing channel_data".into()))?;
 
                 // Parse JSON directly into the fields we need, avoiding intermediate Value
-                let parsed: serde_json::Value = serde_json::from_str(channel_data_str)
+                let parsed: Value = sonic_rs::from_str(channel_data_str)
                     .map_err(|_| Error::Channel("Invalid JSON in channel_data".into()))?;
 
                 Self::extract_presence_member(&parsed, extra)
@@ -233,12 +233,12 @@ impl ChannelManager {
 
     fn extract_presence_member(
         data: &Value,
-        extra: &HashMap<String, Value>,
+        extra: &StdHashMap<String, Value>,
     ) -> Result<PresenceMember, Error> {
         // For structured data, channel_data is already parsed
         if let Some(channel_data_str) = data.get("channel_data").and_then(|v| v.as_str()) {
             // Parse the inner JSON
-            let user_data: Value = serde_json::from_str(channel_data_str)
+            let user_data: Value = sonic_rs::from_str(channel_data_str)
                 .map_err(|_| Error::Channel("Invalid JSON in channel_data".into()))?;
 
             let user_id = user_data
@@ -365,7 +365,7 @@ impl ChannelManager {
                 }
             }
             MessageData::String(data) => {
-                let parsed_data: Value = serde_json::from_str(&data).unwrap_or_default();
+                let parsed_data: Value = sonic_rs::from_str(&data).unwrap_or_default();
                 let channel = parsed_data
                     .get("channel")
                     .and_then(|v| v.as_str())
@@ -401,7 +401,7 @@ impl ChannelManager {
         connection_manager: &Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
         app_id: &str,
         channel: &str,
-    ) -> Result<HashMap<String, PresenceMemberInfo>, Error> {
+    ) -> Result<StdHashMap<String, PresenceMemberInfo>, Error> {
         let mut conn_mgr = connection_manager.lock().await;
         conn_mgr.get_channel_members(app_id, channel).await
     }

@@ -22,7 +22,7 @@ mod unix_socket_config_tests {
             "permission_mode": "755"
         }"#;
 
-        let config: UnixSocketConfig = serde_json::from_str(json).unwrap();
+        let config: UnixSocketConfig = sonic_rs::from_str(json).unwrap();
         assert!(config.enabled);
         assert_eq!(config.path, "/tmp/test.sock");
         assert_eq!(config.permission_mode, 0o755);
@@ -37,7 +37,7 @@ mod unix_socket_config_tests {
             "permission_mode": "789"
         }"#;
 
-        let result: Result<UnixSocketConfig, _> = serde_json::from_str(json);
+        let result: Result<UnixSocketConfig, _> = sonic_rs::from_str(json);
         assert!(result.is_err());
         assert!(
             result
@@ -56,7 +56,7 @@ mod unix_socket_config_tests {
             "permission_mode": "1000"
         }"#;
 
-        let result: Result<UnixSocketConfig, _> = serde_json::from_str(json);
+        let result: Result<UnixSocketConfig, _> = sonic_rs::from_str(json);
         assert!(result.is_err());
         assert!(
             result
@@ -75,7 +75,7 @@ mod unix_socket_config_tests {
             "permission_mode": "888"
         }"#;
 
-        let result: Result<UnixSocketConfig, _> = serde_json::from_str(json);
+        let result: Result<UnixSocketConfig, _> = sonic_rs::from_str(json);
         assert!(result.is_err());
         assert!(
             result
@@ -106,7 +106,7 @@ mod unix_socket_config_tests {
                 perm_str
             );
 
-            let config: UnixSocketConfig = serde_json::from_str(&json).unwrap();
+            let config: UnixSocketConfig = sonic_rs::from_str(&json).unwrap();
             assert_eq!(
                 config.permission_mode, expected,
                 "Failed for permission {}",
@@ -312,7 +312,7 @@ mod unix_socket_config_tests {
             }
         }"#;
 
-        let config: ServerOptions = serde_json::from_str(json).unwrap();
+        let config: ServerOptions = sonic_rs::from_str(json).unwrap();
         assert!(config.unix_socket.enabled);
         assert_eq!(config.unix_socket.path, "/tmp/test-sockudo.sock");
         assert_eq!(config.unix_socket.permission_mode, 0o664);

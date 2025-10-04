@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use sonic_rs::{Value, json};
 use std::collections::HashMap;
 use std::time::Duration;
 

@@ -94,7 +94,7 @@ impl HorizontalTransport for RedisTransport {
     }
 
     async fn publish_broadcast(&self, message: &BroadcastMessage) -> Result<()> {
-        let broadcast_json = serde_json::to_string(message)?;
+        let broadcast_json = sonic_rs::to_string(message)?;
 
         // Retry broadcast with exponential backoff to handle connection recovery
         let mut retry_delay = 100u64; // Start with 100ms
@@ -141,7 +141,7 @@ impl HorizontalTransport for RedisTransport {
     }
 
     async fn publish_request(&self, request: &RequestBody) -> Result<()> {
-        let request_json = serde_json::to_string(request)
+        let request_json = sonic_rs::to_string(request)
             .map_err(|e| Error::Other(format!("Failed to serialize request: {e}")))?;
 
         let mut conn = self.connection.clone();
@@ -158,7 +158,7 @@ impl HorizontalTransport for RedisTransport {
     }
 
     async fn publish_response(&self, response: &ResponseBody) -> Result<()> {
-        let response_json = serde_json::to_string(response)
+        let response_json = sonic_rs::to_string(response)
             .map_err(|e| Error::Other(format!("Failed to serialize response: {e}")))?;
 
         let mut conn = self.connection.clone();
@@ -239,17 +239,17 @@ impl HorizontalTransport for RedisTransport {
                             if channel == broadcast_channel_clone {
                                 // Handle broadcast message
                                 if let Ok(broadcast) =
-                                    serde_json::from_str::<BroadcastMessage>(&payload)
+                                    sonic_rs::from_str::<BroadcastMessage>(&payload)
                                 {
                                     broadcast_handler(broadcast).await;
                                 }
                             } else if channel == request_channel_clone {
                                 // Handle request message
-                                if let Ok(request) = serde_json::from_str::<RequestBody>(&payload) {
+                                if let Ok(request) = sonic_rs::from_str::<RequestBody>(&payload) {
                                     let response_result = request_handler(request).await;
 
                                     if let Ok(response) = response_result
-                                        && let Ok(response_json) = serde_json::to_string(&response)
+                                        && let Ok(response_json) = sonic_rs::to_string(&response)
                                     {
                                         let mut conn = pub_connection_clone.clone();
                                         let _ = conn
@@ -262,8 +262,7 @@ impl HorizontalTransport for RedisTransport {
                                 }
                             } else if channel == response_channel_clone {
                                 // Handle response message
-                                if let Ok(response) = serde_json::from_str::<ResponseBody>(&payload)
-                                {
+                                if let Ok(response) = sonic_rs::from_str::<ResponseBody>(&payload) {
                                     response_handler(response).await;
                                 } else {
                                     warn!("Failed to parse response message: {}", payload);

@@ -506,7 +506,7 @@ struct AppRow {
     max_event_batch_size: Option<i32>,
     enable_user_authentication: Option<bool>,
     enable_watchlist_events: Option<bool>,
-    allowed_origins: Option<serde_json::Value>,
+    allowed_origins: Option<String>, // Stored as JSON string
 }
 
 impl AppRow {
@@ -536,7 +536,7 @@ impl AppRow {
             enable_watchlist_events: self.enable_watchlist_events,
             allowed_origins: self
                 .allowed_origins
-                .and_then(|json| serde_json::from_value::<Vec<String>>(json).ok()),
+                .and_then(|json_str| sonic_rs::from_str::<Vec<String>>(&json_str).ok()),
         }
     }
 }

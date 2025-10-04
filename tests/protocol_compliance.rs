@@ -1,9 +1,9 @@
-use serde_json::{Value, json};
 use sockudo::protocol::messages::{MessageData, PusherMessage};
+use sonic_rs::{JsonContainerTrait, JsonValueTrait, Value, json};
 
 // Helper function to serialize message and parse as JSON for testing
 fn message_to_json(message: &PusherMessage) -> Value {
-    serde_json::to_value(message).expect("Failed to serialize message")
+    sonic_rs::to_value(message).expect("Failed to serialize message")
 }
 
 #[test]
@@ -14,20 +14,20 @@ fn test_connection_established_format() {
 
     // Assert event field exists and has correct value
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "pusher:connection_established");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("pusher:connection_established"));
 
     // Assert data field exists and is a string (per Pusher spec)
     assert!(json.get("data").is_some(), "Should have 'data' field");
     assert!(
-        json["data"].is_string(),
+        json["data"].is_str(),
         "Data field should be a String (JSON-encoded)"
     );
 
     // Verify the string contains valid JSON
     let data_str = json["data"].as_str().expect("Data should be a string");
     let parsed_data: Value =
-        serde_json::from_str(data_str).expect("Data string should contain valid JSON");
+        sonic_rs::from_str(data_str).expect("Data string should contain valid JSON");
 
     // Assert parsed data has correct structure
     assert!(parsed_data.is_object(), "Parsed data should be an object");
@@ -36,10 +36,10 @@ fn test_connection_established_format() {
         "Should have socket_id field"
     );
     assert!(
-        parsed_data["socket_id"].is_string(),
+        parsed_data["socket_id"].is_str(),
         "socket_id should be a string"
     );
-    assert_eq!(parsed_data["socket_id"], "test-socket-123");
+    assert_eq!(parsed_data["socket_id"], json!("test-socket-123"));
 
     assert!(
         parsed_data.get("activity_timeout").is_some(),
@@ -49,7 +49,7 @@ fn test_connection_established_format() {
         parsed_data["activity_timeout"].is_number(),
         "activity_timeout should be a number"
     );
-    assert_eq!(parsed_data["activity_timeout"], 120);
+    assert_eq!(parsed_data["activity_timeout"], json!(120));
 }
 
 #[test]
@@ -60,8 +60,8 @@ fn test_error_format() {
 
     // Assert event field exists and has correct value
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "pusher:error");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("pusher:error"));
 
     // Assert data field exists and is an object (per Pusher spec)
     assert!(json.get("data").is_some(), "Should have 'data' field");
@@ -70,13 +70,16 @@ fn test_error_format() {
     let data = json["data"].as_object().expect("Data should be an object");
 
     // Assert data object has correct structure
-    assert!(data.get("code").is_some(), "Should have 'code' field");
+    assert!(data.get(&"code").is_some(), "Should have 'code' field");
     assert!(data["code"].is_number(), "Code should be a number");
-    assert_eq!(data["code"], 4001);
+    assert_eq!(data["code"], json!(4001));
 
-    assert!(data.get("message").is_some(), "Should have 'message' field");
-    assert!(data["message"].is_string(), "Message should be a string");
-    assert_eq!(data["message"], "Application does not exist");
+    assert!(
+        data.get(&"message").is_some(),
+        "Should have 'message' field"
+    );
+    assert!(data["message"].is_str(), "Message should be a string");
+    assert_eq!(data["message"], json!("Application does not exist"));
 }
 
 #[test]
@@ -97,8 +100,8 @@ fn test_signin_success_format() {
 
     // Assert event field exists and has correct value
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "pusher:signin_success");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("pusher:signin_success"));
 
     // Assert data field exists and is an object (per Pusher spec)
     assert!(json.get("data").is_some(), "Should have 'data' field");
@@ -108,15 +111,12 @@ fn test_signin_success_format() {
 
     // Assert data object has correct structure
     assert!(
-        data.contains_key("user_data"),
+        data.contains_key(&"user_data"),
         "Should have user_data field"
     );
-    assert!(!data.contains_key("auth"), "Should NOT have auth field");
-    assert!(
-        data["user_data"].is_string(),
-        "user_data should be a string"
-    );
-    assert_eq!(data["user_data"], r#"{"id":"123","name":"John"}"#);
+    assert!(!data.contains_key(&"auth"), "Should NOT have auth field");
+    assert!(data["user_data"].is_str(), "user_data should be a string");
+    assert_eq!(data["user_data"], json!(r#"{"id":"123","name":"John"}"#));
 }
 
 #[test]
@@ -127,8 +127,8 @@ fn test_ping_format() {
 
     // Assert event field exists and has correct value
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "pusher:ping");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("pusher:ping"));
 
     // Assert no data field exists (per Pusher spec)
     assert!(
@@ -145,8 +145,8 @@ fn test_pong_format() {
 
     // Assert event field exists and has correct value
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "pusher:pong");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("pusher:pong"));
 
     // Assert no data field exists (per Pusher spec)
     assert!(
@@ -178,27 +178,27 @@ fn test_subscription_succeeded_format() {
 
     // Assert event and channel fields exist and have correct values
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "pusher_internal:subscription_succeeded");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(
+        json["event"],
+        json!("pusher_internal:subscription_succeeded")
+    );
 
     assert!(json.get("channel").is_some(), "Should have 'channel' field");
-    assert!(
-        json["channel"].is_string(),
-        "Channel field should be a string"
-    );
-    assert_eq!(json["channel"], "presence-room");
+    assert!(json["channel"].is_str(), "Channel field should be a string");
+    assert_eq!(json["channel"], json!("presence-room"));
 
     // Assert data field exists and is a string (per Pusher spec)
     assert!(json.get("data").is_some(), "Should have 'data' field");
     assert!(
-        json["data"].is_string(),
+        json["data"].is_str(),
         "Data field should be a String (JSON-encoded)"
     );
 
     // Verify the string contains valid JSON with presence data
     let data_str = json["data"].as_str().expect("Data should be a string");
     let parsed_data: Value =
-        serde_json::from_str(data_str).expect("Data string should contain valid JSON");
+        sonic_rs::from_str(data_str).expect("Data string should contain valid JSON");
 
     // Assert parsed data has correct structure
     assert!(parsed_data.is_object(), "Parsed data should be an object");
@@ -209,8 +209,8 @@ fn test_subscription_succeeded_format() {
 
     // Verify the presence data structure (not double-wrapped)
     let presence = &parsed_data["presence"];
-    assert_eq!(presence["count"], 2);
-    assert_eq!(presence["ids"], json!(["user1", "user2"]));
+    assert_eq!(presence["count"], json!(2));
+    assert_eq!(presence["ids"], json!(vec!["user1", "user2"]));
     assert_eq!(presence["hash"]["user1"], json!({"name": "Alice"}));
     assert_eq!(presence["hash"]["user2"], json!({"name": "Bob"}));
 }
@@ -223,27 +223,27 @@ fn test_subscription_succeeded_non_presence_format() {
 
     // Assert event and channel fields exist and have correct values
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "pusher_internal:subscription_succeeded");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(
+        json["event"],
+        json!("pusher_internal:subscription_succeeded")
+    );
 
     assert!(json.get("channel").is_some(), "Should have 'channel' field");
-    assert!(
-        json["channel"].is_string(),
-        "Channel field should be a string"
-    );
-    assert_eq!(json["channel"], "private-channel");
+    assert!(json["channel"].is_str(), "Channel field should be a string");
+    assert_eq!(json["channel"], json!("private-channel"));
 
     // Assert data field exists and is a string (per Pusher spec)
     assert!(json.get("data").is_some(), "Should have 'data' field");
     assert!(
-        json["data"].is_string(),
+        json["data"].is_str(),
         "Data field should be a String (JSON-encoded)"
     );
 
     // Verify the string contains empty JSON object
     let data_str = json["data"].as_str().expect("Data should be a string");
     let parsed_data: Value =
-        serde_json::from_str(data_str).expect("Data string should contain valid JSON");
+        sonic_rs::from_str(data_str).expect("Data string should contain valid JSON");
 
     // Assert parsed data is an empty object
     assert!(parsed_data.is_object(), "Parsed data should be an object");
@@ -264,27 +264,24 @@ fn test_member_added_format() {
 
     // Assert event and channel fields exist and have correct values
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "pusher_internal:member_added");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("pusher_internal:member_added"));
 
     assert!(json.get("channel").is_some(), "Should have 'channel' field");
-    assert!(
-        json["channel"].is_string(),
-        "Channel field should be a string"
-    );
-    assert_eq!(json["channel"], "presence-room");
+    assert!(json["channel"].is_str(), "Channel field should be a string");
+    assert_eq!(json["channel"], json!("presence-room"));
 
     // Assert data field exists and is a string (per Pusher spec)
     assert!(json.get("data").is_some(), "Should have 'data' field");
     assert!(
-        json["data"].is_string(),
+        json["data"].is_str(),
         "Data field should be a String (JSON-encoded)"
     );
 
     // Verify the string contains valid JSON
     let data_str = json["data"].as_str().expect("Data should be a string");
     let parsed_data: Value =
-        serde_json::from_str(data_str).expect("Data string should contain valid JSON");
+        sonic_rs::from_str(data_str).expect("Data string should contain valid JSON");
 
     // Assert parsed data has correct structure
     assert!(parsed_data.is_object(), "Parsed data should be an object");
@@ -293,10 +290,10 @@ fn test_member_added_format() {
         "Should have 'user_id' field"
     );
     assert!(
-        parsed_data["user_id"].is_string(),
+        parsed_data["user_id"].is_str(),
         "user_id should be a string"
     );
-    assert_eq!(parsed_data["user_id"], "user123");
+    assert_eq!(parsed_data["user_id"], json!("user123"));
 
     assert!(
         parsed_data.get("user_info").is_some(),
@@ -313,27 +310,24 @@ fn test_member_removed_format() {
 
     // Assert event and channel fields exist and have correct values
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "pusher_internal:member_removed");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("pusher_internal:member_removed"));
 
     assert!(json.get("channel").is_some(), "Should have 'channel' field");
-    assert!(
-        json["channel"].is_string(),
-        "Channel field should be a string"
-    );
-    assert_eq!(json["channel"], "presence-room");
+    assert!(json["channel"].is_str(), "Channel field should be a string");
+    assert_eq!(json["channel"], json!("presence-room"));
 
     // Assert data field exists and is a string (per Pusher spec)
     assert!(json.get("data").is_some(), "Should have 'data' field");
     assert!(
-        json["data"].is_string(),
+        json["data"].is_str(),
         "Data field should be a String (JSON-encoded)"
     );
 
     // Verify the string contains valid JSON
     let data_str = json["data"].as_str().expect("Data should be a string");
     let parsed_data: Value =
-        serde_json::from_str(data_str).expect("Data string should contain valid JSON");
+        sonic_rs::from_str(data_str).expect("Data string should contain valid JSON");
 
     // Assert parsed data has correct structure
     assert!(parsed_data.is_object(), "Parsed data should be an object");
@@ -342,10 +336,10 @@ fn test_member_removed_format() {
         "Should have 'user_id' field"
     );
     assert!(
-        parsed_data["user_id"].is_string(),
+        parsed_data["user_id"].is_str(),
         "user_id should be a string"
     );
-    assert_eq!(parsed_data["user_id"], "user123");
+    assert_eq!(parsed_data["user_id"], json!("user123"));
 
     assert!(
         parsed_data.get("user_info").is_none(),
@@ -363,24 +357,21 @@ fn test_channel_event_format() {
 
     // Assert event and channel fields exist and have correct values
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "my-event");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("my-event"));
 
     assert!(json.get("channel").is_some(), "Should have 'channel' field");
-    assert!(
-        json["channel"].is_string(),
-        "Channel field should be a string"
-    );
-    assert_eq!(json["channel"], "my-channel");
+    assert!(json["channel"].is_str(), "Channel field should be a string");
+    assert_eq!(json["channel"], json!("my-channel"));
 
     // Assert data field exists and is a string (per Pusher spec)
     assert!(json.get("data").is_some(), "Should have 'data' field");
-    assert!(json["data"].is_string(), "Data field should be a String");
+    assert!(json["data"].is_str(), "Data field should be a String");
 
     // Verify the string contains the JSON data
     let data_str = json["data"].as_str().expect("Data should be a string");
     let parsed_data: Value =
-        serde_json::from_str(data_str).expect("Data string should contain valid JSON");
+        sonic_rs::from_str(data_str).expect("Data string should contain valid JSON");
 
     // Assert parsed data matches expected event data
     assert_eq!(parsed_data, event_data);
@@ -402,24 +393,21 @@ fn test_channel_event_with_user_id() {
 
     // Assert event and channel fields exist and have correct values
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "my-event");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("my-event"));
 
     assert!(json.get("channel").is_some(), "Should have 'channel' field");
-    assert!(
-        json["channel"].is_string(),
-        "Channel field should be a string"
-    );
-    assert_eq!(json["channel"], "presence-room");
+    assert!(json["channel"].is_str(), "Channel field should be a string");
+    assert_eq!(json["channel"], json!("presence-room"));
 
     // Assert data field exists and is a string (per Pusher spec)
     assert!(json.get("data").is_some(), "Should have 'data' field");
-    assert!(json["data"].is_string(), "Data field should be a String");
+    assert!(json["data"].is_str(), "Data field should be a String");
 
     // Assert user_id field exists and has correct value (per Pusher spec)
     assert!(json.get("user_id").is_some(), "Should have 'user_id' field");
-    assert!(json["user_id"].is_string(), "user_id should be a string");
-    assert_eq!(json["user_id"], "user123");
+    assert!(json["user_id"].is_str(), "user_id should be a string");
+    assert_eq!(json["user_id"], json!("user123"));
 }
 
 #[test]
@@ -440,27 +428,24 @@ fn test_encrypted_channel_event_format() {
 
     // Assert event and channel fields exist and have correct values
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "my-event");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("my-event"));
 
     assert!(json.get("channel").is_some(), "Should have 'channel' field");
-    assert!(
-        json["channel"].is_string(),
-        "Channel field should be a string"
-    );
-    assert_eq!(json["channel"], "private-encrypted-channel");
+    assert!(json["channel"].is_str(), "Channel field should be a string");
+    assert_eq!(json["channel"], json!("private-encrypted-channel"));
 
     // Assert data field exists and is a string (per Pusher spec)
     assert!(json.get("data").is_some(), "Should have 'data' field");
     assert!(
-        json["data"].is_string(),
+        json["data"].is_str(),
         "Data field should be a String (JSON-encoded)"
     );
 
     // Verify the string contains the encrypted data JSON
     let data_str = json["data"].as_str().expect("Data should be a string");
     let parsed_data: Value =
-        serde_json::from_str(data_str).expect("Data string should contain valid JSON");
+        sonic_rs::from_str(data_str).expect("Data string should contain valid JSON");
 
     // Assert parsed data has correct encrypted structure
     assert!(parsed_data.is_object(), "Parsed data should be an object");
@@ -469,17 +454,17 @@ fn test_encrypted_channel_event_format() {
         "Should have 'ciphertext' field"
     );
     assert!(
-        parsed_data["ciphertext"].is_string(),
+        parsed_data["ciphertext"].is_str(),
         "ciphertext should be a string"
     );
-    assert_eq!(parsed_data["ciphertext"], "encrypted_content_here");
+    assert_eq!(parsed_data["ciphertext"], json!("encrypted_content_here"));
 
     assert!(
         parsed_data.get("nonce").is_some(),
         "Should have 'nonce' field"
     );
-    assert!(parsed_data["nonce"].is_string(), "nonce should be a string");
-    assert_eq!(parsed_data["nonce"], "random_nonce_value");
+    assert!(parsed_data["nonce"].is_str(), "nonce should be a string");
+    assert_eq!(parsed_data["nonce"], json!("random_nonce_value"));
 }
 
 #[test]
@@ -497,20 +482,17 @@ fn test_client_event_accepts_string() {
 
     // Assert event and channel fields exist and have correct values
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "client-typing");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("client-typing"));
 
     assert!(json.get("channel").is_some(), "Should have 'channel' field");
-    assert!(
-        json["channel"].is_string(),
-        "Channel field should be a string"
-    );
-    assert_eq!(json["channel"], "private-channel");
+    assert!(json["channel"].is_str(), "Channel field should be a string");
+    assert_eq!(json["channel"], json!("private-channel"));
 
     // Assert data field exists and is a string
     assert!(json.get("data").is_some(), "Should have 'data' field");
-    assert!(json["data"].is_string(), "Data should be a string");
-    assert_eq!(json["data"], "user is typing...");
+    assert!(json["data"].is_str(), "Data should be a string");
+    assert_eq!(json["data"], json!("user is typing..."));
 }
 
 #[test]
@@ -530,15 +512,12 @@ fn test_client_event_accepts_json() {
 
     // Assert event and channel fields exist and have correct values
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "client-typing");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("client-typing"));
 
     assert!(json.get("channel").is_some(), "Should have 'channel' field");
-    assert!(
-        json["channel"].is_string(),
-        "Channel field should be a string"
-    );
-    assert_eq!(json["channel"], "private-channel");
+    assert!(json["channel"].is_str(), "Channel field should be a string");
+    assert_eq!(json["channel"], json!("private-channel"));
 
     // Assert data field exists and is an object
     assert!(json.get("data").is_some(), "Should have 'data' field");
@@ -549,18 +528,15 @@ fn test_client_event_accepts_json() {
         json["data"].get("user").is_some(),
         "Should have 'user' field in data"
     );
-    assert!(json["data"]["user"].is_string(), "User should be a string");
-    assert_eq!(json["data"]["user"], "alice");
+    assert!(json["data"]["user"].is_str(), "User should be a string");
+    assert_eq!(json["data"]["user"], json!("alice"));
 
     assert!(
         json["data"].get("status").is_some(),
         "Should have 'status' field in data"
     );
-    assert!(
-        json["data"]["status"].is_string(),
-        "Status should be a string"
-    );
-    assert_eq!(json["data"]["status"], "typing");
+    assert!(json["data"]["status"].is_str(), "Status should be a string");
+    assert_eq!(json["data"]["status"], json!("typing"));
 }
 
 #[test]
@@ -571,21 +547,18 @@ fn test_cache_miss_event_format() {
 
     // Assert event field exists and has correct value
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "pusher:cache_miss");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("pusher:cache_miss"));
 
     // Assert channel field exists and has correct value
     assert!(json.get("channel").is_some(), "Should have 'channel' field");
-    assert!(
-        json["channel"].is_string(),
-        "Channel field should be a string"
-    );
-    assert_eq!(json["channel"], "cache-channel");
+    assert!(json["channel"].is_str(), "Channel field should be a string");
+    assert_eq!(json["channel"], json!("cache-channel"));
 
     // Assert data field exists and is a string containing empty JSON object
     assert!(json.get("data").is_some(), "Should have 'data' field");
     assert!(
-        json["data"].is_string(),
+        json["data"].is_str(),
         "Data field should be a String (empty JSON object)"
     );
 
@@ -595,7 +568,7 @@ fn test_cache_miss_event_format() {
 
     // Also verify it parses to an empty JSON object
     let parsed_data: Value =
-        serde_json::from_str(data_str).expect("Data string should contain valid JSON");
+        sonic_rs::from_str(data_str).expect("Data string should contain valid JSON");
     assert!(parsed_data.is_object(), "Parsed data should be an object");
     assert_eq!(
         parsed_data,
@@ -621,7 +594,7 @@ fn test_channel_info_minimal_format() {
         response["occupied"].is_boolean(),
         "'occupied' should be a boolean"
     );
-    assert_eq!(response["occupied"], false);
+    assert_eq!(response["occupied"], json!(false));
 
     // Assert no optional fields are present
     assert!(
@@ -659,7 +632,7 @@ fn test_channel_info_with_subscription_count() {
         response["occupied"].is_boolean(),
         "'occupied' should be a boolean"
     );
-    assert_eq!(response["occupied"], true);
+    assert_eq!(response["occupied"], json!(true));
 
     // Assert subscription_count field
     assert!(
@@ -670,7 +643,7 @@ fn test_channel_info_with_subscription_count() {
         response["subscription_count"].is_u64(),
         "'subscription_count' should be a number"
     );
-    assert_eq!(response["subscription_count"], 42);
+    assert_eq!(response["subscription_count"], json!(42));
 
     // Assert other optional fields are not present
     assert!(
@@ -692,9 +665,9 @@ fn test_channel_info_with_user_count() {
     assert!(response.is_object(), "Response should be an object");
 
     // Assert all fields
-    assert_eq!(response["occupied"], true);
-    assert_eq!(response["subscription_count"], 10);
-    assert_eq!(response["user_count"], 8);
+    assert_eq!(response["occupied"], json!(true));
+    assert_eq!(response["subscription_count"], json!(10));
+    assert_eq!(response["user_count"], json!(8));
 
     // Verify types
     assert!(
@@ -732,8 +705,8 @@ fn test_channel_info_with_cache_data() {
     assert!(response.is_object(), "Response should be an object");
 
     // Assert basic fields
-    assert_eq!(response["occupied"], true);
-    assert_eq!(response["subscription_count"], 5);
+    assert_eq!(response["occupied"], json!(true));
+    assert_eq!(response["subscription_count"], json!(5));
 
     // Assert cache field exists and has correct structure
     assert!(response.get("cache").is_some(), "Should have 'cache' field");
@@ -744,27 +717,27 @@ fn test_channel_info_with_cache_data() {
         .as_object()
         .expect("Cache should be an object");
     assert!(
-        cache_obj.contains_key("data"),
+        cache_obj.contains_key(&"data"),
         "Cache should have 'data' field"
     );
     assert!(
-        cache_obj.contains_key("ttl"),
+        cache_obj.contains_key(&"ttl"),
         "Cache should have 'ttl' field"
     );
 
     // Verify cache data field
     assert!(
-        response["cache"]["data"].is_string(),
+        response["cache"]["data"].is_str(),
         "Cache data should be a string"
     );
-    assert_eq!(response["cache"]["data"], cache_content);
+    assert_eq!(response["cache"]["data"], json!(cache_content));
 
     // Verify cache ttl field
     assert!(
         response["cache"]["ttl"].is_u64(),
         "Cache ttl should be a number"
     );
-    assert_eq!(response["cache"]["ttl"], 3600);
+    assert_eq!(response["cache"]["ttl"], json!(3600));
 
     // Assert user_count is not present
     assert!(
@@ -792,14 +765,14 @@ fn test_channel_info_full_format() {
     assert!(response.is_object(), "Response should be an object");
 
     // Assert all fields are present and have correct values
-    assert_eq!(response["occupied"], true);
-    assert_eq!(response["subscription_count"], 100);
-    assert_eq!(response["user_count"], 75);
+    assert_eq!(response["occupied"], json!(true));
+    assert_eq!(response["subscription_count"], json!(100));
+    assert_eq!(response["user_count"], json!(75));
 
     // Assert cache structure
     assert!(response["cache"].is_object(), "'cache' should be an object");
-    assert_eq!(response["cache"]["data"], cache_content);
-    assert_eq!(response["cache"]["ttl"], 7200);
+    assert_eq!(response["cache"]["data"], json!(cache_content));
+    assert_eq!(response["cache"]["ttl"], json!(7200));
 
     // Verify exact field count
     let obj = response.as_object().expect("Response should be an object");
@@ -823,7 +796,7 @@ fn test_channel_info_full_format() {
         "'user_count' should be a number"
     );
     assert!(
-        response["cache"]["data"].is_string(),
+        response["cache"]["data"].is_str(),
         "Cache data should be a string"
     );
     assert!(
@@ -841,9 +814,9 @@ fn test_channel_info_zero_values() {
     assert!(response.is_object(), "Response should be an object");
 
     // Assert all fields with zero values are present
-    assert_eq!(response["occupied"], false);
-    assert_eq!(response["subscription_count"], 0);
-    assert_eq!(response["user_count"], 0);
+    assert_eq!(response["occupied"], json!(false));
+    assert_eq!(response["subscription_count"], json!(0));
+    assert_eq!(response["user_count"], json!(0));
 
     // Verify that zero counts are included (not filtered)
     assert!(
@@ -866,8 +839,8 @@ fn test_watchlist_events_format() {
 
     // Assert event field exists and has correct value
     assert!(json.get("event").is_some(), "Should have 'event' field");
-    assert!(json["event"].is_string(), "Event field should be a string");
-    assert_eq!(json["event"], "online");
+    assert!(json["event"].is_str(), "Event field should be a string");
+    assert_eq!(json["event"], json!("online"));
 
     // Assert channel field is omitted for watchlist events (due to skip_serializing_if)
     assert!(
@@ -888,5 +861,5 @@ fn test_watchlist_events_format() {
         json["data"]["user_ids"].is_array(),
         "user_ids should be an array"
     );
-    assert_eq!(json["data"]["user_ids"], json!(["user1", "user2"]));
+    assert_eq!(json["data"]["user_ids"], json!(vec!["user1", "user2"]));
 }

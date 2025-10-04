@@ -9,7 +9,7 @@ use crate::presence::PresenceManager;
 use crate::protocol::messages::{MessageData, PresenceData, PusherMessage};
 use crate::utils::is_cache_channel;
 use crate::websocket::SocketId;
-use serde_json::Value;
+use sonic_rs::Value;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ impl ConnectionHandler {
         let temp_message = PusherMessage {
             channel: Some(request.channel.clone()),
             event: Some("pusher:subscribe".to_string()),
-            data: Some(MessageData::Json(serde_json::json!({
+            data: Some(MessageData::Json(sonic_rs::json!({
                 "channel": request.channel,
                 "auth": request.auth,
                 "channel_data": request.channel_data

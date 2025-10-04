@@ -7,7 +7,7 @@ use crate::queue::manager::QueueManager;
 use crate::webhook::sender::WebhookSender;
 use crate::webhook::types::{JobData, JobPayload};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use sonic_rs::{Value, json};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -459,8 +459,8 @@ mod tests {
             debug: false,
         };
 
-        let serialized = serde_json::to_string(&config).unwrap();
-        let deserialized: WebhookConfig = serde_json::from_str(&serialized).unwrap();
+        let serialized = sonic_rs::to_string(&config).unwrap();
+        let deserialized: WebhookConfig = sonic_rs::from_str(&serialized).unwrap();
 
         assert_eq!(config.enabled, deserialized.enabled);
         assert_eq!(config.batching.enabled, deserialized.batching.enabled);

@@ -1,7 +1,7 @@
 // src/webhook/types.rs
 // No SdkConfig needed here, it's for AWS SDK interaction in lambda_sender.
 use serde::{Deserialize, Serialize};
-use serde_json::Value; // Keep this for Value type
+use sonic_rs::Value; // Keep this for Value type
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Webhook {
