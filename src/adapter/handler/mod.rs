@@ -292,7 +292,14 @@ impl ConnectionHandler {
         FragmentCollectorRead<tokio::io::ReadHalf<TokioIo<Upgraded>>>,
         WebSocketWrite<WriteHalf<TokioIo<Upgraded>>>,
     )> {
-        let ws = fut.await.map_err(Error::WebSocket)?;
+        // Perform upgrade. By default fastwebsockets enables auto_pong which
+        // automatically responds to Ping control frames and suppresses them
+        // from the consumer (returning Ok(None) for those frames). We need to
+        // handle Ping frames ourselves so we can update activity timeouts and
+        // drive our own application-level ping/pong semantics. Therefore we
+        // disable auto_pong before splitting so Ping frames are surfaced.
+        let mut ws = fut.await.map_err(Error::WebSocket)?;
+        ws.set_auto_pong(false);
         let (rx, tx) = ws.split(tokio::io::split);
         Ok((FragmentCollectorRead::new(rx), tx))
     }
