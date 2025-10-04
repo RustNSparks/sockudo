@@ -243,13 +243,7 @@ impl ConnectionHandler {
             // Reset connection status to Active when we receive a ping (client is alive)
             ws.state.status = crate::websocket::ConnectionStatus::Active;
             // Send low-level Pong frame in response because the auto response is disabled to allow custom handling
-            if let Err(e) = ws.send_frame(fastwebsockets::Frame::pong(Vec::<u8>::new().into())) {
-                tracing::debug!(
-                    "Failed to send low-level Pong frame for {}: {}",
-                    socket_id,
-                    e
-                );
-            }
+            ws.send_frame(fastwebsockets::Frame::pong(Vec::new().into()))?;
         }
 
         Ok(())
