@@ -343,7 +343,8 @@ impl ConnectionHandler {
                     }
                 }
                 OpCode::Ping => {
-                    self.handle_ping_frame(socket_id, app_config).await?;
+                    self.handle_ping_frame(socket_id, app_config, frame.payload)
+                        .await?;
                 }
                 _ => {
                     warn!("Unsupported opcode from {}: {:?}", socket_id, frame.opcode);

@@ -3,6 +3,7 @@ use crate::error::Result;
 use crate::protocol::constants::PONG_TIMEOUT;
 use crate::protocol::messages::PusherMessage;
 use crate::websocket::SocketId;
+use fastwebsockets::Payload;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{debug, warn};
@@ -232,6 +233,7 @@ impl ConnectionHandler {
         &self,
         socket_id: &SocketId,
         app_config: &crate::app::config::App,
+        payload: Payload<'static>,
     ) -> Result<()> {
         // Update activity and send pong
         self.update_activity_timeout(&app_config.id, socket_id)
@@ -243,7 +245,7 @@ impl ConnectionHandler {
             // Reset connection status to Active when we receive a ping (client is alive)
             ws.state.status = crate::websocket::ConnectionStatus::Active;
             // Send low-level Pong frame in response because the auto response is disabled to allow custom handling
-            ws.send_frame(fastwebsockets::Frame::pong(Vec::new().into()))?;
+            ws.send_frame(fastwebsockets::Frame::pong(payload))?;
         }
 
         Ok(())
