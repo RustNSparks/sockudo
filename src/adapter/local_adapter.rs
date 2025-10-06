@@ -147,7 +147,7 @@ impl ConnectionManager for LocalAdapter {
         socket_id: SocketId,
         socket: WebSocketWrite<WriteHalf<TokioIo<Upgraded>>>,
         app_id: &str,
-        app_manager: &Arc<dyn AppManager + Send + Sync>,
+        app_manager: Arc<dyn AppManager + Send + Sync>,
     ) -> Result<()> {
         let namespace = self.get_or_create_namespace(app_id).await;
         namespace.add_socket(socket_id, socket, app_manager).await?;

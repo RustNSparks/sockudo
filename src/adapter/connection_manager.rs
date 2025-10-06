@@ -49,7 +49,7 @@ pub trait ConnectionManager: Send + Sync {
         socket_id: SocketId,
         socket: WebSocketWrite<WriteHalf<TokioIo<Upgraded>>>,
         app_id: &str,
-        app_manager: &Arc<dyn AppManager + Send + Sync>,
+        app_manager: Arc<dyn AppManager + Send + Sync>,
     ) -> Result<()>;
 
     async fn get_connection(&mut self, socket_id: &SocketId, app_id: &str) -> Option<WebSocketRef>;

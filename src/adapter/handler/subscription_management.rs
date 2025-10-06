@@ -11,6 +11,7 @@ use crate::utils::is_cache_channel;
 use crate::websocket::SocketId;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct SubscriptionResult {
@@ -230,7 +231,7 @@ impl ConnectionHandler {
         if let Some(ref presence_member) = subscription_result.member {
             // Use centralized presence member addition logic (handles both webhook and broadcast)
             PresenceManager::handle_member_added(
-                &self.connection_manager,
+                Arc::clone(&self.connection_manager),
                 self.webhook_integration.as_ref(),
                 app_config,
                 &request.channel,

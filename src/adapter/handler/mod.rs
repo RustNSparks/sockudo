@@ -256,7 +256,7 @@ impl ConnectionHandler {
                     socket_id.clone(),
                     socket_tx,
                     &app_config.id,
-                    &self.app_manager,
+                    Arc::clone(&self.app_manager),
                 )
                 .await?;
         } // Lock released - atomic operation complete

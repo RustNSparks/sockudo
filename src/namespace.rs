@@ -42,7 +42,7 @@ impl Namespace {
         &self,
         socket_id: SocketId,
         socket_writer: WebSocketWrite<WriteHalf<TokioIo<Upgraded>>>,
-        app_manager: &Arc<dyn AppManager + Send + Sync>,
+        app_manager: Arc<dyn AppManager + Send + Sync>,
     ) -> Result<WebSocketRef> {
         // Fetch the application configuration first
         let app_config = match app_manager.find_by_id(&self.app_id).await {

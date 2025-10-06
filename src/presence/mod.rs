@@ -17,7 +17,7 @@ impl PresenceManager {
     /// Handles presence member addition including both webhook and broadcast
     /// Only sends events if this is the user's FIRST connection to the presence channel
     pub async fn handle_member_added(
-        connection_manager: &Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
+        connection_manager: Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
         webhook_integration: Option<&Arc<WebhookIntegration>>,
         app_config: &App,
         channel: &str,
@@ -32,7 +32,7 @@ impl PresenceManager {
 
         // Check if user already had connections in this presence channel (excluding current socket)
         let had_other_connections = Self::user_has_other_connections_in_presence_channel(
-            connection_manager,
+            Arc::clone(&connection_manager),
             &app_config.id,
             channel,
             user_id,
@@ -61,7 +61,7 @@ impl PresenceManager {
                 user_info.cloned(),
             );
             Self::broadcast_to_channel(
-                connection_manager,
+                Arc::clone(&connection_manager),
                 &app_config.id,
                 channel,
                 member_added_msg,
@@ -82,8 +82,10 @@ impl PresenceManager {
 
         // Always broadcast presence join to all nodes for cluster replication (for every connection)
         if let Some(excluding_socket) = excluding_socket
-            && let Some(horizontal_adapter) =
-                connection_manager.lock().await.as_horizontal_adapter()
+            && let Some(horizontal_adapter) = Arc::clone(&connection_manager)
+                .lock()
+                .await
+                .as_horizontal_adapter()
         {
             horizontal_adapter
                 .broadcast_presence_join(
@@ -122,7 +124,7 @@ impl PresenceManager {
 
         // Check if user has other connections in this presence channel
         let has_other_connections = Self::user_has_other_connections_in_presence_channel(
-            connection_manager,
+            Arc::clone(connection_manager),
             &app_config.id,
             channel,
             user_id,
@@ -148,7 +150,7 @@ impl PresenceManager {
             let member_removed_msg =
                 PusherMessage::member_removed(channel.to_string(), user_id.to_string());
             Self::broadcast_to_channel(
-                connection_manager,
+                Arc::clone(connection_manager),
                 &app_config.id,
                 channel,
                 member_removed_msg,
@@ -194,7 +196,7 @@ impl PresenceManager {
     /// Uses the same logic as the original working implementation:
     /// Get all user's sockets and check if any are still subscribed to this channel (excluding specified socket)
     async fn user_has_other_connections_in_presence_channel(
-        connection_manager: &Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
+        connection_manager: Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
         app_id: &str,
         channel: &str,
         user_id: &str,
@@ -213,7 +215,7 @@ impl PresenceManager {
 
     /// Broadcast a message to all clients in a channel, optionally excluding one socket
     async fn broadcast_to_channel(
-        connection_manager: &Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
+        connection_manager: Arc<Mutex<dyn ConnectionManager + Send + Sync>>,
         app_id: &str,
         channel: &str,
         message: PusherMessage,

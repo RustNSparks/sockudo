@@ -357,7 +357,7 @@ impl sockudo::adapter::ConnectionManager for FailingAdapter {
             tokio::io::WriteHalf<hyper_util::rt::TokioIo<hyper::upgrade::Upgraded>>,
         >,
         _app_id: &str,
-        _app_manager: &Arc<dyn sockudo::app::manager::AppManager + Send + Sync>,
+        _app_manager: Arc<dyn sockudo::app::manager::AppManager + Send + Sync>,
     ) -> sockudo::error::Result<()> {
         Ok(())
     }

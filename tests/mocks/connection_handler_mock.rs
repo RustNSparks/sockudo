@@ -48,7 +48,7 @@ impl ConnectionManager for MockAdapter {
         _socket_id: SocketId,
         _socket: WebSocketWrite<WriteHalf<TokioIo<Upgraded>>>,
         _app_id: &str,
-        _app_manager: &Arc<dyn AppManager + Send + Sync>,
+        _app_manager: Arc<dyn AppManager + Send + Sync>,
     ) -> Result<()> {
         Ok(())
     }
