@@ -10,8 +10,11 @@ use std::sync::Arc;
 
 pub mod manager;
 pub mod memory_queue_manager;
-pub mod redis_cluster_queue_manager; // Add this line
+#[cfg(feature = "redis-cluster")]
+pub mod redis_cluster_queue_manager;
+#[cfg(feature = "redis")]
 pub mod redis_queue_manager;
+#[cfg(feature = "sqs")]
 pub mod sqs_queue_manager;
 
 impl JobData where JobData: Serialize + DeserializeOwned {}

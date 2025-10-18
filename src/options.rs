@@ -1,12 +1,13 @@
+#[cfg(feature = "nats")]
+use crate::adapter::nats_adapter::DEFAULT_PREFIX as NATS_DEFAULT_PREFIX;
+#[cfg(feature = "redis-cluster")]
+use crate::adapter::redis_cluster_adapter::DEFAULT_PREFIX as REDIS_CLUSTER_DEFAULT_PREFIX;
 use crate::app::config::App;
 use crate::utils::{parse_bool_env, parse_env, parse_env_optional};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
 use tracing::{info, warn};
-// Assuming DEFAULT_PREFIX is pub const in nats_adapter or imported appropriately
-use crate::adapter::nats_adapter::DEFAULT_PREFIX as NATS_DEFAULT_PREFIX;
-use crate::adapter::redis_cluster_adapter::DEFAULT_PREFIX as REDIS_CLUSTER_DEFAULT_PREFIX;
 
 // Custom deserializer for octal permission mode (string format only, like chmod)
 fn deserialize_octal_permission<'de, D>(deserializer: D) -> Result<u32, D::Error>
@@ -705,7 +706,10 @@ impl Default for RedisClusterAdapterConfig {
     fn default() -> Self {
         Self {
             nodes: vec![],
+            #[cfg(feature = "redis-cluster")]
             prefix: REDIS_CLUSTER_DEFAULT_PREFIX.to_string(),
+            #[cfg(not(feature = "redis-cluster"))]
+            prefix: "sockudo_adapter:".to_string(),
             request_timeout_ms: 5000,
             use_connection_manager: true,
         }
@@ -716,7 +720,10 @@ impl Default for NatsAdapterConfig {
     fn default() -> Self {
         Self {
             servers: vec!["nats://localhost:4222".to_string()],
+            #[cfg(feature = "nats")]
             prefix: NATS_DEFAULT_PREFIX.to_string(),
+            #[cfg(not(feature = "nats"))]
+            prefix: "sockudo_adapter:".to_string(),
             request_timeout_ms: 5000,
             username: None,
             password: None,

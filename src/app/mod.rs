@@ -1,8 +1,11 @@
 pub mod auth;
 pub mod config;
+#[cfg(feature = "dynamodb")]
 pub mod dynamodb_app_manager;
 pub mod factory;
 pub mod manager;
 pub mod memory_app_manager;
+#[cfg(feature = "mysql")]
 pub mod mysql_app_manager;
+#[cfg(feature = "postgres")]
 pub mod pg_app_manager;

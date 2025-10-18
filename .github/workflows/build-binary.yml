@@ -93,7 +93,7 @@ jobs:
       - name: Build release binary
         shell: bash
         run: |
-          cargo build --release --target ${{ inputs.target_triple }}
+          cargo build --release --features full --target ${{ inputs.target_triple }}
 
       - name: Prepare binary and create archive
         id: prepare_artifact

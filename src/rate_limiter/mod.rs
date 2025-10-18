@@ -2,7 +2,9 @@
 pub mod factory;
 pub mod memory_limiter;
 pub mod middleware;
+#[cfg(feature = "redis-cluster")]
 pub mod redis_cluster_limiter;
+#[cfg(feature = "redis")]
 pub mod redis_limiter;
 
 use crate::error::Result;

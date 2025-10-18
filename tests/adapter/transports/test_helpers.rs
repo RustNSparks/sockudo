@@ -1,6 +1,10 @@
 use sockudo::adapter::horizontal_adapter::{BroadcastMessage, RequestBody, ResponseBody};
+#[cfg(feature = "redis")]
 use sockudo::adapter::transports::RedisAdapterConfig;
-use sockudo::options::{NatsAdapterConfig, RedisClusterAdapterConfig};
+#[cfg(feature = "nats")]
+use sockudo::options::NatsAdapterConfig;
+#[cfg(feature = "redis-cluster")]
+use sockudo::options::RedisClusterAdapterConfig;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -8,6 +12,7 @@ use tokio::time::timeout;
 use uuid::Uuid;
 
 /// Get Redis configuration for single instance testing (localhost:16379)
+#[cfg(feature = "redis")]
 pub fn get_redis_config() -> RedisAdapterConfig {
     RedisAdapterConfig {
         url: "redis://127.0.0.1:16379/".to_string(),
@@ -18,6 +23,7 @@ pub fn get_redis_config() -> RedisAdapterConfig {
 }
 
 /// Get Redis Cluster configuration for testing (ports 7001-7003)
+#[cfg(feature = "redis-cluster")]
 pub fn get_redis_cluster_config() -> RedisClusterAdapterConfig {
     RedisClusterAdapterConfig {
         nodes: vec![
@@ -31,7 +37,8 @@ pub fn get_redis_cluster_config() -> RedisClusterAdapterConfig {
     }
 }
 
-/// Get NATS configuration for testing (ports 14222-14223)  
+/// Get NATS configuration for testing (ports 14222-14223)
+#[cfg(feature = "nats")]
 pub fn get_nats_config() -> NatsAdapterConfig {
     NatsAdapterConfig {
         servers: vec![

@@ -1,17 +1,25 @@
 use sockudo::adapter::ConnectionManager;
 use sockudo::adapter::horizontal_adapter::RequestType;
 use sockudo::adapter::horizontal_adapter_base::HorizontalAdapterBase;
-use sockudo::adapter::transports::{NatsTransport, RedisTransport};
 use sockudo::error::Result;
 use sockudo::protocol::messages::{MessageData, PusherMessage};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(feature = "nats")]
+use sockudo::adapter::transports::NatsTransport;
+#[cfg(feature = "redis")]
+use sockudo::adapter::transports::RedisTransport;
+
 // Import test helpers from the transports tests
-use super::transports::test_helpers::{get_nats_config, get_redis_config};
+#[cfg(feature = "nats")]
+use super::transports::test_helpers::get_nats_config;
+#[cfg(feature = "redis")]
+use super::transports::test_helpers::get_redis_config;
 
 #[tokio::test]
+#[cfg(feature = "redis")]
 async fn test_horizontal_adapter_with_redis_transport() -> Result<()> {
     let config = get_redis_config();
     let adapter = HorizontalAdapterBase::<RedisTransport>::new(config.clone()).await?;
@@ -38,6 +46,7 @@ async fn test_horizontal_adapter_with_redis_transport() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg(feature = "nats")]
 async fn test_horizontal_adapter_with_nats_transport() -> Result<()> {
     let config = get_nats_config();
     let adapter = HorizontalAdapterBase::<NatsTransport>::new(config.clone()).await?;
@@ -64,6 +73,7 @@ async fn test_horizontal_adapter_with_nats_transport() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg(feature = "redis")]
 async fn test_cross_node_broadcast_redis() -> Result<()> {
     let config1 = get_redis_config();
     let config2 = get_redis_config();
@@ -106,6 +116,7 @@ async fn test_cross_node_broadcast_redis() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg(feature = "nats")]
 async fn test_cross_node_broadcast_nats() -> Result<()> {
     let config1 = get_nats_config();
     let config2 = get_nats_config();
@@ -150,6 +161,7 @@ async fn test_cross_node_broadcast_nats() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg(feature = "redis")]
 async fn test_distributed_socket_count_redis() -> Result<()> {
     let config1 = get_redis_config();
     let config2 = get_redis_config();
@@ -214,6 +226,7 @@ async fn test_distributed_socket_count_redis() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg(feature = "nats")]
 async fn test_distributed_socket_count_nats() -> Result<()> {
     let config1 = get_nats_config();
     let config2 = get_nats_config();
@@ -275,6 +288,7 @@ async fn test_distributed_socket_count_nats() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg(feature = "redis")]
 async fn test_cross_node_request_aggregation_redis() -> Result<()> {
     let config1 = get_redis_config();
     let config2 = get_redis_config();
@@ -312,6 +326,7 @@ async fn test_cross_node_request_aggregation_redis() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg(feature = "nats")]
 async fn test_cross_node_request_aggregation_nats() -> Result<()> {
     let config1 = get_nats_config();
     let config2 = get_nats_config();
@@ -349,6 +364,7 @@ async fn test_cross_node_request_aggregation_nats() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg(all(feature = "redis", feature = "nats"))]
 async fn test_redis_vs_nats_consistency() -> Result<()> {
     // Test that Redis and NATS transports behave consistently
     let redis_config = get_redis_config();
@@ -383,6 +399,7 @@ async fn test_redis_vs_nats_consistency() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg(feature = "redis")]
 async fn test_transport_failure_isolation_redis() -> Result<()> {
     let config = get_redis_config();
     let adapter = HorizontalAdapterBase::<RedisTransport>::new(config).await?;
@@ -408,6 +425,7 @@ async fn test_transport_failure_isolation_redis() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg(feature = "nats")]
 async fn test_transport_failure_isolation_nats() -> Result<()> {
     let config = get_nats_config();
     let adapter = HorizontalAdapterBase::<NatsTransport>::new(config).await?;
@@ -439,6 +457,7 @@ async fn test_transport_failure_isolation_nats() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg(feature = "redis")]
 async fn test_concurrent_cross_node_operations_redis() -> Result<()> {
     let config1 = get_redis_config();
     let config2 = get_redis_config();
@@ -514,6 +533,7 @@ async fn test_concurrent_cross_node_operations_redis() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg(feature = "nats")]
 async fn test_concurrent_cross_node_operations_nats() -> Result<()> {
     let config1 = get_nats_config();
     let config2 = get_nats_config();

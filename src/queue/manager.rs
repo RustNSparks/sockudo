@@ -5,17 +5,24 @@ use crate::error::Result;
 
 use crate::queue::QueueInterface;
 use crate::queue::memory_queue_manager::MemoryQueueManager;
-use crate::queue::redis_cluster_queue_manager::RedisClusterQueueManager; // Add this import
+#[cfg(feature = "redis-cluster")]
+use crate::queue::redis_cluster_queue_manager::RedisClusterQueueManager;
+#[cfg(feature = "redis")]
 use crate::queue::redis_queue_manager::RedisQueueManager;
 use crate::webhook::sender::JobProcessorFnAsync;
 use crate::webhook::types::JobData;
-use tracing::{debug, info};
+#[cfg(any(feature = "redis", feature = "redis-cluster"))]
+use tracing::debug;
+use tracing::info;
+#[cfg(all(not(feature = "redis"), not(feature = "redis-cluster")))]
+use tracing::warn;
 
 /// General Queue Manager interface wrapper
 pub struct QueueManagerFactory;
 
 impl QueueManagerFactory {
     /// Creates a queue manager instance based on the specified driver.
+    #[allow(unused_variables)]
     pub async fn create(
         driver: &str,
         redis_url: Option<&str>,
@@ -24,6 +31,7 @@ impl QueueManagerFactory {
     ) -> Result<Box<dyn QueueInterface>> {
         // Return Result to propagate errors
         match driver {
+            #[cfg(feature = "redis")]
             "redis" => {
                 let url = redis_url.unwrap_or("redis://127.0.0.1:6379/");
                 let prefix_str = prefix.unwrap_or("sockudo"); // Consider a more generic default or make it mandatory?
@@ -38,6 +46,7 @@ impl QueueManagerFactory {
                 // Note: Redis workers are started via process_queue, not here.
                 Ok(Box::new(manager))
             }
+            #[cfg(feature = "redis-cluster")]
             "redis-cluster" => {
                 // For cluster, redis_url should contain comma-separated cluster nodes
                 let nodes_str = redis_url.unwrap_or(
@@ -66,6 +75,24 @@ impl QueueManagerFactory {
                 // Start the single processing loop for the memory manager *after* creation.
                 // The user needs to call process_queue afterwards to register processors.
                 manager.start_processing(); // Start its background task here
+                Ok(Box::new(manager))
+            }
+            #[cfg(not(feature = "redis"))]
+            "redis" => {
+                warn!(
+                    "Redis queue manager requested but not compiled in. Falling back to memory queue."
+                );
+                let manager = MemoryQueueManager::new();
+                manager.start_processing();
+                Ok(Box::new(manager))
+            }
+            #[cfg(not(feature = "redis-cluster"))]
+            "redis-cluster" => {
+                warn!(
+                    "Redis Cluster queue manager requested but not compiled in. Falling back to memory queue."
+                );
+                let manager = MemoryQueueManager::new();
+                manager.start_processing();
                 Ok(Box::new(manager))
             }
             other => Err(crate::error::Error::Queue(format!(

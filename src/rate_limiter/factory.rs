@@ -4,11 +4,15 @@
 use crate::error::Result;
 use crate::rate_limiter::RateLimiter;
 use std::sync::Arc;
-use tracing::{error, info, warn};
+#[cfg(any(feature = "redis", feature = "redis-cluster"))]
+use tracing::error;
+use tracing::{info, warn};
 
 use crate::options::{CacheDriver, RateLimiterConfig, RedisConnection};
 use crate::rate_limiter::memory_limiter::MemoryRateLimiter;
+#[cfg(feature = "redis-cluster")]
 use crate::rate_limiter::redis_cluster_limiter::RedisClusterRateLimiter;
+#[cfg(feature = "redis")]
 use crate::rate_limiter::redis_limiter::RedisRateLimiter;
 
 pub struct RateLimiterFactory;
@@ -29,9 +33,11 @@ impl RateLimiterFactory {
         );
 
         match config.driver {
+            #[cfg(feature = "redis")]
             CacheDriver::Redis => {
                 Self::create_redis_limiter(config, global_redis_conn_details).await
             }
+            #[cfg(feature = "redis-cluster")]
             CacheDriver::RedisCluster => {
                 Self::create_redis_cluster_limiter(config, global_redis_conn_details).await
             }
@@ -43,9 +49,24 @@ impl RateLimiterFactory {
                     config.api_rate_limit.window_seconds,
                 )))
             }
+            #[cfg(not(feature = "redis"))]
+            CacheDriver::Redis => {
+                warn!(
+                    "Redis rate limiter requested but not compiled in. Falling back to memory limiter."
+                );
+                Self::create_memory_limiter(config)
+            }
+            #[cfg(not(feature = "redis-cluster"))]
+            CacheDriver::RedisCluster => {
+                warn!(
+                    "Redis Cluster rate limiter requested but not compiled in. Falling back to memory limiter."
+                );
+                Self::create_memory_limiter(config)
+            }
         }
     }
 
+    #[cfg(feature = "redis")]
     async fn create_redis_limiter(
         config: &RateLimiterConfig,
         global_redis_conn_details: &RedisConnection,
@@ -82,6 +103,7 @@ impl RateLimiterFactory {
         Ok(Arc::new(limiter))
     }
 
+    #[cfg(feature = "redis-cluster")]
     async fn create_redis_cluster_limiter(
         config: &RateLimiterConfig,
         global_redis_conn_details: &RedisConnection,

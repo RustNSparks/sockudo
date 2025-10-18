@@ -3,9 +3,11 @@
 // src/cache/factory.rs
 use crate::cache::manager::CacheManager;
 use crate::cache::memory_cache_manager::MemoryCacheManager; // Assuming MemoryCacheConfig is from options
+#[cfg(feature = "redis")]
 use crate::cache::redis_cache_manager::{
     RedisCacheConfig as StandaloneRedisCacheConfig, RedisCacheManager,
 };
+#[cfg(feature = "redis-cluster")]
 use crate::cache::redis_cluster_cache_manager::{
     RedisClusterCacheConfig, RedisClusterCacheManager,
 };
@@ -14,11 +16,14 @@ use crate::error::{Error, Result};
 use crate::options::{CacheConfig, CacheDriver, MemoryCacheOptions, RedisConnection};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{error, info};
+#[cfg(any(feature = "redis", feature = "redis-cluster"))]
+use tracing::error;
+use tracing::info;
 
 pub struct CacheManagerFactory;
 
 impl CacheManagerFactory {
+    #[allow(unused_variables)]
     pub async fn create(
         config: &CacheConfig,
         global_redis_conn_details: &RedisConnection,
@@ -30,6 +35,7 @@ impl CacheManagerFactory {
         );
 
         match config.driver {
+            #[cfg(feature = "redis")]
             CacheDriver::Redis => {
                 if config.redis.cluster_mode {
                     info!("{}", "Cache: Using Redis Cluster driver.".to_string());
@@ -81,6 +87,7 @@ impl CacheManagerFactory {
                     Ok(Arc::new(Mutex::new(manager)))
                 }
             }
+            #[cfg(feature = "redis-cluster")]
             CacheDriver::RedisCluster => {
                 info!(
                     "{}",
@@ -133,6 +140,25 @@ impl CacheManagerFactory {
                 Err(Error::Cache(
                     "Cache driver explicitly set to 'None'.".to_string(),
                 ))
+            }
+            #[cfg(not(feature = "redis"))]
+            CacheDriver::Redis => {
+                info!(
+                    "{}",
+                    "Redis cache manager requested but not compiled in. Falling back to memory cache."
+                );
+                let manager =
+                    MemoryCacheManager::new("default_mem_cache".to_string(), config.memory.clone());
+                Ok(Arc::new(Mutex::new(manager)))
+            }
+            #[cfg(not(feature = "redis-cluster"))]
+            CacheDriver::RedisCluster => {
+                info!(
+                    "Redis Cluster cache manager requested but not compiled in. Falling back to memory cache."
+                );
+                let manager =
+                    MemoryCacheManager::new("default_mem_cache".to_string(), config.memory.clone());
+                Ok(Arc::new(Mutex::new(manager)))
             }
         }
     }

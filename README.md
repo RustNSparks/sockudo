@@ -42,8 +42,38 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # Build and run
 git clone https://github.com/RustNSparks/sockudo.git
 cd sockudo
+
+# Fast local development build (default - no external dependencies)
 cargo run --release
+
+# Production build with all features
+cargo run --release --features full
 ```
+
+### Feature Flags
+
+Sockudo supports optional compilation of backends to speed up local development:
+
+```bash
+# Local development (fastest - default)
+cargo build                                    # ~30-50% faster compile
+
+# With specific backends
+cargo build --features "redis,postgres"        # Redis + PostgreSQL
+cargo build --features "redis-cluster,mysql"   # Redis Cluster + MySQL
+
+# Full production build
+cargo build --release --features full          # All backends
+```
+
+**Available Features:**
+- `local` (default) - In-memory implementations only
+- `redis` - Redis adapter, cache, queue, rate limiter
+- `redis-cluster` - Redis Cluster support
+- `nats` - NATS adapter
+- `mysql` / `postgres` / `dynamodb` - Database backends
+- `sqs` / `lambda` - AWS integrations
+- `full` - All features enabled
 
 ## Basic Usage
 

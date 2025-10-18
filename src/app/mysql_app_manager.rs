@@ -666,7 +666,6 @@ impl Clone for MySQLAppManager {
 mod tests {
     use super::*;
     use std::time::Duration;
-    use tokio::runtime::Runtime;
 
     // Helper to create a test app
     fn create_test_app(id: &str) -> App {
@@ -694,65 +693,79 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_mysql_app_manager() {
-        // To run these tests, you need a MySQL database available
-        // These tests are marked as ignored by default since they require a DB
+    async fn is_mysql_available() -> bool {
+        let config = DatabaseConnection {
+            username: "sockudo".to_string(),
+            password: "sockudo123".to_string(),
+            database: "sockudo".to_string(),
+            table_name: "applications".to_string(),
+            cache_ttl: 5,
+            port: 13306,
+            ..Default::default()
+        };
 
-        let rt = Runtime::new().unwrap();
-        rt.block_on(async {
-            // Setup test database with proper credentials for Docker MySQL dev environment
-            let config = DatabaseConnection {
-                username: "sockudo".to_string(),
-                password: "sockudo123".to_string(),
-                database: "sockudo".to_string(),
-                table_name: "applications".to_string(),
-                cache_ttl: 5, // Short TTL for testing
-                port: 13306,
-                ..Default::default()
-            };
+        MySQLAppManager::new(config).await.is_ok()
+    }
 
-            // Create manager
-            let manager = MySQLAppManager::new(config).await.unwrap();
+    #[tokio::test]
+    async fn test_mysql_app_manager() {
+        // Skip test if MySQL is not available
+        if !is_mysql_available().await {
+            eprintln!("Skipping test: MySQL not available");
+            return;
+        }
 
-            // Test registering an app
-            let test_app = create_test_app("test1");
-            manager.create_app(test_app.clone()).await.unwrap();
+        // Setup test database with proper credentials for Docker MySQL dev environment
+        let config = DatabaseConnection {
+            username: "sockudo".to_string(),
+            password: "sockudo123".to_string(),
+            database: "sockudo".to_string(),
+            table_name: "applications".to_string(),
+            cache_ttl: 5, // Short TTL for testing
+            port: 13306,
+            ..Default::default()
+        };
 
-            // Test getting an app
-            let app = manager.find_by_id("test1").await.unwrap().unwrap();
-            assert_eq!(app.id, "test1");
-            assert_eq!(app.key, "test1_key");
+        // Create manager
+        let manager = MySQLAppManager::new(config).await.unwrap();
 
-            // Test getting an app by key
-            let app = manager.find_by_key("test1_key").await.unwrap().unwrap();
-            assert_eq!(app.id, "test1");
+        // Test registering an app
+        let test_app = create_test_app("test1");
+        manager.create_app(test_app.clone()).await.unwrap();
 
-            // Test updating an app
-            let mut updated_app = test_app.clone();
-            updated_app.max_connections = 200;
-            manager.update_app(updated_app).await.unwrap();
+        // Test getting an app
+        let app = manager.find_by_id("test1").await.unwrap().unwrap();
+        assert_eq!(app.id, "test1");
+        assert_eq!(app.key, "test1_key");
 
-            let app = manager.find_by_id("test1").await.unwrap().unwrap();
-            assert_eq!(app.max_connections, 200);
+        // Test getting an app by key
+        let app = manager.find_by_key("test1_key").await.unwrap().unwrap();
+        assert_eq!(app.id, "test1");
 
-            // Test cache expiration
-            tokio::time::sleep(Duration::from_secs(6)).await;
+        // Test updating an app
+        let mut updated_app = test_app.clone();
+        updated_app.max_connections = 200;
+        manager.update_app(updated_app).await.unwrap();
 
-            // Add another app
-            let test_app2 = create_test_app("test2");
-            manager.create_app(test_app2).await.unwrap();
+        let app = manager.find_by_id("test1").await.unwrap().unwrap();
+        assert_eq!(app.max_connections, 200);
 
-            // Get all apps
-            let apps = manager.get_apps().await.unwrap();
-            assert_eq!(apps.len(), 2);
+        // Test cache expiration
+        tokio::time::sleep(Duration::from_secs(6)).await;
 
-            // Test removing an app
-            manager.delete_app("test1").await.unwrap();
-            assert!(manager.find_by_id("test1").await.unwrap().is_none());
+        // Add another app
+        let test_app2 = create_test_app("test2");
+        manager.create_app(test_app2).await.unwrap();
 
-            // Cleanup
-            manager.delete_app("test2").await.unwrap();
-        });
+        // Get all apps
+        let apps = manager.get_apps().await.unwrap();
+        assert_eq!(apps.len(), 2);
+
+        // Test removing an app
+        manager.delete_app("test1").await.unwrap();
+        assert!(manager.find_by_id("test1").await.unwrap().is_none());
+
+        // Cleanup
+        manager.delete_app("test2").await.unwrap();
     }
 }

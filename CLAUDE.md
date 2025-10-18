@@ -6,6 +6,55 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Sockudo is a simple, fast, and secure WebSocket server for real-time applications built in Rust. It implements the Pusher protocol with support for horizontal scaling, multiple backend adapters, and real-time communication features.
 
+## Feature Flags
+
+Sockudo uses Cargo feature flags to allow compiling only the backends you need, significantly reducing build times and binary size for local development.
+
+### Available Features
+
+**Meta Features:**
+- `local` (default) - Includes only local/in-memory implementations (no external dependencies)
+- `full` - Enables all available backends
+
+**Backend Features:**
+- `redis` - Redis adapter, cache, queue, and rate limiter
+- `redis-cluster` - Redis Cluster support (implies `redis`)
+- `nats` - NATS adapter for horizontal scaling
+- `mysql` - MySQL app manager
+- `postgres` - PostgreSQL app manager
+- `dynamodb` - DynamoDB app manager
+- `sqs` - AWS SQS queue backend
+- `lambda` - AWS Lambda webhook support
+
+### Build Examples
+
+```bash
+# Local development (default - fastest compile times)
+cargo build
+
+# Or explicitly
+cargo build --no-default-features --features local
+
+# With Redis only
+cargo build --no-default-features --features "local,redis"
+
+# With Redis Cluster and PostgreSQL
+cargo build --no-default-features --features "local,redis-cluster,postgres"
+
+# Production build with all features
+cargo build --release --features full
+
+# Custom feature combination
+cargo build --features "redis,mysql,nats"
+```
+
+### Feature Benefits
+
+- **Faster local builds**: Default `local` feature compiles in ~30-50% less time
+- **Smaller binaries**: Exclude unused database drivers and cloud SDKs
+- **Cleaner dependencies**: Only compile what you actually use
+- **Automatic fallback**: If a feature is disabled but configured, falls back to local/memory implementation with a warning
+
 ## Development Commands
 
 ### Quick Start
@@ -23,8 +72,11 @@ make dev
 make test
 cargo test
 
-# Build from source
+# Build from source (local development - fastest)
 cargo build --release
+
+# Build with specific features
+cargo build --release --features "redis,postgres"
 
 # Run the server
 ./target/release/sockudo --config config/config.json

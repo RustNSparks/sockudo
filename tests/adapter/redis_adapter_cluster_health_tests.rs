@@ -1,3 +1,5 @@
+#![cfg(feature = "redis")]
+
 use serde_json::json;
 use sockudo::adapter::ConnectionManager;
 use sockudo::adapter::connection_manager::HorizontalAdapterInterface;

@@ -84,8 +84,11 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, reload, util::Sub
 use crate::adapter::ConnectionHandler;
 use crate::adapter::ConnectionManager;
 use crate::adapter::local_adapter::LocalAdapter;
+#[cfg(feature = "nats")]
 use crate::adapter::nats_adapter::NatsAdapter;
+#[cfg(feature = "redis")]
 use crate::adapter::redis_adapter::RedisAdapter;
+#[cfg(feature = "redis-cluster")]
 use crate::adapter::redis_cluster_adapter::RedisClusterAdapter;
 use crate::app::auth::AuthValidator;
 // AppManager trait and concrete types
@@ -602,6 +605,7 @@ impl SockudoServer {
             let adapter_as_any: &mut dyn std::any::Any = connection_manager_guard.as_any_mut();
 
             match config.adapter.driver {
+                #[cfg(feature = "redis")]
                 AdapterDriver::Redis => {
                     if let Some(adapter_mut) = adapter_as_any.downcast_mut::<RedisAdapter>() {
                         adapter_mut
@@ -613,6 +617,7 @@ impl SockudoServer {
                         warn!("Failed to downcast to RedisAdapter for metrics setup");
                     }
                 }
+                #[cfg(feature = "nats")]
                 AdapterDriver::Nats => {
                     if let Some(adapter_mut) = adapter_as_any.downcast_mut::<NatsAdapter>() {
                         adapter_mut
@@ -624,6 +629,7 @@ impl SockudoServer {
                         warn!("Failed to downcast to NatsAdapter for metrics setup");
                     }
                 }
+                #[cfg(feature = "redis-cluster")]
                 AdapterDriver::RedisCluster => {
                     // Assuming RedisClusterAdapter also has a set_metrics method
                     if let Some(adapter_mut) = adapter_as_any.downcast_mut::<RedisClusterAdapter>()
@@ -644,6 +650,18 @@ impl SockudoServer {
                     } else {
                         warn!("Failed to downcast to LocalAdapter for metrics setup");
                     }
+                }
+                #[cfg(not(feature = "redis"))]
+                AdapterDriver::Redis => {
+                    warn!("Redis adapter requested but not compiled in");
+                }
+                #[cfg(not(feature = "nats"))]
+                AdapterDriver::Nats => {
+                    warn!("NATS adapter requested but not compiled in");
+                }
+                #[cfg(not(feature = "redis-cluster"))]
+                AdapterDriver::RedisCluster => {
+                    warn!("Redis Cluster adapter requested but not compiled in");
                 }
             }
         }

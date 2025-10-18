@@ -3,19 +3,25 @@ use tokio::sync::Mutex;
 // src/adapter/factory.rs
 use crate::adapter::ConnectionManager;
 use crate::adapter::local_adapter::LocalAdapter;
+#[cfg(feature = "nats")]
 use crate::adapter::nats_adapter::NatsAdapter;
+#[cfg(feature = "redis")]
 use crate::adapter::redis_adapter::{RedisAdapter, RedisAdapterOptions};
+#[cfg(feature = "redis-cluster")]
 use crate::adapter::redis_cluster_adapter::RedisClusterAdapter;
 use crate::error::Result;
 
-use crate::options::{
-    AdapterConfig, AdapterDriver, DatabaseConfig, NatsAdapterConfig, RedisClusterAdapterConfig,
-}; // Import AdapterDriver, RedisConnection
+#[cfg(feature = "nats")]
+use crate::options::NatsAdapterConfig;
+#[cfg(feature = "redis-cluster")]
+use crate::options::RedisClusterAdapterConfig; // Import AdapterDriver, RedisConnection
+use crate::options::{AdapterConfig, AdapterDriver, DatabaseConfig};
 use tracing::{info, warn};
 
 pub struct AdapterFactory;
 
 impl AdapterFactory {
+    #[allow(unused_variables)]
     pub async fn create(
         config: &AdapterConfig,
         db_config: &DatabaseConfig,
@@ -29,6 +35,7 @@ impl AdapterFactory {
         );
         match config.driver {
             // Match on the enum
+            #[cfg(feature = "redis")]
             AdapterDriver::Redis => {
                 let redis_url = config
                     .redis
@@ -67,6 +74,7 @@ impl AdapterFactory {
                     }
                 }
             }
+            #[cfg(feature = "redis-cluster")]
             AdapterDriver::RedisCluster => {
                 // Use nodes from the specific RedisClusterAdapterConfig if available, else from DatabaseConfig.redis
                 let nodes = if !config.cluster.nodes.is_empty() {
@@ -115,6 +123,7 @@ impl AdapterFactory {
                     }
                 }
             }
+            #[cfg(feature = "nats")]
             AdapterDriver::Nats => {
                 let nats_cfg = NatsAdapterConfig {
                     // Directly use the NatsAdapterConfig from options
@@ -151,6 +160,35 @@ impl AdapterFactory {
             AdapterDriver::Local => {
                 // Handle unknown as Local or make it an error
                 info!("{}", "Using local adapter.".to_string());
+                Ok(Arc::new(Mutex::new(
+                    LocalAdapter::new_with_buffer_multiplier(config.buffer_multiplier_per_cpu),
+                )))
+            }
+            #[cfg(not(feature = "redis"))]
+            AdapterDriver::Redis => {
+                warn!(
+                    "{}",
+                    "Redis adapter requested but not compiled in. Falling back to local adapter."
+                        .to_string()
+                );
+                Ok(Arc::new(Mutex::new(
+                    LocalAdapter::new_with_buffer_multiplier(config.buffer_multiplier_per_cpu),
+                )))
+            }
+            #[cfg(not(feature = "redis-cluster"))]
+            AdapterDriver::RedisCluster => {
+                warn!("{}", "Redis Cluster adapter requested but not compiled in. Falling back to local adapter.".to_string());
+                Ok(Arc::new(Mutex::new(
+                    LocalAdapter::new_with_buffer_multiplier(config.buffer_multiplier_per_cpu),
+                )))
+            }
+            #[cfg(not(feature = "nats"))]
+            AdapterDriver::Nats => {
+                warn!(
+                    "{}",
+                    "NATS adapter requested but not compiled in. Falling back to local adapter."
+                        .to_string()
+                );
                 Ok(Arc::new(Mutex::new(
                     LocalAdapter::new_with_buffer_multiplier(config.buffer_multiplier_per_cpu),
                 )))

@@ -1,10 +1,13 @@
 // src/app/factory.rs
+#[cfg(feature = "dynamodb")]
 use crate::app::dynamodb_app_manager::{DynamoDbAppManager, DynamoDbConfig};
 use crate::app::manager::AppManager;
 use crate::app::memory_app_manager::MemoryAppManager;
+#[cfg(feature = "mysql")]
 use crate::app::mysql_app_manager::MySQLAppManager;
 use crate::error::Result;
 
+#[cfg(feature = "postgres")]
 use crate::app::pg_app_manager::PgSQLAppManager;
 use crate::options::{AppManagerConfig, AppManagerDriver, DatabaseConfig}; // Import AppManagerDriver
 use std::sync::Arc;
@@ -13,6 +16,7 @@ use tracing::{info, warn};
 pub struct AppManagerFactory;
 
 impl AppManagerFactory {
+    #[allow(unused_variables)]
     pub async fn create(
         config: &AppManagerConfig,
         db_config: &DatabaseConfig,
@@ -23,6 +27,7 @@ impl AppManagerFactory {
         );
         match config.driver {
             // Match on the enum
+            #[cfg(feature = "mysql")]
             AppManagerDriver::Mysql => {
                 let mysql_db_config = db_config.mysql.clone();
                 match MySQLAppManager::new(mysql_db_config).await {
@@ -39,6 +44,7 @@ impl AppManagerFactory {
                     }
                 }
             }
+            #[cfg(feature = "dynamodb")]
             AppManagerDriver::Dynamodb => {
                 let dynamo_settings = &db_config.dynamodb; // Use the new dedicated settings
 
@@ -65,6 +71,7 @@ impl AppManagerFactory {
                     }
                 }
             }
+            #[cfg(feature = "postgres")]
             AppManagerDriver::PgSql => {
                 let pgsql_db_config = db_config.postgres.clone();
                 match PgSQLAppManager::new(pgsql_db_config).await {
@@ -84,6 +91,30 @@ impl AppManagerFactory {
             AppManagerDriver::Memory => {
                 // Handle unknown as Memory or make it an error
                 info!("{}", "Using memory app manager.".to_string());
+                Ok(Arc::new(MemoryAppManager::new()))
+            }
+            #[cfg(not(feature = "mysql"))]
+            AppManagerDriver::Mysql => {
+                warn!(
+                    "{}",
+                    "MySQL app manager requested but not compiled in. Falling back to memory manager."
+                );
+                Ok(Arc::new(MemoryAppManager::new()))
+            }
+            #[cfg(not(feature = "dynamodb"))]
+            AppManagerDriver::Dynamodb => {
+                warn!(
+                    "{}",
+                    "DynamoDB app manager requested but not compiled in. Falling back to memory manager."
+                );
+                Ok(Arc::new(MemoryAppManager::new()))
+            }
+            #[cfg(not(feature = "postgres"))]
+            AppManagerDriver::PgSql => {
+                warn!(
+                    "{}",
+                    "PostgreSQL app manager requested but not compiled in. Falling back to memory manager."
+                );
                 Ok(Arc::new(MemoryAppManager::new()))
             }
         }

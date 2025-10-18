@@ -4,13 +4,16 @@ use crate::app::config::App;
 use crate::app::manager::AppManager; // Keep for AppManager trait
 use crate::error::{Error, Result};
 
+#[cfg(feature = "lambda")]
 use crate::webhook::lambda_sender::LambdaWebhookSender;
 // JobData now contains app_secret and its payload.events is Vec<Value>
 // PusherWebhookPayload is the structure for the final POST body
 use crate::token::Token; // For HMAC SHA256 signing
 use crate::webhook::types::{JobData, PusherWebhookPayload, Webhook};
 use reqwest::{Client, header};
-use serde_json::{Value, json}; // Keep json! and Value
+use serde_json::Value;
+#[cfg(feature = "lambda")]
+use serde_json::json; // json! macro only used in lambda feature
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -38,6 +41,7 @@ struct HttpWebhookTaskParams {
 pub struct WebhookSender {
     client: Client,
     app_manager: Arc<dyn AppManager + Send + Sync>, // Still needed to fetch App if JobData doesn't have full App
+    #[cfg(feature = "lambda")]
     lambda_sender: LambdaWebhookSender,
     webhook_semaphore: Arc<Semaphore>,
 }
@@ -51,6 +55,7 @@ impl WebhookSender {
         Self {
             client,
             app_manager,
+            #[cfg(feature = "lambda")]
             lambda_sender: LambdaWebhookSender::new(),
             webhook_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_WEBHOOKS)),
         }
@@ -209,7 +214,19 @@ impl WebhookSender {
 
             self.create_http_webhook_task(params)
         } else if webhook_config.lambda.is_some() || webhook_config.lambda_function.is_some() {
-            self.create_lambda_webhook_task(webhook_config, permit, app_id, body_to_send)
+            #[cfg(feature = "lambda")]
+            {
+                self.create_lambda_webhook_task(webhook_config, permit, app_id, body_to_send)
+            }
+            #[cfg(not(feature = "lambda"))]
+            {
+                warn!(
+                    "Lambda webhook configured for app {} but Lambda support not compiled in.",
+                    app_id
+                );
+                drop(permit);
+                tokio::spawn(async {})
+            }
         } else {
             warn!(
                 "Webhook for app {} has neither URL nor Lambda config.",
@@ -252,6 +269,7 @@ impl WebhookSender {
         })
     }
 
+    #[cfg(feature = "lambda")]
     fn create_lambda_webhook_task(
         &self,
         webhook_config: &Webhook,
@@ -282,6 +300,7 @@ impl Clone for WebhookSender {
         Self {
             client: self.client.clone(),
             app_manager: self.app_manager.clone(),
+            #[cfg(feature = "lambda")]
             lambda_sender: self.lambda_sender.clone(),
             webhook_semaphore: self.webhook_semaphore.clone(),
         }
