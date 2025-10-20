@@ -88,6 +88,7 @@ impl MySQLAppManager {
                 max_event_payload_in_kb INT UNSIGNED NULL,
                 max_event_batch_size INT UNSIGNED NULL,
                 enable_user_authentication BOOLEAN NULL,
+                webhooks JSON NULL,
                 allowed_origins JSON NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -169,6 +170,7 @@ impl MySQLAppManager {
                 max_event_payload_in_kb,
                 max_event_batch_size,
                 enable_user_authentication,
+                webhooks,
                 allowed_origins
             FROM `{}` WHERE id = ?"#,
             self.config.table_name
@@ -224,6 +226,7 @@ impl MySQLAppManager {
                 max_event_payload_in_kb,
                 max_event_batch_size,
                 enable_user_authentication,
+                webhooks,
                 allowed_origins
             FROM `{}` WHERE `key` = ?"#,
             self.config.table_name
@@ -408,6 +411,7 @@ impl MySQLAppManager {
             max_event_payload_in_kb,
             max_event_batch_size,
             enable_user_authentication,
+            webhooks,
             allowed_origins
         FROM `{}`"#,
             self.config.table_name // Ensure config.table_name is safely handled
@@ -565,12 +569,15 @@ struct AppRow {
     max_event_payload_in_kb: Option<u32>,
     max_event_batch_size: Option<u32>,
     enable_user_authentication: Option<bool>,
+    webhooks: Option<serde_json::Value>,
     allowed_origins: Option<serde_json::Value>,
 }
 
 impl AppRow {
     /// Convert database row to App struct
     fn into_app(self) -> App {
+        use crate::webhook::types::Webhook;
+
         App {
             id: self.id,
             key: self.key,
@@ -589,8 +596,17 @@ impl AppRow {
             max_event_payload_in_kb: self.max_event_payload_in_kb,
             max_event_batch_size: self.max_event_batch_size,
             enable_user_authentication: self.enable_user_authentication,
-            webhooks: None, // Assuming webhooks are not part of the App struct
-            enable_watchlist_events: None, // Assuming this is not part of the App struct
+            webhooks: self
+                .webhooks
+                .and_then(|json| {
+                    serde_json::from_value::<Vec<Webhook>>(json)
+                        .map_err(|e| {
+                            tracing::warn!("Failed to parse webhooks JSON: {}", e);
+                            e
+                        })
+                        .ok()
+                }),
+            enable_watchlist_events: None,
             allowed_origins: self
                 .allowed_origins
                 .and_then(|json| serde_json::from_value::<Vec<String>>(json).ok()),
