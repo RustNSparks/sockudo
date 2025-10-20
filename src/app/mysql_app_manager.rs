@@ -4,6 +4,7 @@ use crate::error::{Error, Result};
 
 use crate::options::DatabaseConnection;
 use crate::token::Token;
+use crate::webhook::types::Webhook;
 use crate::websocket::SocketId;
 use async_trait::async_trait;
 use futures_util::{StreamExt, stream};
@@ -576,8 +577,6 @@ struct AppRow {
 impl AppRow {
     /// Convert database row to App struct
     fn into_app(self) -> App {
-        use crate::webhook::types::Webhook;
-
         App {
             id: self.id,
             key: self.key,
