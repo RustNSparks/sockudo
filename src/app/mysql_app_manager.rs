@@ -606,7 +606,7 @@ impl AppRow {
                         })
                         .ok()
                 }),
-            enable_watchlist_events: None,
+            enable_watchlist_events: None, // Assuming this is not part of the App struct
             allowed_origins: self
                 .allowed_origins
                 .and_then(|json| serde_json::from_value::<Vec<String>>(json).ok()),
