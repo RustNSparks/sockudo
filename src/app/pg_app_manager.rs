@@ -3,6 +3,7 @@ use crate::app::manager::AppManager;
 use crate::error::{Error, Result};
 use crate::options::DatabaseConnection;
 use crate::token::Token;
+use crate::webhook::types::Webhook;
 use crate::websocket::SocketId;
 use async_trait::async_trait;
 use futures_util::{StreamExt, stream};
@@ -84,6 +85,7 @@ impl PgSQLAppManager {
                 max_event_batch_size INTEGER,
                 enable_user_authentication BOOLEAN,
                 enable_watchlist_events BOOLEAN,
+                webhooks JSONB,
                 allowed_origins JSONB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -141,6 +143,7 @@ impl PgSQLAppManager {
                 max_event_batch_size,
                 enable_user_authentication,
                 enable_watchlist_events,
+                webhooks,
                 allowed_origins
             FROM {} WHERE id = $1"#,
             self.config.table_name
@@ -189,6 +192,7 @@ impl PgSQLAppManager {
                 max_event_batch_size,
                 enable_user_authentication,
                 enable_watchlist_events,
+                webhooks,
                 allowed_origins
             FROM {} WHERE key = $1"#,
             self.config.table_name
@@ -366,6 +370,7 @@ impl PgSQLAppManager {
             max_event_batch_size,
             enable_user_authentication,
             enable_watchlist_events,
+            webhooks,
             allowed_origins
         FROM {}"#,
             self.config.table_name
@@ -506,6 +511,7 @@ struct AppRow {
     max_event_batch_size: Option<i32>,
     enable_user_authentication: Option<bool>,
     enable_watchlist_events: Option<bool>,
+    webhooks: Option<serde_json::Value>,
     allowed_origins: Option<serde_json::Value>,
 }
 
@@ -532,7 +538,16 @@ impl AppRow {
             max_event_payload_in_kb: self.max_event_payload_in_kb.map(|v| v as u32),
             max_event_batch_size: self.max_event_batch_size.map(|v| v as u32),
             enable_user_authentication: self.enable_user_authentication,
-            webhooks: None,
+            webhooks: self
+                .webhooks
+                .and_then(|json| {
+                    serde_json::from_value::<Vec<Webhook>>(json)
+                        .map_err(|e| {
+                            tracing::warn!("Failed to parse webhooks JSON: {}", e);
+                            e
+                        })
+                        .ok()
+                }),
             enable_watchlist_events: self.enable_watchlist_events,
             allowed_origins: self
                 .allowed_origins

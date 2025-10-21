@@ -2,6 +2,7 @@
 use super::config::App;
 use crate::app::manager::AppManager;
 use crate::error::{Error, Result};
+use crate::webhook::types::Webhook;
 use async_trait::async_trait;
 use std::collections::HashMap;
 
@@ -133,7 +134,18 @@ impl DynamoDbAppManager {
                 } else {
                     None
                 },
-                webhooks: None,
+                webhooks: if let Some(aws_sdk_dynamodb::types::AttributeValue::S(json_str)) =
+                    map.get("webhooks")
+                {
+                    serde_json::from_str::<Vec<Webhook>>(json_str)
+                        .map_err(|e| {
+                            tracing::warn!("Failed to parse webhooks JSON: {}", e);
+                            e
+                        })
+                        .ok()
+                } else {
+                    None
+                },
                 enable_watchlist_events: None,
                 allowed_origins: if let Some(aws_sdk_dynamodb::types::AttributeValue::L(list)) =
                     map.get("allowed_origins")
