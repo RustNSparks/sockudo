@@ -288,6 +288,33 @@ impl DynamoDbAppManager {
             );
         }
 
+        if let Some(val) = app.enable_watchlist_events {
+            item.insert(
+                "enable_watchlist_events".to_string(),
+                aws_sdk_dynamodb::types::AttributeValue::Bool(val),
+            );
+        }
+
+        if let Some(webhooks) = &app.webhooks {
+            if let Ok(json_str) = serde_json::to_string(webhooks) {
+                item.insert(
+                    "webhooks".to_string(),
+                    aws_sdk_dynamodb::types::AttributeValue::S(json_str),
+                );
+            }
+        }
+
+        if let Some(origins) = &app.allowed_origins {
+            let origin_list: Vec<aws_sdk_dynamodb::types::AttributeValue> = origins
+                .iter()
+                .map(|s| aws_sdk_dynamodb::types::AttributeValue::S(s.clone()))
+                .collect();
+            item.insert(
+                "allowed_origins".to_string(),
+                aws_sdk_dynamodb::types::AttributeValue::L(origin_list),
+            );
+        }
+
         item
     }
 
