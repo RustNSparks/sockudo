@@ -146,7 +146,14 @@ impl DynamoDbAppManager {
                 } else {
                     None
                 },
-                enable_watchlist_events: None,
+                enable_watchlist_events: if let Some(
+                    aws_sdk_dynamodb::types::AttributeValue::Bool(b),
+                ) = map.get("enable_watchlist_events")
+                {
+                    Some(*b)
+                } else {
+                    None
+                },
                 allowed_origins: if let Some(aws_sdk_dynamodb::types::AttributeValue::L(list)) =
                     map.get("allowed_origins")
                 {

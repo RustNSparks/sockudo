@@ -89,6 +89,7 @@ impl MySQLAppManager {
                 max_event_payload_in_kb INT UNSIGNED NULL,
                 max_event_batch_size INT UNSIGNED NULL,
                 enable_user_authentication BOOLEAN NULL,
+                enable_watchlist_events BOOLEAN NULL,
                 webhooks JSON NULL,
                 allowed_origins JSON NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -171,6 +172,7 @@ impl MySQLAppManager {
                 max_event_payload_in_kb,
                 max_event_batch_size,
                 enable_user_authentication,
+                enable_watchlist_events,
                 webhooks,
                 allowed_origins
             FROM `{}` WHERE id = ?"#,
@@ -227,6 +229,7 @@ impl MySQLAppManager {
                 max_event_payload_in_kb,
                 max_event_batch_size,
                 enable_user_authentication,
+                enable_watchlist_events,
                 webhooks,
                 allowed_origins
             FROM `{}` WHERE `key` = ?"#,
@@ -412,6 +415,7 @@ impl MySQLAppManager {
             max_event_payload_in_kb,
             max_event_batch_size,
             enable_user_authentication,
+            enable_watchlist_events,
             webhooks,
             allowed_origins
         FROM `{}`"#,
@@ -570,6 +574,7 @@ struct AppRow {
     max_event_payload_in_kb: Option<u32>,
     max_event_batch_size: Option<u32>,
     enable_user_authentication: Option<bool>,
+    enable_watchlist_events: Option<bool>,
     webhooks: Option<serde_json::Value>,
     allowed_origins: Option<serde_json::Value>,
 }
@@ -605,7 +610,7 @@ impl AppRow {
                         })
                         .ok()
                 }),
-            enable_watchlist_events: None, // Assuming this is not part of the App struct
+            enable_watchlist_events: self.enable_watchlist_events,
             allowed_origins: self
                 .allowed_origins
                 .and_then(|json| serde_json::from_value::<Vec<String>>(json).ok()),
