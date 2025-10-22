@@ -544,7 +544,9 @@ impl AppRow {
                     serde_json::from_value::<Vec<Webhook>>(json)
                         .map_err(|e| {
                             tracing::warn!("Failed to parse webhooks JSON: {}", e);
-                            e
+                            Error::Internal(format!("Failed to parse webhooks JSON: {}", e))
+                        })
+
                         })
                         .ok()
                 }),
