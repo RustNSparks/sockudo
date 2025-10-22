@@ -138,10 +138,12 @@ impl DynamoDbAppManager {
                     map.get("webhooks")
                 {
                     serde_json::from_str::<Vec<Webhook>>(json_str)
+serde_json::from_str::<Vec<Webhook>>(json_str)
                         .map_err(|e| {
                             tracing::warn!("Failed to parse webhooks JSON: {}", e);
-                            e
+                            Error::Internal(format!("Failed to parse webhooks JSON: {}", e))
                         })
+
                         .ok()
                 } else {
                     None
