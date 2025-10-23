@@ -1,6 +1,13 @@
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize, Serialize,
+    de::{
+        self, Deserializer, MapAccess, SeqAccess, Visitor,
+        value::{EnumAccessDeserializer, SeqAccessDeserializer},
+    },
+};
 use sonic_rs::{Value, json};
 use std::collections::HashMap;
+use std::fmt;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -10,7 +17,7 @@ pub struct PresenceData {
     pub count: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum MessageData {
     String(String),
@@ -21,10 +28,212 @@ pub enum MessageData {
         channel: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         user_data: Option<String>,
-        #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
     Json(Value),
+}
+
+impl MessageData {
+    fn json_from_serializable<T, E>(value: T) -> Result<Self, E>
+    where
+        T: Serialize,
+        E: de::Error,
+    {
+        sonic_rs::to_value(&value)
+            .map(MessageData::Json)
+            .map_err(|err| E::custom(err.to_string()))
+    }
+}
+
+impl<'de> Deserialize<'de> for MessageData {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct MessageDataVisitor;
+
+        impl<'de> Visitor<'de> for MessageDataVisitor {
+            type Value = MessageData;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("string, object, or JSON value for MessageData")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(MessageData::String(value.to_owned()))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(MessageData::String(value))
+            }
+
+            fn visit_borrowed_str<E>(self, value: &'de str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(MessageData::String(value.to_owned()))
+            }
+
+            fn visit_char<E>(self, value: char) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                MessageData::json_from_serializable::<_, E>(value)
+            }
+
+            fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                MessageData::json_from_serializable::<_, E>(value)
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                MessageData::json_from_serializable::<_, E>(value)
+            }
+
+            fn visit_i128<E>(self, value: i128) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                MessageData::json_from_serializable::<_, E>(value)
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                MessageData::json_from_serializable::<_, E>(value)
+            }
+
+            fn visit_u128<E>(self, value: u128) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                MessageData::json_from_serializable::<_, E>(value)
+            }
+
+            fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                MessageData::json_from_serializable::<_, E>(value)
+            }
+
+            fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                MessageData::json_from_serializable::<_, E>(value)
+            }
+
+            fn visit_byte_buf<E>(self, value: Vec<u8>) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                MessageData::json_from_serializable::<_, E>(value)
+            }
+
+            fn visit_unit<E>(self) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                MessageData::json_from_serializable::<_, E>(())
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                MessageData::json_from_serializable::<_, E>(())
+            }
+
+            fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                deserializer.deserialize_any(MessageDataVisitor)
+            }
+
+            fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                deserializer.deserialize_any(MessageDataVisitor)
+            }
+
+            fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let value = Value::deserialize(SeqAccessDeserializer::new(seq))?;
+                Ok(MessageData::Json(value))
+            }
+
+            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::EnumAccess<'de>,
+            {
+                let value = Value::deserialize(EnumAccessDeserializer::new(data))?;
+                Ok(MessageData::Json(value))
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut channel_data: Option<Option<String>> = None;
+                let mut channel: Option<Option<String>> = None;
+                let mut user_data: Option<Option<String>> = None;
+                let mut extra = HashMap::with_capacity(map.size_hint().unwrap_or(0));
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "channel_data" => {
+                            if channel_data.is_some() {
+                                return Err(de::Error::duplicate_field("channel_data"));
+                            }
+                            channel_data = Some(map.next_value()?);
+                        }
+                        "channel" => {
+                            if channel.is_some() {
+                                return Err(de::Error::duplicate_field("channel"));
+                            }
+                            channel = Some(map.next_value()?);
+                        }
+                        "user_data" => {
+                            if user_data.is_some() {
+                                return Err(de::Error::duplicate_field("user_data"));
+                            }
+                            user_data = Some(map.next_value()?);
+                        }
+                        _ => {
+                            let value = map.next_value()?;
+                            extra.insert(key, value);
+                        }
+                    }
+                }
+
+                Ok(MessageData::Structured {
+                    channel_data: channel_data.unwrap_or(None),
+                    channel: channel.unwrap_or(None),
+                    user_data: user_data.unwrap_or(None),
+                    extra,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(MessageDataVisitor)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,7 +1,11 @@
 // src/webhook/types.rs
 // No SdkConfig needed here, it's for AWS SDK interaction in lambda_sender.
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize, Serialize,
+    de::{Deserializer, MapAccess, Visitor},
+};
 use sonic_rs::Value; // Keep this for Value type
+use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Webhook {
@@ -32,10 +36,42 @@ pub struct WebhookFilter {
     pub channel_pattern: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct WebhookHeaders {
-    #[serde(flatten)]
     pub headers: std::collections::HashMap<String, String>,
+}
+
+impl<'de> Deserialize<'de> for WebhookHeaders {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct HeadersVisitor;
+
+        impl<'de> Visitor<'de> for HeadersVisitor {
+            type Value = WebhookHeaders;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("webhook headers object")
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut headers =
+                    std::collections::HashMap::with_capacity(map.size_hint().unwrap_or(0));
+
+                while let Some((key, value)) = map.next_entry::<String, String>()? {
+                    headers.insert(key, value);
+                }
+
+                Ok(WebhookHeaders { headers })
+            }
+        }
+
+        deserializer.deserialize_map(HeadersVisitor)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

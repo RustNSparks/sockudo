@@ -16,10 +16,14 @@ use axum::{
     response::{IntoResponse, Response as AxumResponse},
 };
 use futures_util::future::join_all;
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize, Serialize,
+    de::{self, Deserializer, MapAccess, Visitor},
+};
 use sonic_rs::{Value, json};
 use std::{
     collections::HashMap, // Added BTreeMap
+    fmt,
     sync::Arc,
     time::Duration,
 };
@@ -115,7 +119,7 @@ impl From<crate::error::Error> for AppError {
 
 // This struct is used by Axum to deserialize the known Pusher auth query parameters.
 // It's also passed to `validate_pusher_api_request` to easily access these specific values.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Default)]
 pub struct EventQuery {
     #[serde(default)]
     pub auth_key: String,
@@ -129,24 +133,216 @@ pub struct EventQuery {
     pub auth_signature: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Clone)]
 pub struct ChannelQuery {
-    #[serde(default)]
     pub info: Option<String>,
-    // EventQuery fields are flattened here for GET requests that also need specific endpoint params
-    #[serde(flatten)]
     pub auth_params: EventQuery,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Clone)]
 pub struct ChannelsQuery {
-    #[serde(default)]
     pub filter_by_prefix: Option<String>,
-    #[serde(default)]
     pub info: Option<String>,
-    // EventQuery fields are flattened here
-    #[serde(flatten)]
     pub auth_params: EventQuery,
+}
+
+impl<'de> Deserialize<'de> for ChannelQuery {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct ChannelQueryVisitor;
+
+        impl<'de> Visitor<'de> for ChannelQueryVisitor {
+            type Value = ChannelQuery;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("channel query parameters object")
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                const FIELDS: &[&str] = &[
+                    "info",
+                    "auth_key",
+                    "auth_timestamp",
+                    "auth_version",
+                    "body_md5",
+                    "auth_signature",
+                ];
+
+                let mut info: Option<Option<String>> = None;
+                let mut auth_params = EventQuery::default();
+                let mut auth_key_seen = false;
+                let mut auth_timestamp_seen = false;
+                let mut auth_version_seen = false;
+                let mut body_md5_seen = false;
+                let mut auth_signature_seen = false;
+
+                while let Some(key) = map.next_key::<&str>()? {
+                    match key {
+                        "info" => {
+                            if info.is_some() {
+                                return Err(de::Error::duplicate_field("info"));
+                            }
+                            info = Some(map.next_value()?);
+                        }
+                        "auth_key" => {
+                            if auth_key_seen {
+                                return Err(de::Error::duplicate_field("auth_key"));
+                            }
+                            auth_params.auth_key = map.next_value()?;
+                            auth_key_seen = true;
+                        }
+                        "auth_timestamp" => {
+                            if auth_timestamp_seen {
+                                return Err(de::Error::duplicate_field("auth_timestamp"));
+                            }
+                            auth_params.auth_timestamp = map.next_value()?;
+                            auth_timestamp_seen = true;
+                        }
+                        "auth_version" => {
+                            if auth_version_seen {
+                                return Err(de::Error::duplicate_field("auth_version"));
+                            }
+                            auth_params.auth_version = map.next_value()?;
+                            auth_version_seen = true;
+                        }
+                        "body_md5" => {
+                            if body_md5_seen {
+                                return Err(de::Error::duplicate_field("body_md5"));
+                            }
+                            auth_params.body_md5 = map.next_value()?;
+                            body_md5_seen = true;
+                        }
+                        "auth_signature" => {
+                            if auth_signature_seen {
+                                return Err(de::Error::duplicate_field("auth_signature"));
+                            }
+                            auth_params.auth_signature = map.next_value()?;
+                            auth_signature_seen = true;
+                        }
+                        _ => {
+                            return Err(de::Error::unknown_field(key, FIELDS));
+                        }
+                    }
+                }
+
+                Ok(ChannelQuery {
+                    info: info.unwrap_or(None),
+                    auth_params,
+                })
+            }
+        }
+
+        deserializer.deserialize_map(ChannelQueryVisitor)
+    }
+}
+
+impl<'de> Deserialize<'de> for ChannelsQuery {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct ChannelsQueryVisitor;
+
+        impl<'de> Visitor<'de> for ChannelsQueryVisitor {
+            type Value = ChannelsQuery;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("channels query parameters object")
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                const FIELDS: &[&str] = &[
+                    "filter_by_prefix",
+                    "info",
+                    "auth_key",
+                    "auth_timestamp",
+                    "auth_version",
+                    "body_md5",
+                    "auth_signature",
+                ];
+
+                let mut filter_by_prefix: Option<Option<String>> = None;
+                let mut info: Option<Option<String>> = None;
+                let mut auth_params = EventQuery::default();
+                let mut auth_key_seen = false;
+                let mut auth_timestamp_seen = false;
+                let mut auth_version_seen = false;
+                let mut body_md5_seen = false;
+                let mut auth_signature_seen = false;
+
+                while let Some(key) = map.next_key::<&str>()? {
+                    match key {
+                        "filter_by_prefix" => {
+                            if filter_by_prefix.is_some() {
+                                return Err(de::Error::duplicate_field("filter_by_prefix"));
+                            }
+                            filter_by_prefix = Some(map.next_value()?);
+                        }
+                        "info" => {
+                            if info.is_some() {
+                                return Err(de::Error::duplicate_field("info"));
+                            }
+                            info = Some(map.next_value()?);
+                        }
+                        "auth_key" => {
+                            if auth_key_seen {
+                                return Err(de::Error::duplicate_field("auth_key"));
+                            }
+                            auth_params.auth_key = map.next_value()?;
+                            auth_key_seen = true;
+                        }
+                        "auth_timestamp" => {
+                            if auth_timestamp_seen {
+                                return Err(de::Error::duplicate_field("auth_timestamp"));
+                            }
+                            auth_params.auth_timestamp = map.next_value()?;
+                            auth_timestamp_seen = true;
+                        }
+                        "auth_version" => {
+                            if auth_version_seen {
+                                return Err(de::Error::duplicate_field("auth_version"));
+                            }
+                            auth_params.auth_version = map.next_value()?;
+                            auth_version_seen = true;
+                        }
+                        "body_md5" => {
+                            if body_md5_seen {
+                                return Err(de::Error::duplicate_field("body_md5"));
+                            }
+                            auth_params.body_md5 = map.next_value()?;
+                            body_md5_seen = true;
+                        }
+                        "auth_signature" => {
+                            if auth_signature_seen {
+                                return Err(de::Error::duplicate_field("auth_signature"));
+                            }
+                            auth_params.auth_signature = map.next_value()?;
+                            auth_signature_seen = true;
+                        }
+                        _ => {
+                            return Err(de::Error::unknown_field(key, FIELDS));
+                        }
+                    }
+                }
+
+                Ok(ChannelsQuery {
+                    filter_by_prefix: filter_by_prefix.unwrap_or(None),
+                    info: info.unwrap_or(None),
+                    auth_params,
+                })
+            }
+        }
+
+        deserializer.deserialize_map(ChannelsQueryVisitor)
+    }
 }
 
 // --- Response Structs ---
