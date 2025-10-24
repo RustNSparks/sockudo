@@ -2,6 +2,7 @@
 use super::config::App;
 use crate::app::manager::AppManager;
 use crate::error::{Error, Result};
+use crate::webhook::types::Webhook;
 use async_trait::async_trait;
 use std::collections::HashMap;
 
@@ -133,8 +134,28 @@ impl DynamoDbAppManager {
                 } else {
                     None
                 },
-                webhooks: None,
-                enable_watchlist_events: None,
+                webhooks: if let Some(aws_sdk_dynamodb::types::AttributeValue::S(json_str)) =
+                    map.get("webhooks")
+                {
+                    serde_json::from_str::<Vec<Webhook>>(json_str)
+serde_json::from_str::<Vec<Webhook>>(json_str)
+                        .map_err(|e| {
+                            tracing::warn!("Failed to parse webhooks JSON: {}", e);
+                            Error::Internal(format!("Failed to parse webhooks JSON: {}", e))
+                        })
+
+                        .ok()
+                } else {
+                    None
+                },
+                enable_watchlist_events: if let Some(
+                    aws_sdk_dynamodb::types::AttributeValue::Bool(b),
+                ) = map.get("enable_watchlist_events")
+                {
+                    Some(*b)
+                } else {
+                    None
+                },
                 allowed_origins: if let Some(aws_sdk_dynamodb::types::AttributeValue::L(list)) =
                     map.get("allowed_origins")
                 {
@@ -266,6 +287,33 @@ impl DynamoDbAppManager {
             item.insert(
                 "enable_user_authentication".to_string(),
                 aws_sdk_dynamodb::types::AttributeValue::Bool(val),
+            );
+        }
+
+        if let Some(val) = app.enable_watchlist_events {
+            item.insert(
+                "enable_watchlist_events".to_string(),
+                aws_sdk_dynamodb::types::AttributeValue::Bool(val),
+            );
+        }
+
+        if let Some(webhooks) = &app.webhooks {
+            if let Ok(json_str) = serde_json::to_string(webhooks) {
+                item.insert(
+                    "webhooks".to_string(),
+                    aws_sdk_dynamodb::types::AttributeValue::S(json_str),
+                );
+            }
+        }
+
+        if let Some(origins) = &app.allowed_origins {
+            let origin_list: Vec<aws_sdk_dynamodb::types::AttributeValue> = origins
+                .iter()
+                .map(|s| aws_sdk_dynamodb::types::AttributeValue::S(s.clone()))
+                .collect();
+            item.insert(
+                "allowed_origins".to_string(),
+                aws_sdk_dynamodb::types::AttributeValue::L(origin_list),
             );
         }
 
