@@ -70,7 +70,7 @@ fn test_error_format() {
     let data = json["data"].as_object().expect("Data should be an object");
 
     // Assert data object has correct structure
-    assert!(data.get(&"code").is_some(), "Should have 'code' field");
+    assert!(data.get("code").is_some(), "Should have 'code' field");
     assert!(data["code"].is_number(), "Code should be a number");
     assert_eq!(data["code"], json!(4001));
 
