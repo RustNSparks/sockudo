@@ -48,7 +48,7 @@ impl CacheManagerFactory {
                     let nodes: Vec<String> = global_redis_conn_details
                         .cluster_nodes
                         .iter()
-                        .map(|node| format!("redis://{}:{}", node.host, node.port))
+                        .map(|node| node.to_url())
                         .collect();
 
                     let prefix =
@@ -103,7 +103,7 @@ impl CacheManagerFactory {
                 let nodes: Vec<String> = global_redis_conn_details
                     .cluster_nodes
                     .iter()
-                    .map(|node| format!("redis://{}:{}", node.host, node.port))
+                    .map(|node| node.to_url())
                     .collect();
 
                 let prefix = config

@@ -501,6 +501,122 @@ pub struct ClusterNode {
     pub port: u16,
 }
 
+impl ClusterNode {
+    /// Builds a Redis URL from the cluster node configuration.
+    /// Supports protocol detection in the host field for TLS/SSL connections.
+    ///
+    /// Examples:
+    /// - `host: "localhost", port: 6379` -> `"redis://localhost:6379"`
+    /// - `host: "rediss://secure.example.com", port: 6379` -> `"rediss://secure.example.com:6379"`
+    /// - `host: "rediss://secure.example.com:7000", port: 6379` -> `"rediss://secure.example.com:7000"`
+    pub fn to_url(&self) -> String {
+        let host = self.host.trim();
+
+        if host.starts_with("redis://") || host.starts_with("rediss://") {
+            // Host already includes protocol
+            if host.contains(':') && host.split(':').count() >= 3 {
+                // Already has port in URL (e.g., "rediss://host:6379")
+                host.to_string()
+            } else {
+                // Protocol present but no port, append it
+                format!("{}:{}", host, self.port)
+            }
+        } else {
+            // No protocol specified, default to redis://
+            format!("redis://{}:{}", host, self.port)
+        }
+    }
+}
+
+#[cfg(test)]
+mod cluster_node_tests {
+    use super::ClusterNode;
+
+    #[test]
+    fn test_to_url_basic_host() {
+        let node = ClusterNode {
+            host: "localhost".to_string(),
+            port: 6379,
+        };
+        assert_eq!(node.to_url(), "redis://localhost:6379");
+    }
+
+    #[test]
+    fn test_to_url_ip_address() {
+        let node = ClusterNode {
+            host: "127.0.0.1".to_string(),
+            port: 6379,
+        };
+        assert_eq!(node.to_url(), "redis://127.0.0.1:6379");
+    }
+
+    #[test]
+    fn test_to_url_with_redis_protocol() {
+        let node = ClusterNode {
+            host: "redis://example.com".to_string(),
+            port: 6379,
+        };
+        assert_eq!(node.to_url(), "redis://example.com:6379");
+    }
+
+    #[test]
+    fn test_to_url_with_rediss_protocol() {
+        let node = ClusterNode {
+            host: "rediss://secure.example.com".to_string(),
+            port: 6379,
+        };
+        assert_eq!(node.to_url(), "rediss://secure.example.com:6379");
+    }
+
+    #[test]
+    fn test_to_url_with_rediss_protocol_and_port_in_url() {
+        let node = ClusterNode {
+            host: "rediss://secure.example.com:7000".to_string(),
+            port: 6379, // This should be ignored since port is in URL
+        };
+        assert_eq!(node.to_url(), "rediss://secure.example.com:7000");
+    }
+
+    #[test]
+    fn test_to_url_with_redis_protocol_and_port_in_url() {
+        let node = ClusterNode {
+            host: "redis://example.com:7001".to_string(),
+            port: 6379, // This should be ignored since port is in URL
+        };
+        assert_eq!(node.to_url(), "redis://example.com:7001");
+    }
+
+    #[test]
+    fn test_to_url_with_trailing_whitespace() {
+        let node = ClusterNode {
+            host: "  rediss://secure.example.com  ".to_string(),
+            port: 6379,
+        };
+        assert_eq!(node.to_url(), "rediss://secure.example.com:6379");
+    }
+
+    #[test]
+    fn test_to_url_custom_port() {
+        let node = ClusterNode {
+            host: "redis-cluster.example.com".to_string(),
+            port: 7000,
+        };
+        assert_eq!(node.to_url(), "redis://redis-cluster.example.com:7000");
+    }
+
+    #[test]
+    fn test_to_url_aws_elasticache_hostname() {
+        let node = ClusterNode {
+            host: "rediss://my-cluster.use1.cache.amazonaws.com".to_string(),
+            port: 6379,
+        };
+        assert_eq!(
+            node.to_url(),
+            "rediss://my-cluster.use1.cache.amazonaws.com:6379"
+        );
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DatabasePooling {

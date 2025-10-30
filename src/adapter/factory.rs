@@ -84,7 +84,7 @@ impl AdapterFactory {
                         .redis
                         .cluster_nodes
                         .iter()
-                        .map(|node| format!("redis://{}:{}", node.host, node.port))
+                        .map(|node| node.to_url())
                         .collect()
                 };
 
