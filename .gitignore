@@ -6,3 +6,5 @@
 benchmark/vendor
 .idea/
 .claude/settings.local.json
+.codanna/
+.fastembed_cache/
