@@ -514,8 +514,16 @@ impl ClusterNode {
 
         if host.starts_with("redis://") || host.starts_with("rediss://") {
             // Host already includes protocol
-            if host.contains(':') && host.split(':').count() >= 3 {
-                // Already has port in URL (e.g., "rediss://host:6379")
+            let has_port = if let Some(bracket_pos) = host.rfind(']') {
+                // Handle IPv6 addresses in brackets (e.g., "rediss://[::1]:6379")
+                host[bracket_pos..].contains(':')
+            } else {
+                // For non-IPv6 addresses, check if port is already present
+                host.split(':').count() >= 3
+            };
+
+            if has_port {
+                // Port already in URL
                 host.to_string()
             } else {
                 // Protocol present but no port, append it
@@ -614,6 +622,51 @@ mod cluster_node_tests {
             node.to_url(),
             "rediss://my-cluster.use1.cache.amazonaws.com:6379"
         );
+    }
+
+    #[test]
+    fn test_to_url_with_ipv6_no_port() {
+        let node = ClusterNode {
+            host: "rediss://[::1]".to_string(),
+            port: 6379,
+        };
+        assert_eq!(node.to_url(), "rediss://[::1]:6379");
+    }
+
+    #[test]
+    fn test_to_url_with_ipv6_and_port_in_url() {
+        let node = ClusterNode {
+            host: "rediss://[::1]:7000".to_string(),
+            port: 6379, // This should be ignored since port is in URL
+        };
+        assert_eq!(node.to_url(), "rediss://[::1]:7000");
+    }
+
+    #[test]
+    fn test_to_url_with_ipv6_full_address_no_port() {
+        let node = ClusterNode {
+            host: "rediss://[2001:db8::1]".to_string(),
+            port: 6379,
+        };
+        assert_eq!(node.to_url(), "rediss://[2001:db8::1]:6379");
+    }
+
+    #[test]
+    fn test_to_url_with_ipv6_full_address_with_port() {
+        let node = ClusterNode {
+            host: "rediss://[2001:db8::1]:7000".to_string(),
+            port: 6379, // This should be ignored
+        };
+        assert_eq!(node.to_url(), "rediss://[2001:db8::1]:7000");
+    }
+
+    #[test]
+    fn test_to_url_with_redis_protocol_ipv6() {
+        let node = ClusterNode {
+            host: "redis://[::1]".to_string(),
+            port: 6379,
+        };
+        assert_eq!(node.to_url(), "redis://[::1]:6379");
     }
 }
 
