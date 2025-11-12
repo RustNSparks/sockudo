@@ -109,6 +109,36 @@ impl Default for DynamoDbSettings {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ScyllaDbSettings {
+    pub nodes: Vec<String>,
+    pub keyspace: String,
+    pub table_name: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub cache_ttl: u64,
+    pub cache_max_capacity: u64,
+    pub replication_class: String,
+    pub replication_factor: u32,
+}
+
+impl Default for ScyllaDbSettings {
+    fn default() -> Self {
+        Self {
+            nodes: vec!["127.0.0.1:9042".to_string()],
+            keyspace: "sockudo".to_string(),
+            table_name: "applications".to_string(),
+            username: None,
+            password: None,
+            cache_ttl: 3600,
+            cache_max_capacity: 10000,
+            replication_class: "SimpleStrategy".to_string(),
+            replication_factor: 3,
+        }
+    }
+}
+
 impl FromStr for AdapterDriver {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -129,7 +159,8 @@ pub enum AppManagerDriver {
     Memory,
     Mysql,
     Dynamodb,
-    PgSql, // Added PostgreSQL as a potential driver
+    PgSql,
+    ScyllaDb,
 }
 impl FromStr for AppManagerDriver {
     type Err = String;
@@ -139,6 +170,7 @@ impl FromStr for AppManagerDriver {
             "mysql" => Ok(AppManagerDriver::Mysql),
             "dynamodb" => Ok(AppManagerDriver::Dynamodb),
             "pgsql" | "postgres" | "postgresql" => Ok(AppManagerDriver::PgSql),
+            "scylladb" | "scylla" => Ok(AppManagerDriver::ScyllaDb),
             _ => Err(format!("Unknown app manager driver: {s}")),
         }
     }
@@ -452,6 +484,7 @@ pub struct DatabaseConfig {
     pub postgres: DatabaseConnection,
     pub redis: RedisConnection,
     pub dynamodb: DynamoDbSettings,
+    pub scylladb: ScyllaDbSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

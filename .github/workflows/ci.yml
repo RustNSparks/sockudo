@@ -2,9 +2,9 @@ name: CI - Lint and Test
 
 on:
   push:
-    branches: [ main, master, develop, beta ]
+    branches: [main, master, develop, beta]
   pull_request:
-    branches: [ main, master, develop, beta ]
+    branches: [main, master, develop, beta]
 
 permissions:
   contents: read
@@ -72,10 +72,10 @@ jobs:
         run: |
           # Start all test services using the exact same configuration
           docker compose -f docker-compose.test.yml up -d
-          
+
           # Wait for services to be healthy
           echo "Waiting for services to be ready..."
-          
+
           # Wait for Redis instances
           for i in {1..60}; do
             if docker exec $(docker ps -q -f "name=redis-test") redis-cli ping &> /dev/null; then
@@ -85,7 +85,7 @@ jobs:
             echo "Waiting for Redis test... ($i/60)"
             sleep 2
           done
-          
+
           # Wait for Redis Cluster
           for i in {1..60}; do
             if docker exec $(docker ps -q -f "name=redis-cluster") redis-cli -p 7003 ping &> /dev/null; then
@@ -95,7 +95,7 @@ jobs:
             echo "Waiting for Redis cluster... ($i/60)"
             sleep 2
           done
-          
+
           # Wait for NATS instances
           for i in {1..60}; do
             if curl -f http://localhost:18222/varz &> /dev/null; then
@@ -105,7 +105,7 @@ jobs:
             echo "Waiting for NATS-1... ($i/60)"
             sleep 2
           done
-          
+
           for i in {1..60}; do
             if curl -f http://localhost:18223/varz &> /dev/null; then
               echo "NATS-2 is ready!"
@@ -114,7 +114,7 @@ jobs:
             echo "Waiting for NATS-2... ($i/60)"
             sleep 2
           done
-          
+
           # Wait for MySQL test instance
           for i in {1..60}; do
             if mysql -h 127.0.0.1 -P 13306 -u root -proot123 -e "SELECT 1" &> /dev/null; then
@@ -122,6 +122,16 @@ jobs:
               break
             fi
             echo "Waiting for MySQL test... ($i/60)"
+            sleep 2
+          done
+
+          # Wait for ScyllaDB test instance
+          for i in {1..120}; do
+            if docker exec $(docker ps -q -f "name=scylladb-test") nodetool status | grep -q "UN"; then
+              echo "ScyllaDB test is ready!"
+              break
+            fi
+            echo "Waiting for ScyllaDB test... ($i/120)"
             sleep 2
           done
 
@@ -145,6 +155,7 @@ jobs:
           docker port $(docker ps -q -f "name=nats-1") || true
           docker port $(docker ps -q -f "name=nats-2") || true
           docker port $(docker ps -q -f "name=mysql-test") || true
+          docker port $(docker ps -q -f "name=scylladb-test") || true
           docker port $(docker ps -q -f "name=postgres-test") || true
 
       - name: Cache cargo registry
@@ -176,6 +187,10 @@ jobs:
           DATABASE_MYSQL_PASSWORD: root123
           DATABASE_MYSQL_DATABASE: sockudo
 
+          # ScyllaDB configurations (matching docker-compose.test.yml)
+          SCYLLADB_NODES: localhost:19042
+          SCYLLADB_KEYSPACE: sockudo_test
+
           # PostgreSQL configurations (matching docker-compose.test.yml)
           DATABASE_POSTGRES_HOST: localhost
           DATABASE_POSTGRES_PORT: 15432
@@ -196,7 +211,7 @@ jobs:
   security:
     name: Security Audit
     runs-on: ubuntu-24.04
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -226,10 +241,10 @@ jobs:
           script: |
             console.log('Starting manual build info job...');
             console.log('Event name:', context.eventName);
-            
+
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/workflows/manual-build.yml`;
             let prNumber, branchName;
-            
+
             if (context.eventName === 'pull_request') {
               prNumber = context.payload.pull_request.number;
               branchName = context.payload.pull_request.head.ref;
@@ -246,32 +261,32 @@ jobs:
                 prNumber = prs.data[0].number;
               }
             }
-            
+
             if (!prNumber) {
               console.log('No PR found for this push, skipping');
               return;
             }
-            
+
             console.log('PR number:', prNumber);
             console.log('Branch name:', branchName);
             console.log('Run URL:', runUrl);
-            
+
             // Check if we've already posted instructions
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
             });
-            
+
             console.log(`Found ${comments.data.length} existing comments`);
-            
-            const existingComment = comments.data.find(comment => 
-              comment.user.login === 'github-actions[bot]' && 
+
+            const existingComment = comments.data.find(comment =>
+              comment.user.login === 'github-actions[bot]' &&
               comment.body.includes('Manual Build Available')
             );
-            
+
             console.log('Existing comment found:', !!existingComment);
-            
+
             if (!existingComment) {
               const body = [
                 '## 🔨 Manual Build Available',
@@ -294,14 +309,14 @@ jobs:
                 '---',
                 '*This comment will be updated with download links once builds are triggered*'
               ].join('\n');
-              
+
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: prNumber,
                 body: body
               });
-              
+
               console.log('Posted manual build instructions to PR');
             } else {
               console.log('Manual build instructions already posted, skipping');

@@ -5,11 +5,12 @@ use crate::app::manager::AppManager;
 use crate::app::memory_app_manager::MemoryAppManager;
 #[cfg(feature = "mysql")]
 use crate::app::mysql_app_manager::MySQLAppManager;
-use crate::error::Result;
-
 #[cfg(feature = "postgres")]
 use crate::app::pg_app_manager::PgSQLAppManager;
-use crate::options::{AppManagerConfig, AppManagerDriver, DatabaseConfig, DatabasePooling}; // Import AppManagerDriver
+#[cfg(feature = "scylladb")]
+use crate::app::scylla_app_manager::{ScyllaDbAppManager, ScyllaDbConfig};
+use crate::error::Result;
+use crate::options::{AppManagerConfig, AppManagerDriver, DatabaseConfig, DatabasePooling};
 use std::sync::Arc;
 use tracing::{info, warn};
 
@@ -89,6 +90,35 @@ impl AppManagerFactory {
                     }
                 }
             }
+            #[cfg(feature = "scylladb")]
+            AppManagerDriver::ScyllaDb => {
+                let scylla_settings = &db_config.scylladb;
+
+                let scylla_config = ScyllaDbConfig {
+                    nodes: scylla_settings.nodes.clone(),
+                    keyspace: scylla_settings.keyspace.clone(),
+                    table_name: scylla_settings.table_name.clone(),
+                    username: scylla_settings.username.clone(),
+                    password: scylla_settings.password.clone(),
+                    cache_ttl: scylla_settings.cache_ttl,
+                    cache_max_capacity: scylla_settings.cache_max_capacity,
+                    replication_class: scylla_settings.replication_class.clone(),
+                    replication_factor: scylla_settings.replication_factor,
+                };
+                match ScyllaDbAppManager::new(scylla_config).await {
+                    Ok(manager) => Ok(Arc::new(manager)),
+                    Err(e) => {
+                        warn!(
+                            "{}",
+                            format!(
+                                "Failed to initialize ScyllaDB app manager: {}, falling back to memory manager",
+                                e
+                            )
+                        );
+                        Ok(Arc::new(MemoryAppManager::new()))
+                    }
+                }
+            }
             AppManagerDriver::Memory => {
                 // Handle unknown as Memory or make it an error
                 info!("{}", "Using memory app manager.".to_string());
@@ -115,6 +145,14 @@ impl AppManagerFactory {
                 warn!(
                     "{}",
                     "PostgreSQL app manager requested but not compiled in. Falling back to memory manager."
+                );
+                Ok(Arc::new(MemoryAppManager::new()))
+            }
+            #[cfg(not(feature = "scylladb"))]
+            AppManagerDriver::ScyllaDb => {
+                warn!(
+                    "{}",
+                    "ScyllaDB app manager requested but not compiled in. Falling back to memory manager."
                 );
                 Ok(Arc::new(MemoryAppManager::new()))
             }

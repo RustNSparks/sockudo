@@ -11,7 +11,7 @@ services:
     ports:
       - "16379:6379"
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 15s
       timeout: 5s
       retries: 2
@@ -19,7 +19,7 @@ services:
     networks:
       - sockudo-network
     mem_limit: 128m
-    cpus: '0.5'
+    cpus: "0.5"
 
   # Redis Cluster using grokzen/redis-cluster image (designed for testing)
   redis-cluster:
@@ -31,19 +31,19 @@ services:
       SLAVES_PER_MASTER: 0
     ports:
       - "7003:7003"
-      - "7001:7001"  
+      - "7001:7001"
       - "7002:7002"
     networks:
       - sockudo-network
     mem_limit: 256m
-    cpus: '0.5'
+    cpus: "0.5"
 
   # Minimal NATS Cluster (2 nodes)
   nats-1:
     image: nats:alpine
     ports:
       - "14222:4222"
-      - "18222:8222"  # HTTP monitoring
+      - "18222:8222" # HTTP monitoring
     command: |
       --name nats-1
       --cluster_name NATS
@@ -53,13 +53,13 @@ services:
     networks:
       - sockudo-network
     mem_limit: 128m
-    cpus: '0.25'
+    cpus: "0.25"
 
   nats-2:
     image: nats:alpine
     ports:
       - "14223:4222"
-      - "18223:8222"  # HTTP monitoring
+      - "18223:8222" # HTTP monitoring
     command: |
       --name nats-2
       --cluster_name NATS
@@ -69,7 +69,7 @@ services:
     networks:
       - sockudo-network
     mem_limit: 128m
-    cpus: '0.25'
+    cpus: "0.25"
 
   # Development MySQL with sample data
   mysql-test:
@@ -88,13 +88,36 @@ services:
     networks:
       - sockudo-network
     mem_limit: 512m
-    cpus: '0.5'
+    cpus: "0.5"
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot123"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  # ScyllaDB for testing
+  scylladb-test:
+    image: scylladb/scylla:2025.3
+    command: --smp 1 --memory 512M --overprovisioned 1 --developer-mode=1
+    ports:
+      - "19042:9042" # CQL port
+      - "10000:10000" # REST API
+    networks:
+      - sockudo-network
+    mem_limit: 1024m
+    cpus: "1.0"
+    healthcheck:
+      test: ["CMD-SHELL", "nodetool status | grep -E '^UN'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    volumes:
+      - scylladb-test-data:/var/lib/scylla/data
+      - scylladb-test-commitlog:/var/lib/scylla/commitlog
+      - scylladb-test-hints:/var/lib/scylla/hints
+      - scylladb-test-view-hints:/var/lib/scylla/view_hints
 
   # PostgreSQL test instance
   postgres-test:
@@ -111,7 +134,7 @@ services:
     networks:
       - sockudo-network
     mem_limit: 256m
-    cpus: '0.5'
+    cpus: "0.5"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -126,5 +149,12 @@ networks:
 volumes:
   mysql-test-data:
     driver: local
+  scylladb-test-data:
+    driver: local
+  scylladb-test-commitlog:
+    driver: local
+  scylladb-test-hints:
+    driver: local
+  scylladb-test-view-hints:
   postgres-test-data:
     driver: local

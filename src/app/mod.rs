@@ -9,3 +9,5 @@ pub mod memory_app_manager;
 pub mod mysql_app_manager;
 #[cfg(feature = "postgres")]
 pub mod pg_app_manager;
+#[cfg(feature = "scylladb")]
+pub mod scylla_app_manager;
