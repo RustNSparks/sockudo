@@ -312,13 +312,12 @@ impl MessageSender {
             }
 
             // Try to close gracefully - only if we haven't already sent a close frame
-            if !is_shutting_down {
-                if let Err(e) = socket
+            if !is_shutting_down
+                && let Err(e) = socket
                     .write_frame(Frame::close(1000, b"Normal closure"))
                     .await
-                {
-                    Self::log_connection_error(&e, SocketOperation::SendCloseFrame, frame_count, true);
-                }
+            {
+                Self::log_connection_error(&e, SocketOperation::SendCloseFrame, frame_count, true);
             }
         });
 
@@ -401,13 +400,12 @@ impl MessageSender {
             }
 
             // Try to close gracefully - only if we haven't already sent a close frame
-            if !is_shutting_down {
-                if let Err(e) = socket
+            if !is_shutting_down
+                && let Err(e) = socket
                     .write_frame(Frame::close(1000, b"Normal closure"))
                     .await
-                {
-                    Self::log_connection_error(&e, SocketOperation::SendCloseFrame, frame_count, true);
-                }
+            {
+                Self::log_connection_error(&e, SocketOperation::SendCloseFrame, frame_count, true);
             }
         });
 
