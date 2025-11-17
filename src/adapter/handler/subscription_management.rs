@@ -83,6 +83,17 @@ impl ConnectionHandler {
             }
         }
 
+        // Clear user authentication timeout on successful private/presence channel subscription
+        // This matches Pusher behavior where channel authentication satisfies the timeout
+        if subscription_result.success {
+            let channel_type = ChannelType::from_name(&request.channel);
+            if channel_type.requires_authentication() {
+                self.clear_user_authentication_timeout(&app_config.id, socket_id)
+                    .await
+                    .ok();
+            }
+        }
+
         // Convert the channel manager result to our result type
         Ok(SubscriptionResult {
             success: subscription_result.success,
