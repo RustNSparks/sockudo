@@ -1,3 +1,4 @@
+pub mod binary_protocol;
 pub mod connection_manager;
 pub mod factory;
 pub mod handler;
