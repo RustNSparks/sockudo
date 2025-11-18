@@ -91,7 +91,7 @@ impl RedisClusterRateLimiter {
 
         // Remove all elements older than our window
         let _: () = conn
-            .zrevrangebyscore(&redis_key, 0, window_start as i64)
+            .zrembyscore(&redis_key, 0, window_start as i64)
             .await
             .map_err(|e| Error::Redis(format!("Failed to clean up Redis sorted set: {e}")))?;
 
