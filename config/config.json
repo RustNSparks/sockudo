@@ -1,5 +1,5 @@
 {
-  "debug": true,
+  "debug": false,
   "host": "127.0.0.1",
   "port": 6001,
   "mode": "production",
@@ -215,7 +215,7 @@
   "http_api": {
     "request_limit_in_mb": 10,
     "accept_traffic": {
-      "memory_threshold": 0.90
+      "memory_threshold": 0.9
     }
   },
 

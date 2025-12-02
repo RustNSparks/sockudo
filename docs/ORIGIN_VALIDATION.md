@@ -208,13 +208,13 @@ When a connection is rejected due to origin validation, the client receives a Pu
 {
   "event": "pusher:error",
   "data": {
-    "code": 4009,
+    "code": 4200,
     "message": "Origin not allowed"
   }
 }
 ```
 
-Error code 4009 indicates an unauthorized connection, following the Pusher protocol specification.
+Error code 4200 allows PusherJS clients to automatically reconnect after authentication failures.
 
 ### Implementation Details
 
