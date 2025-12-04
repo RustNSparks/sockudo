@@ -198,7 +198,7 @@ impl ConnectionHandler {
                 if !ws.state.is_authenticated() {
                     let _ = ws
                         .close(
-                            4200,
+                            4009,
                             "Connection not authorized within timeout.".to_string(),
                         )
                         .await;

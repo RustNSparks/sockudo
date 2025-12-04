@@ -74,9 +74,6 @@ pub enum Error {
     #[error("Invalid signature")]
     InvalidSignature,
 
-    #[error("Invalid key")]
-    InvalidKey,
-
     // Connection errors
     #[error("Connection error: {0}")]
     Connection(String),
@@ -182,8 +179,8 @@ impl Error {
             Error::InvalidVersionFormat => 4006,
             Error::UnsupportedProtocolVersion(_) => 4007,
             Error::NoProtocolVersion => 4008,
-            Error::Unauthorized => 4200,
-            Error::OriginNotAllowed => 4200,
+            Error::Unauthorized => 4009,
+            Error::OriginNotAllowed => 4009,
 
             // 4100-4199: Reconnect with backoff
             Error::OverCapacity => 4100,
@@ -207,7 +204,9 @@ impl Error {
 
             Error::ClientEvent(_) => 4301,
 
-            Error::Auth(_) | Error::InvalidSignature | Error::InvalidKey => 4200,
+            Error::Auth(_) | Error::InvalidSignature => 4009,
+
+            Error::InvalidAppKey => 4001,
 
             Error::Connection(_) | Error::ConnectionExists | Error::ConnectionNotFound => 4000,
 
@@ -226,6 +225,11 @@ impl Error {
                 | Error::InvalidVersionFormat
                 | Error::UnsupportedProtocolVersion(_)
                 | Error::NoProtocolVersion
+                | Error::Unauthorized
+                | Error::OriginNotAllowed
+                | Error::Auth(_)
+                | Error::InvalidSignature
+                | Error::InvalidAppKey
         )
     }
 
@@ -236,11 +240,6 @@ impl Error {
                 | Error::ReconnectImmediately
                 | Error::PongNotReceived
                 | Error::InactivityTimeout
-                | Error::Unauthorized
-                | Error::OriginNotAllowed
-                | Error::Auth(_)
-                | Error::InvalidSignature
-                | Error::InvalidKey
         )
     }
 }
