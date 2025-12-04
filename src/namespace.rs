@@ -242,7 +242,7 @@ impl Namespace {
                 .iter()
                 .map(|ws_ref| async move {
                     if let Err(e) = ws_ref
-                        .close(4200, "You got disconnected by the app.".to_string())
+                        .close(4009, "User terminated by app.".to_string())
                         .await
                     {
                         warn!("Failed to close connection: {}", e);
