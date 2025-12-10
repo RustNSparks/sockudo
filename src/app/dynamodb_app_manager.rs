@@ -534,7 +534,8 @@ impl AppManager for DynamoDbAppManager {
             .query()
             .table_name(&self.config.table_name)
             .index_name("KeyIndex")
-            .key_condition_expression("key = :key_val")
+            .key_condition_expression("#app_key = :key_val")
+            .expression_attribute_names("#app_key", "key")
             .expression_attribute_values(
                 ":key_val",
                 aws_sdk_dynamodb::types::AttributeValue::S(key.to_string()),
