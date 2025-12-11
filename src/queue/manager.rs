@@ -3,12 +3,16 @@
 
 use crate::error::Result;
 
+#[cfg(feature = "sqs")]
+use crate::options::SqsQueueConfig;
 use crate::queue::QueueInterface;
 use crate::queue::memory_queue_manager::MemoryQueueManager;
 #[cfg(feature = "redis-cluster")]
 use crate::queue::redis_cluster_queue_manager::RedisClusterQueueManager;
 #[cfg(feature = "redis")]
 use crate::queue::redis_queue_manager::RedisQueueManager;
+#[cfg(feature = "sqs")]
+use crate::queue::sqs_queue_manager::SqsQueueManager;
 use crate::webhook::sender::JobProcessorFnAsync;
 use crate::webhook::types::JobData;
 use tracing::*;
@@ -95,6 +99,30 @@ impl QueueManagerFactory {
                 "Unsupported queue driver: {other}"
             ))),
         }
+    }
+
+    #[cfg(feature = "sqs")]
+    pub async fn create_sqs(config: SqsQueueConfig) -> Result<Box<dyn QueueInterface>> {
+        info!(
+            "Creating SQS queue manager (Region: {}, Concurrency: {}, FIFO: {})",
+            config.region, config.concurrency, config.fifo
+        );
+        if let Some(ref url_prefix) = config.queue_url_prefix {
+            debug!("SQS queue URL prefix: {}", url_prefix);
+        }
+        let manager = SqsQueueManager::new(config).await?;
+        Ok(Box::new(manager))
+    }
+
+    #[cfg(not(feature = "sqs"))]
+    #[allow(unused_variables)]
+    pub async fn create_sqs(
+        config: crate::options::SqsQueueConfig,
+    ) -> Result<Box<dyn QueueInterface>> {
+        warn!("SQS queue manager requested but not compiled in. Falling back to memory queue.");
+        let manager = MemoryQueueManager::new();
+        manager.start_processing();
+        Ok(Box::new(manager))
     }
 }
 
