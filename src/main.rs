@@ -397,7 +397,21 @@ impl SockudoServer {
 
         // In the SockudoServer::new method, replace the queue manager initialization:
 
-        let queue_manager_opt = if config.queue.driver != QueueDriver::None {
+        let queue_manager_opt = if config.queue.driver == QueueDriver::Sqs {
+            match QueueManagerFactory::create_sqs(config.queue.sqs.clone()).await {
+                Ok(queue_driver_impl) => {
+                    info!("Queue manager initialized with SQS driver");
+                    Some(Arc::new(QueueManager::new(queue_driver_impl)))
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to initialize SQS queue manager: {}, queues will be disabled",
+                        e
+                    );
+                    None
+                }
+            }
+        } else if config.queue.driver != QueueDriver::None {
             let (queue_redis_url_or_nodes, queue_prefix, queue_concurrency) =
                 match config.queue.driver {
                     QueueDriver::Redis => {

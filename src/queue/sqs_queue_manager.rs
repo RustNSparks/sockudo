@@ -73,9 +73,9 @@ impl SqsQueueManager {
         // If custom prefix is provided, use that to construct queue URL
         if let Some(prefix) = &self.config.queue_url_prefix {
             let queue_url = if self.config.fifo {
-                format!("{prefix}/{queue_name}.fifo")
+                format!("{prefix}{queue_name}.fifo")
             } else {
-                format!("{prefix}/{queue_name}")
+                format!("{prefix}{queue_name}")
             };
 
             // Cache the URL
