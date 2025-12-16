@@ -4,37 +4,37 @@ on:
   workflow_dispatch:
     inputs:
       build_linux_x64:
-        description: 'Build Linux x86_64 (GNU + musl)'
+        description: "Build Linux x86_64 (GNU + musl)"
         required: false
         type: boolean
         default: false
       build_linux_arm64:
-        description: 'Build Linux ARM64 (GNU + musl)'
+        description: "Build Linux ARM64 (GNU + musl)"
         required: false
         type: boolean
         default: false
       build_macos_x64:
-        description: 'Build macOS x86_64 (Intel)'
+        description: "Build macOS x86_64 (Intel)"
         required: false
         type: boolean
         default: false
       build_macos_arm64:
-        description: 'Build macOS ARM64 (Apple Silicon)'
+        description: "Build macOS ARM64 (Apple Silicon)"
         required: false
         type: boolean
         default: false
       build_windows_x64:
-        description: 'Build Windows x86_64'
+        description: "Build Windows x86_64"
         required: false
         type: boolean
         default: false
       build_docker:
-        description: 'Build Docker image'
+        description: "Build Docker image"
         required: false
         type: boolean
         default: false
       upload_to_pr:
-        description: 'Upload artifacts to PR (if applicable)'
+        description: "Upload artifacts to PR (if applicable)"
         required: false
         type: boolean
         default: true
@@ -91,14 +91,13 @@ jobs:
       binary_name: sockudo
       artifact_retention_days: 30
 
-
   build-macos-x64:
     if: inputs.build_macos_x64
     uses: ./.github/workflows/build-binary.yml
     with:
       target_name: macOS x86_64
       target_triple: x86_64-apple-darwin
-      runner_os: macos-13
+      runner_os: macos-15-intel
       archive_ext: tgz
       binary_name: sockudo
       artifact_retention_days: 30
@@ -132,7 +131,7 @@ jobs:
     name: Docker Build
     runs-on: ubuntu-24.04
     if: inputs.build_docker
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -197,16 +196,26 @@ jobs:
   post-to-pr:
     name: Post Results to PR
     runs-on: ubuntu-24.04
-    needs: [build-linux-x64-gnu, build-linux-x64-musl, build-linux-arm64-gnu, build-linux-arm64-musl, build-macos-x64, build-macos-arm64, build-windows-x64, docker]
+    needs:
+      [
+        build-linux-x64-gnu,
+        build-linux-x64-musl,
+        build-linux-arm64-gnu,
+        build-linux-arm64-musl,
+        build-macos-x64,
+        build-macos-arm64,
+        build-windows-x64,
+        docker,
+      ]
     permissions:
       contents: read
       pull-requests: write
       issues: write
     if: |
-      always() && 
+      always() &&
       inputs.upload_to_pr &&
       (contains(needs.*.result, 'success'))
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -230,27 +239,27 @@ jobs:
         with:
           script: |
             const artifacts = [];
-            
+
             if ('${{ inputs.build_linux_x64 }}' === 'true') artifacts.push('Linux x64 (GNU + musl)');
             if ('${{ inputs.build_linux_arm64 }}' === 'true') artifacts.push('Linux ARM64 (GNU + musl)');
             if ('${{ inputs.build_macos_x64 }}' === 'true') artifacts.push('macOS x64');
             if ('${{ inputs.build_macos_arm64 }}' === 'true') artifacts.push('macOS ARM64');
             if ('${{ inputs.build_windows_x64 }}' === 'true') artifacts.push('Windows x64');
             if ('${{ inputs.build_docker }}' === 'true') artifacts.push('Docker image');
-            
+
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            
+
             const body = `## 🔨 Manual Build Completed
-            
+
             **Built artifacts:** ${artifacts.join(', ')}
-            
+
             **Workflow run:** [View results](${runUrl})
-            
+
             Artifacts are available for download from the [workflow run page](${runUrl}) for 30 days.
-            
+
             ---
             *Triggered by @${context.actor} via workflow_dispatch*`;
-            
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,

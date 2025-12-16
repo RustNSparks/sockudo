@@ -3,19 +3,19 @@ name: Release - Build and Publish
 on:
   push:
     tags:
-      - 'v*.*.*'
-      - 'v*.*.*-*'
+      - "v*.*.*"
+      - "v*.*.*-*"
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (e.g., v1.0.0)'
+        description: "Tag to release (e.g., v1.0.0)"
         required: true
         type: string
       docker_tag_suffix:
-        description: 'Docker tag suffix (e.g., latest, test, dev)'
+        description: "Docker tag suffix (e.g., latest, test, dev)"
         required: false
         type: string
-        default: 'latest'
+        default: "latest"
 
 permissions:
   contents: write
@@ -38,7 +38,7 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
       lowercase_image_name: ${{ steps.lowercase_repo.outputs.name }} # New output for lowercased repo name
       docker_tag_suffix: ${{ steps.docker_suffix.outputs.suffix }}
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -53,13 +53,13 @@ jobs:
           else
             TAG="${GITHUB_REF#refs/tags/}"
           fi
-          
+
           VERSION="${TAG#v}"
           PRERELEASE="false"
           if [[ "$TAG" =~ (alpha|beta|rc) ]]; then
             PRERELEASE="true"
           fi
-          
+
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           echo "prerelease=${PRERELEASE}" >> $GITHUB_OUTPUT
@@ -68,21 +68,21 @@ jobs:
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          
+
           # Only verify version for tags in vX.X.X or vX.X.X-suffix format
           if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.*)?$ ]]; then
             TAG_VERSION="${{ steps.version.outputs.version }}"
             CARGO_VERSION=$(grep "^version" Cargo.toml | head -1 | cut -d'"' -f2)
-            
+
             echo "Git tag version: ${TAG_VERSION}"
             echo "Cargo.toml version: ${CARGO_VERSION}"
-            
+
             if [ "${TAG_VERSION}" != "${CARGO_VERSION}" ]; then
               echo "::error::Version mismatch! Git tag is v${TAG_VERSION} but Cargo.toml has version ${CARGO_VERSION}"
               echo "Please ensure the Git tag matches the version in Cargo.toml"
               exit 1
             fi
-            
+
             echo "✅ Version verification passed: ${TAG_VERSION}"
           else
             echo "Skipping version verification for tag: ${TAG} (not in vX.X.X format)"
@@ -149,14 +149,13 @@ jobs:
       binary_name: sockudo
       version: ${{ needs.prepare.outputs.version }}
 
-
   build-macos-x64:
     needs: prepare
     uses: ./.github/workflows/build-binary.yml
     with:
       target_name: macOS x86_64
       target_triple: x86_64-apple-darwin
-      runner_os: macos-13
+      runner_os: macos-15-intel
       archive_ext: tgz
       binary_name: sockudo
       version: ${{ needs.prepare.outputs.version }}
@@ -200,7 +199,7 @@ jobs:
           - name: arm64
             arch: linux/arm64
             runner: ubuntu-24.04-arm
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -243,7 +242,7 @@ jobs:
     name: Create Multi-Platform Manifests
     runs-on: ubuntu-24.04
     needs: [prepare, build-docker]
-    
+
     steps:
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -267,7 +266,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ needs.prepare.outputs.lowercase_image_name }}:${{ needs.prepare.outputs.version }}-amd64-temp \
             ${{ env.REGISTRY }}/${{ needs.prepare.outputs.lowercase_image_name }}:${{ needs.prepare.outputs.version }}-arm64-temp
           docker manifest push ${{ env.REGISTRY }}/${{ needs.prepare.outputs.lowercase_image_name }}:${{ needs.prepare.outputs.version }}
-          
+
           # Create suffix manifest
           docker manifest create \
             ${{ env.REGISTRY }}/${{ needs.prepare.outputs.lowercase_image_name }}:${{ needs.prepare.outputs.docker_tag_suffix }} \
@@ -287,28 +286,28 @@ jobs:
             sockudo/sockudo:${{ needs.prepare.outputs.version }}-amd64-temp \
             sockudo/sockudo:${{ needs.prepare.outputs.version }}-arm64-temp
           docker manifest push sockudo/sockudo:${{ needs.prepare.outputs.version }}
-          
+
           # Create suffix manifest
           docker manifest create \
             sockudo/sockudo:${{ needs.prepare.outputs.docker_tag_suffix }} \
             sockudo/sockudo:${{ needs.prepare.outputs.version }}-amd64-temp \
             sockudo/sockudo:${{ needs.prepare.outputs.version }}-arm64-temp
           docker manifest push sockudo/sockudo:${{ needs.prepare.outputs.docker_tag_suffix }}
-          
+
           # Clean up temporary platform-specific tags
           echo "Cleaning up temporary tags..."
           TOKEN=$(curl -s -X POST \
             -H "Content-Type: application/json" \
             -d '{"username": "'${DOCKERHUB_USERNAME}'", "password": "'${DOCKERHUB_TOKEN}'"}' \
             https://hub.docker.com/v2/users/login/ | jq -r .token)
-          
+
           if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
             echo "Deleting temp tag: ${{ needs.prepare.outputs.version }}-amd64-temp"
             curl -s -o /dev/null -X DELETE \
               -H "Authorization: Bearer ${TOKEN}" \
               "https://hub.docker.com/v2/repositories/sockudo/sockudo/tags/${{ needs.prepare.outputs.version }}-amd64-temp/" || true
-            
-            echo "Deleting temp tag: ${{ needs.prepare.outputs.version }}-arm64-temp"  
+
+            echo "Deleting temp tag: ${{ needs.prepare.outputs.version }}-arm64-temp"
             curl -s -o /dev/null -X DELETE \
               -H "Authorization: Bearer ${TOKEN}" \
               "https://hub.docker.com/v2/repositories/sockudo/sockudo/tags/${{ needs.prepare.outputs.version }}-arm64-temp/" || true
@@ -322,9 +321,19 @@ jobs:
   publish-crates:
     name: Publish to Crates.io
     runs-on: ubuntu-24.04
-    needs: [prepare, build-linux-x64-musl, build-linux-x64-gnu, build-linux-arm64-gnu, build-linux-arm64-musl, build-macos-x64, build-macos-arm64, build-windows-x64]
+    needs:
+      [
+        prepare,
+        build-linux-x64-musl,
+        build-linux-x64-gnu,
+        build-linux-arm64-gnu,
+        build-linux-arm64-musl,
+        build-macos-x64,
+        build-macos-arm64,
+        build-windows-x64,
+      ]
     if: needs.prepare.outputs.prerelease != 'true'
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -349,9 +358,21 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-24.04
-    needs: [prepare, build-linux-x64-musl, build-linux-x64-gnu, build-linux-arm64-gnu, build-linux-arm64-musl, build-macos-x64, build-macos-arm64, build-windows-x64, docker-manifest, publish-crates]
+    needs:
+      [
+        prepare,
+        build-linux-x64-musl,
+        build-linux-x64-gnu,
+        build-linux-arm64-gnu,
+        build-linux-arm64-musl,
+        build-macos-x64,
+        build-macos-arm64,
+        build-windows-x64,
+        docker-manifest,
+        publish-crates,
+      ]
     if: |
-      always() && !cancelled() && 
+      always() && !cancelled() &&
       needs.build-linux-x64-musl.result == 'success' &&
       needs.build-linux-x64-gnu.result == 'success' &&
       needs.build-macos-x64.result == 'success' &&
@@ -359,7 +380,7 @@ jobs:
       needs.build-windows-x64.result == 'success' &&
       needs.docker-manifest.result == 'success' &&
       (needs.publish-crates.result == 'success' || needs.publish-crates.result == 'skipped')
-    
+
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -376,26 +397,26 @@ jobs:
           generate_release_notes: true
           body: |
             ## Installation
-            
+
             ### Using cargo-binstall (Recommended)
             ```bash
             cargo binstall sockudo --version ${{ needs.prepare.outputs.version }}
             ```
-            
+
             ### Using cargo
             ```bash
             cargo install sockudo --version ${{ needs.prepare.outputs.version }}
             ```
-            
+
             ### Using Docker
             ```bash
             docker pull ghcr.io/${{ needs.prepare.outputs.lowercase_image_name }}:${{ needs.prepare.outputs.version }}
             docker pull sockudo/sockudo:${{ needs.prepare.outputs.version }}
             ```
-            
+
             ### Direct Download
             Download the appropriate binary for your platform from the assets below.
-            
+
             ## Platform Support
             - ✅ Linux x86_64 (GNU)
             - ✅ Linux x86_64 (musl)
