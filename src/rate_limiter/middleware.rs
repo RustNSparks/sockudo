@@ -193,7 +193,7 @@ where
                 "websocket_upgrade"
             } else if path.starts_with("/apps/") {
                 "http_api"
-            } else if path.starts_with("/up/") {
+            } else if path.starts_with("/up/") || path.eq("/") {
                 "health_check"
             } else {
                 "other"

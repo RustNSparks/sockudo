@@ -937,6 +937,7 @@ impl SockudoServer {
                 )),
             )
             .route("/usage", get(usage))
+            .route("/", get(up)) // General health check
             .route("/up", get(up)) // General health check
             .route("/up/{appId}", get(up)) // App-specific health check
             .layer(DefaultBodyLimit::max(body_limit_bytes))

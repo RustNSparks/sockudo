@@ -991,7 +991,7 @@ async fn check_system_health(handler: &Arc<ConnectionHandler>) -> HealthStatus {
     }
 }
 
-/// GET /up or /up/{app_id}
+/// GET / or GET /up or /up/{app_id}
 /// When app_id is provided, checks specific app id health and general system health
 /// When no app_id, checks general system health and ensures at least 1 app exists
 #[instrument(skip(handler), fields(app_id = field::Empty))]
