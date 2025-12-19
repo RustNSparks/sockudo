@@ -58,6 +58,8 @@ impl AppManagerFactory {
                     access_key: dynamo_settings.aws_access_key_id.clone(),
                     secret_key: dynamo_settings.aws_secret_access_key.clone(),
                     profile_name: dynamo_settings.aws_profile_name.clone(),
+                    cache_ttl: dynamo_settings.cache_ttl,
+                    cache_max_capacity: dynamo_settings.cache_max_capacity,
                 };
                 match DynamoDbAppManager::new(dynamo_app_config).await {
                     Ok(manager) => Ok(Arc::new(manager)),
