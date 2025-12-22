@@ -93,7 +93,8 @@ pub struct DynamoDbSettings {
     pub aws_access_key_id: Option<String>,
     pub aws_secret_access_key: Option<String>,
     pub aws_profile_name: Option<String>,
-    // cache_ttl for app_manager is already in AppManagerConfig.cache.ttl
+    pub cache_ttl: u64,
+    pub cache_max_capacity: u64,
 }
 
 impl Default for DynamoDbSettings {
@@ -105,6 +106,8 @@ impl Default for DynamoDbSettings {
             aws_access_key_id: None,
             aws_secret_access_key: None,
             aws_profile_name: None,
+            cache_ttl: 3600,
+            cache_max_capacity: 10000,
         }
     }
 }
@@ -1591,6 +1594,8 @@ impl ServerOptions {
             self.channel_limits.cache_ttl = cache_ttl;
             self.database.mysql.cache_ttl = cache_ttl;
             self.database.postgres.cache_ttl = cache_ttl;
+            self.database.dynamodb.cache_ttl = cache_ttl;
+            self.database.scylladb.cache_ttl = cache_ttl;
             self.cache.memory.ttl = cache_ttl;
         }
         if let Some(cleanup_interval) = parse_env_optional::<u64>("CACHE_CLEANUP_INTERVAL") {
@@ -1601,6 +1606,8 @@ impl ServerOptions {
         if let Some(max_capacity) = parse_env_optional::<u64>("CACHE_MAX_CAPACITY") {
             self.database.mysql.cache_max_capacity = max_capacity;
             self.database.postgres.cache_max_capacity = max_capacity;
+            self.database.dynamodb.cache_max_capacity = max_capacity;
+            self.database.scylladb.cache_max_capacity = max_capacity;
             self.cache.memory.max_capacity = max_capacity;
         }
 

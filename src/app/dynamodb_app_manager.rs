@@ -4,7 +4,10 @@ use crate::app::manager::AppManager;
 use crate::error::{Error, Result};
 use crate::webhook::types::Webhook;
 use async_trait::async_trait;
+use moka::future::Cache;
 use std::collections::HashMap;
+use std::time::Duration;
+use tracing::debug;
 
 /// Configuration for DynamoDB App Manager
 #[derive(Debug, Clone)]
@@ -15,6 +18,8 @@ pub struct DynamoDbConfig {
     pub access_key: Option<String>,
     pub secret_key: Option<String>,
     pub profile_name: Option<String>,
+    pub cache_ttl: u64,
+    pub cache_max_capacity: u64,
 }
 
 impl Default for DynamoDbConfig {
@@ -26,6 +31,8 @@ impl Default for DynamoDbConfig {
             access_key: None,
             secret_key: None,
             profile_name: None,
+            cache_ttl: 3600,
+            cache_max_capacity: 10000,
         }
     }
 }
@@ -37,6 +44,7 @@ type DynamoClient = aws_sdk_dynamodb::Client;
 pub struct DynamoDbAppManager {
     config: DynamoDbConfig,
     client: DynamoClient,
+    app_cache: Cache<String, App>,
 }
 
 impl DynamoDbAppManager {
@@ -74,8 +82,18 @@ impl DynamoDbAppManager {
         // Create DynamoDB client
         let client = aws_sdk_dynamodb::Client::new(&aws_config);
 
+        // Initialize cache
+        let app_cache = Cache::builder()
+            .time_to_live(Duration::from_secs(config.cache_ttl))
+            .max_capacity(config.cache_max_capacity)
+            .build();
+
         // Create the manager
-        let manager = Self { config, client };
+        let manager = Self {
+            config,
+            client,
+            app_cache,
+        };
 
         Ok(manager)
     }
@@ -354,6 +372,14 @@ impl DynamoDbAppManager {
                     .build()
                     .unwrap(),
             )
+            // Add attribute definition for the GSI key
+            .attribute_definitions(
+                aws_sdk_dynamodb::types::AttributeDefinition::builder()
+                    .attribute_name("key")
+                    .attribute_type(aws_sdk_dynamodb::types::ScalarAttributeType::S)
+                    .build()
+                    .unwrap(),
+            )
             // Add GSI for looking up by key
             .global_secondary_indexes(
                 aws_sdk_dynamodb::types::GlobalSecondaryIndex::builder()
@@ -422,7 +448,14 @@ impl DynamoDbAppManager {
 
     /// Get an app from cache or DynamoDB
     async fn get_app_internal(&self, app_id: &str) -> Result<Option<App>> {
-        // If not in cache or expired, fetch from DynamoDB
+        // Check cache first
+        if let Some(app) = self.app_cache.get(app_id).await {
+            return Ok(Some(app));
+        }
+
+        debug!("Cache miss for app {}, fetching from DynamoDB", app_id);
+
+        // Fetch from DynamoDB
         let response = self
             .client
             .get_item()
@@ -440,6 +473,7 @@ impl DynamoDbAppManager {
             let app = self.item_to_app(aws_sdk_dynamodb::types::AttributeValue::M(item.clone()))?;
 
             // Update cache
+            self.app_cache.insert(app_id.to_string(), app.clone()).await;
 
             Ok(Some(app))
         } else {
@@ -469,6 +503,7 @@ impl AppManager for DynamoDbAppManager {
             .map_err(|e| Error::Internal(format!("Failed to insert app into DynamoDB: {e}")))?;
 
         // Update cache
+        self.app_cache.insert(config.id.clone(), config).await;
 
         Ok(())
     }
@@ -485,6 +520,10 @@ impl AppManager for DynamoDbAppManager {
             .send()
             .await
             .map_err(|e| Error::Internal(format!("Failed to update app in DynamoDB: {e}")))?;
+
+        // Update cache
+        self.app_cache.insert(config.id.clone(), config).await;
+
         Ok(())
     }
 
@@ -500,6 +539,10 @@ impl AppManager for DynamoDbAppManager {
             .send()
             .await
             .map_err(|e| Error::Internal(format!("Failed to delete app from DynamoDB: {e}")))?;
+
+        // Remove from cache
+        self.app_cache.invalidate(app_id).await;
+
         Ok(())
     }
 
@@ -516,19 +559,16 @@ impl AppManager for DynamoDbAppManager {
         // Process items and convert to App objects
         let mut apps = Vec::new();
         let items = response.items();
-        if !items.is_empty() {
-            for item in items {
-                let app =
-                    self.item_to_app(aws_sdk_dynamodb::types::AttributeValue::M(item.clone()))?;
-                apps.push(app);
-            }
+        for item in items {
+            let app = self.item_to_app(aws_sdk_dynamodb::types::AttributeValue::M(item.clone()))?;
+            apps.push(app);
         }
 
         Ok(apps)
     }
 
     async fn find_by_key(&self, key: &str) -> Result<Option<App>> {
-        // If not in cache, query DynamoDB by key (using GSI)
+        // Query DynamoDB by key (using GSI)
         let response = self
             .client
             .query()
@@ -551,6 +591,9 @@ impl AppManager for DynamoDbAppManager {
             // Convert DynamoDB item to App
             let app = self.item_to_app(aws_sdk_dynamodb::types::AttributeValue::M(item.clone()))?;
 
+            // Update cache using app ID as key
+            self.app_cache.insert(app.id.clone(), app.clone()).await;
+
             return Ok(Some(app));
         }
 
@@ -566,5 +609,300 @@ impl AppManager for DynamoDbAppManager {
             crate::error::Error::Internal(format!("App manager DynamoDB connection failed: {e}"))
         })?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+impl DynamoDbAppManager {
+    // Check if a specific app ID is in the cache.
+    pub async fn is_cached(&self, app_id: &str) -> bool {
+        self.app_cache.get(app_id).await.is_some()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Helper to create a test config for DynamoDB Local
+    fn get_test_config(table_name: &str) -> DynamoDbConfig {
+        DynamoDbConfig {
+            region: std::env::var("DYNAMODB_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
+            table_name: table_name.to_string(),
+            endpoint: Some(
+                std::env::var("DYNAMODB_ENDPOINT")
+                    .unwrap_or_else(|_| "http://localhost:8000".to_string()),
+            ),
+            access_key: Some("test".to_string()),
+            secret_key: Some("test".to_string()),
+            profile_name: None,
+            cache_ttl: 2, // Short TTL for testing
+            cache_max_capacity: 100,
+        }
+    }
+
+    // Helper to create a test app
+    fn create_test_app(id: &str) -> App {
+        App {
+            id: id.to_string(),
+            key: format!("{id}_key"),
+            secret: format!("{id}_secret"),
+            max_connections: 100,
+            enable_client_messages: true,
+            enabled: true,
+            max_backend_events_per_second: Some(1000),
+            max_client_events_per_second: 100,
+            max_read_requests_per_second: Some(1000),
+            max_presence_members_per_channel: Some(100),
+            max_presence_member_size_in_kb: Some(10),
+            max_channel_name_length: Some(200),
+            max_event_channels_at_once: Some(10),
+            max_event_name_length: Some(200),
+            max_event_payload_in_kb: Some(100),
+            max_event_batch_size: Some(10),
+            enable_user_authentication: Some(true),
+            webhooks: None,
+            enable_watchlist_events: None,
+            allowed_origins: None,
+        }
+    }
+
+    async fn is_dynamodb_available() -> bool {
+        let config = get_test_config("test_availability");
+        match DynamoDbAppManager::new(config).await {
+            Ok(manager) => manager.check_health().await.is_ok(),
+            Err(_) => false,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_dynamodb_app_manager() {
+        // Skip test if DynamoDB Local is not available
+        if !is_dynamodb_available().await {
+            eprintln!("Skipping test: DynamoDB Local not available");
+            return;
+        }
+
+        let config = get_test_config("sockudo_test_apps");
+        let manager = DynamoDbAppManager::new(config).await.unwrap();
+        manager.init().await.unwrap();
+
+        // Test registering an app
+        let test_app = create_test_app("dynamo_test1");
+        manager.create_app(test_app.clone()).await.unwrap();
+
+        // Test getting an app by ID
+        let app = manager.find_by_id("dynamo_test1").await.unwrap().unwrap();
+        assert_eq!(app.id, "dynamo_test1");
+        assert_eq!(app.key, "dynamo_test1_key");
+
+        // Test getting an app by key
+        let app = manager
+            .find_by_key("dynamo_test1_key")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(app.id, "dynamo_test1");
+
+        // Test updating an app
+        let mut updated_app = test_app.clone();
+        updated_app.max_connections = 200;
+        manager.update_app(updated_app).await.unwrap();
+
+        let app = manager.find_by_id("dynamo_test1").await.unwrap().unwrap();
+        assert_eq!(app.max_connections, 200);
+
+        // Test getting all apps
+        let test_app2 = create_test_app("dynamo_test2");
+        manager.create_app(test_app2).await.unwrap();
+
+        let apps = manager.get_apps().await.unwrap();
+        assert!(apps.len() >= 2);
+
+        // Test removing an app
+        manager.delete_app("dynamo_test1").await.unwrap();
+        assert!(manager.find_by_id("dynamo_test1").await.unwrap().is_none());
+
+        // Cleanup
+        manager.delete_app("dynamo_test2").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_cache_behavior() {
+        // Skip test if DynamoDB Local is not available
+        if !is_dynamodb_available().await {
+            eprintln!("Skipping test: DynamoDB Local not available");
+            return;
+        }
+
+        let config = get_test_config("sockudo_cache_test");
+        let manager = DynamoDbAppManager::new(config).await.unwrap();
+        manager.init().await.unwrap();
+
+        // Cache should be empty initially
+        assert!(!manager.is_cached("cache_test").await);
+
+        // Create an app (should populate cache)
+        let app = create_test_app("cache_test");
+        manager.create_app(app).await.unwrap();
+
+        // After create, app should be in cache
+        assert!(manager.is_cached("cache_test").await);
+
+        // First retrieval - should hit cache
+        let retrieved1 = manager.find_by_id("cache_test").await.unwrap().unwrap();
+        assert_eq!(retrieved1.id, "cache_test");
+
+        // Verify still cached after retrieval
+        assert!(manager.is_cached("cache_test").await);
+
+        // Second retrieval - should still hit cache
+        let retrieved2 = manager.find_by_id("cache_test").await.unwrap().unwrap();
+        assert_eq!(retrieved2.id, "cache_test");
+        assert!(manager.is_cached("cache_test").await);
+
+        // Wait for cache to expire (TTL is 2 seconds)
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        // After TTL expiration, cache entry should be gone
+        assert!(!manager.is_cached("cache_test").await);
+
+        // Third retrieval - should hit DynamoDB and repopulate cache
+        let retrieved3 = manager.find_by_id("cache_test").await.unwrap().unwrap();
+        assert_eq!(retrieved3.id, "cache_test");
+
+        // Cache should be populated again
+        assert!(manager.is_cached("cache_test").await);
+
+        // Cleanup
+        manager.delete_app("cache_test").await.unwrap();
+
+        // After delete, cache should be invalidated
+        assert!(!manager.is_cached("cache_test").await);
+    }
+
+    #[tokio::test]
+    async fn test_cache_invalidation_on_update() {
+        // Skip test if DynamoDB Local is not available
+        if !is_dynamodb_available().await {
+            eprintln!("Skipping test: DynamoDB Local not available");
+            return;
+        }
+
+        let config = get_test_config("sockudo_cache_update_test");
+        let manager = DynamoDbAppManager::new(config).await.unwrap();
+        manager.init().await.unwrap();
+
+        // Create an app
+        let mut app = create_test_app("cache_update_test");
+        manager.create_app(app.clone()).await.unwrap();
+
+        // Retrieve to populate cache
+        let retrieved1 = manager
+            .find_by_id("cache_update_test")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(retrieved1.max_connections, 100);
+
+        // Update the app
+        app.max_connections = 500;
+        manager.update_app(app).await.unwrap();
+
+        // Retrieve again - should get updated value from cache
+        let retrieved2 = manager
+            .find_by_id("cache_update_test")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(retrieved2.max_connections, 500);
+
+        // Cleanup
+        manager.delete_app("cache_update_test").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_cache_invalidation_on_delete() {
+        // Skip test if DynamoDB Local is not available
+        if !is_dynamodb_available().await {
+            eprintln!("Skipping test: DynamoDB Local not available");
+            return;
+        }
+
+        let config = get_test_config("sockudo_cache_delete_test");
+        let manager = DynamoDbAppManager::new(config).await.unwrap();
+        manager.init().await.unwrap();
+
+        // Create an app
+        let app = create_test_app("cache_delete_test");
+        manager.create_app(app).await.unwrap();
+
+        // Retrieve to populate cache
+        let retrieved = manager
+            .find_by_id("cache_delete_test")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(retrieved.id, "cache_delete_test");
+
+        // Delete the app
+        manager.delete_app("cache_delete_test").await.unwrap();
+
+        // Should not find the app (cache should be invalidated)
+        assert!(
+            manager
+                .find_by_id("cache_delete_test")
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_allowed_origins() {
+        // Skip test if DynamoDB Local is not available
+        if !is_dynamodb_available().await {
+            eprintln!("Skipping test: DynamoDB Local not available");
+            return;
+        }
+
+        let config = get_test_config("sockudo_origins_test");
+        let manager = DynamoDbAppManager::new(config).await.unwrap();
+        manager.init().await.unwrap();
+
+        // Create app with allowed origins
+        let mut app = create_test_app("origins_test");
+        app.allowed_origins = Some(vec![
+            "https://example.com".to_string(),
+            "https://*.example.com".to_string(),
+            "http://localhost:3000".to_string(),
+        ]);
+        manager.create_app(app).await.unwrap();
+
+        // Retrieve and verify
+        let retrieved = manager.find_by_id("origins_test").await.unwrap().unwrap();
+        assert!(retrieved.allowed_origins.is_some());
+        let origins = retrieved.allowed_origins.unwrap();
+        assert_eq!(origins.len(), 3);
+        assert!(origins.contains(&"https://example.com".to_string()));
+
+        // Cleanup
+        manager.delete_app("origins_test").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_health_check() {
+        // Skip test if DynamoDB Local is not available
+        if !is_dynamodb_available().await {
+            eprintln!("Skipping test: DynamoDB Local not available");
+            return;
+        }
+
+        let config = get_test_config("sockudo_health_test");
+        let manager = DynamoDbAppManager::new(config).await.unwrap();
+
+        // Health check should succeed
+        let result = manager.check_health().await;
+        assert!(result.is_ok());
     }
 }
