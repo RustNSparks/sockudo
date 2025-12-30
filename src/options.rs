@@ -93,8 +93,6 @@ pub struct DynamoDbSettings {
     pub aws_access_key_id: Option<String>,
     pub aws_secret_access_key: Option<String>,
     pub aws_profile_name: Option<String>,
-    pub cache_ttl: u64,
-    pub cache_max_capacity: u64,
 }
 
 impl Default for DynamoDbSettings {
@@ -106,8 +104,6 @@ impl Default for DynamoDbSettings {
             aws_access_key_id: None,
             aws_secret_access_key: None,
             aws_profile_name: None,
-            cache_ttl: 3600,
-            cache_max_capacity: 10000,
         }
     }
 }
@@ -120,8 +116,6 @@ pub struct ScyllaDbSettings {
     pub table_name: String,
     pub username: Option<String>,
     pub password: Option<String>,
-    pub cache_ttl: u64,
-    pub cache_max_capacity: u64,
     pub replication_class: String,
     pub replication_factor: u32,
 }
@@ -134,8 +128,6 @@ impl Default for ScyllaDbSettings {
             table_name: "applications".to_string(),
             username: None,
             password: None,
-            cache_ttl: 3600,
-            cache_max_capacity: 10000,
             replication_class: "SimpleStrategy".to_string(),
             replication_factor: 3,
         }
@@ -1589,25 +1581,19 @@ impl ServerOptions {
             self.database.mysql.connection_pool_size = pool_size;
             self.database.postgres.connection_pool_size = pool_size;
         }
+        self.app_manager.cache.enabled =
+            parse_bool_env("APP_MANAGER_CACHE_ENABLED", self.app_manager.cache.enabled);
+        self.app_manager.cache.ttl =
+            parse_env::<u64>("APP_MANAGER_CACHE_TTL", self.app_manager.cache.ttl);
+
         if let Some(cache_ttl) = parse_env_optional::<u64>("CACHE_TTL_SECONDS") {
             self.app_manager.cache.ttl = cache_ttl;
-            self.channel_limits.cache_ttl = cache_ttl;
-            self.database.mysql.cache_ttl = cache_ttl;
-            self.database.postgres.cache_ttl = cache_ttl;
-            self.database.dynamodb.cache_ttl = cache_ttl;
-            self.database.scylladb.cache_ttl = cache_ttl;
             self.cache.memory.ttl = cache_ttl;
         }
         if let Some(cleanup_interval) = parse_env_optional::<u64>("CACHE_CLEANUP_INTERVAL") {
-            self.database.mysql.cache_cleanup_interval = cleanup_interval;
-            self.database.postgres.cache_cleanup_interval = cleanup_interval;
             self.cache.memory.cleanup_interval = cleanup_interval;
         }
         if let Some(max_capacity) = parse_env_optional::<u64>("CACHE_MAX_CAPACITY") {
-            self.database.mysql.cache_max_capacity = max_capacity;
-            self.database.postgres.cache_max_capacity = max_capacity;
-            self.database.dynamodb.cache_max_capacity = max_capacity;
-            self.database.scylladb.cache_max_capacity = max_capacity;
             self.cache.memory.max_capacity = max_capacity;
         }
 

@@ -4,13 +4,11 @@ use crate::error::{Error, Result};
 use crate::webhook::types::Webhook;
 use async_trait::async_trait;
 use futures::TryStreamExt;
-use moka::future::Cache;
 use scylla::client::session::Session;
 use scylla::client::session_builder::SessionBuilder;
 use scylla::statement::prepared::PreparedStatement;
 use scylla::{DeserializeRow, SerializeRow};
 use std::sync::Arc;
-use std::time::Duration;
 use tracing::{debug, error, info};
 
 /// Configuration for ScyllaDB App Manager
@@ -21,8 +19,6 @@ pub struct ScyllaDbConfig {
     pub table_name: String,
     pub username: Option<String>,
     pub password: Option<String>,
-    pub cache_ttl: u64,
-    pub cache_max_capacity: u64,
     pub replication_class: String,
     pub replication_factor: u32,
 }
@@ -35,8 +31,6 @@ impl Default for ScyllaDbConfig {
             table_name: "applications".to_string(),
             username: None,
             password: None,
-            cache_ttl: 3600,
-            cache_max_capacity: 10000,
             replication_class: "SimpleStrategy".to_string(),
             replication_factor: 3,
         }
@@ -47,7 +41,6 @@ impl Default for ScyllaDbConfig {
 pub struct ScyllaDbAppManager {
     config: ScyllaDbConfig,
     session: Arc<Session>,
-    app_cache: Cache<String, App>,
     insert_stmt: Arc<PreparedStatement>,
     update_stmt: Arc<PreparedStatement>,
     delete_stmt: Arc<PreparedStatement>,
@@ -75,12 +68,6 @@ impl ScyllaDbAppManager {
             .map_err(|e| Error::Internal(format!("Failed to connect to ScyllaDB cluster: {e}")))?;
 
         let session = Arc::new(session);
-
-        // Initialize cache
-        let app_cache = Cache::builder()
-            .time_to_live(Duration::from_secs(config.cache_ttl))
-            .max_capacity(config.cache_max_capacity)
-            .build();
 
         // Ensure keyspace and table exist before preparing statements
         Self::ensure_keyspace_and_table(&session, &config).await?;
@@ -139,7 +126,6 @@ impl ScyllaDbAppManager {
         Ok(Self {
             config,
             session,
-            app_cache,
             insert_stmt: Arc::new(insert_stmt),
             update_stmt: Arc::new(update_stmt),
             delete_stmt: Arc::new(delete_stmt),
@@ -425,9 +411,6 @@ impl AppManager for ScyllaDbAppManager {
                 Error::Internal(format!("Failed to insert app into ScyllaDB: {e}"))
             })?;
 
-        // Update cache
-        self.app_cache.insert(app.id.clone(), app).await;
-
         Ok(())
     }
 
@@ -442,9 +425,6 @@ impl AppManager for ScyllaDbAppManager {
                 Error::Internal(format!("Failed to update app in ScyllaDB: {e}"))
             })?;
 
-        // Invalidate cache
-        self.app_cache.invalidate(&app.id).await;
-
         Ok(())
     }
 
@@ -456,9 +436,6 @@ impl AppManager for ScyllaDbAppManager {
                 error!("Database error deleting app {}: {}", app_id, e);
                 Error::Internal(format!("Failed to delete app from ScyllaDB: {e}"))
             })?;
-
-        // Invalidate cache
-        self.app_cache.invalidate(app_id).await;
 
         Ok(())
     }
@@ -531,8 +508,6 @@ impl AppManager for ScyllaDbAppManager {
             .map_err(|e| Error::Internal(format!("Failed to fetch app row: {e}")))?
         {
             let app = app_row.into_app();
-            // Update cache
-            self.app_cache.insert(app.id.clone(), app.clone()).await;
             Ok(Some(app))
         } else {
             Ok(None)
@@ -540,12 +515,7 @@ impl AppManager for ScyllaDbAppManager {
     }
 
     async fn find_by_id(&self, app_id: &str) -> Result<Option<App>> {
-        // Try cache first
-        if let Some(app) = self.app_cache.get(app_id).await {
-            return Ok(Some(app));
-        }
-
-        debug!("Cache miss for app {}, fetching from ScyllaDB", app_id);
+        debug!("Fetching app {} from ScyllaDB", app_id);
 
         let query = format!(
             r#"SELECT id, key, secret, max_connections, enable_client_messages, enabled,
@@ -577,8 +547,6 @@ impl AppManager for ScyllaDbAppManager {
             .map_err(|e| Error::Internal(format!("Failed to fetch app row: {e}")))?
         {
             let app = app_row.into_app();
-            // Update cache
-            self.app_cache.insert(app_id.to_string(), app.clone()).await;
             Ok(Some(app))
         } else {
             Ok(None)
@@ -624,8 +592,6 @@ mod tests {
             table_name: "applications_test".to_string(),
             username: None,
             password: None,
-            cache_ttl: 60,
-            cache_max_capacity: 100,
             replication_class,
             replication_factor,
         }
@@ -877,26 +843,6 @@ mod tests {
         // Verify it's gone
         let found = manager.find_by_id("test_app_delete").await.unwrap();
         assert!(found.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_cache_functionality() {
-        let config = create_test_config();
-        let manager = ScyllaDbAppManager::new(config).await.unwrap();
-
-        let app = create_test_app("test_app_cache");
-        manager.create_app(app.clone()).await.unwrap();
-
-        // First call - should fetch from DB
-        let found1 = manager.find_by_id("test_app_cache").await.unwrap();
-        assert!(found1.is_some());
-
-        // Second call - should fetch from cache
-        let found2 = manager.find_by_id("test_app_cache").await.unwrap();
-        assert!(found2.is_some());
-        assert_eq!(found1.unwrap().id, found2.unwrap().id);
-
-        manager.delete_app("test_app_cache").await.unwrap();
     }
 
     #[tokio::test]

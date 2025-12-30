@@ -1,6 +1,3 @@
-#![allow(unused_variables)]
-#![allow(dead_code)]
-
 // src/app/memory_manager.rs
 use super::config::App;
 use crate::app::manager::AppManager;
@@ -8,14 +5,8 @@ use crate::error::Result;
 use async_trait::async_trait;
 use dashmap::DashMap;
 
-struct CacheConfig {
-    enabled: bool,
-    ttl: usize,
-}
-
 pub struct MemoryAppManager {
     apps: DashMap<String, App>,
-    cache: CacheConfig,
 }
 
 impl Default for MemoryAppManager {
@@ -28,10 +19,6 @@ impl MemoryAppManager {
     pub fn new() -> Self {
         Self {
             apps: DashMap::new(),
-            cache: CacheConfig {
-                enabled: true,
-                ttl: 1000,
-            },
         }
     }
 }
