@@ -384,7 +384,7 @@ impl SockudoServer {
 
         // Create WebSocket connection rate limiter
         let websocket_rate_limiter: Option<Arc<dyn rate_limiter::RateLimiter + Send + Sync>> =
-            if config.rate_limiter.enabled {
+            if config.rate_limiter.enabled && config.rate_limiter.websocket_rate_limit.enabled {
                 let ws_config = &config.rate_limiter.websocket_rate_limit;
                 info!(
                     "WebSocket rate limiter enabled: {} requests per {} seconds",
@@ -838,7 +838,9 @@ impl SockudoServer {
 
         let cors = cors_builder;
 
-        let rate_limiter_middleware_layer = if self.config.rate_limiter.enabled {
+        let rate_limiter_middleware_layer = if self.config.rate_limiter.enabled
+            && self.config.rate_limiter.api_rate_limit.enabled
+        {
             if let Some(rate_limiter_instance) = &self.state.http_api_rate_limiter {
                 let options = crate::rate_limiter::middleware::RateLimitOptions {
                     include_headers: true,                // Include X-RateLimit-* headers

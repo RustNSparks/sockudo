@@ -975,6 +975,17 @@ where
     }
 
     async fn get_channel_socket_count(&mut self, app_id: &str, channel: &str) -> usize {
+        let (count, _reliable) = self
+            .get_channel_socket_count_reliable(app_id, channel)
+            .await;
+        count
+    }
+
+    async fn get_channel_socket_count_reliable(
+        &mut self,
+        app_id: &str,
+        channel: &str,
+    ) -> (usize, bool) {
         // Get local count
         let local_count = {
             let mut horizontal = self.horizontal.lock().await;
@@ -983,6 +994,11 @@ where
                 .get_channel_socket_count(app_id, channel)
                 .await
         };
+
+        // Skip remote query if single node
+        if self.should_skip_horizontal_communication().await {
+            return (local_count, true);
+        }
 
         // Get distributed count
         match self
@@ -995,10 +1011,11 @@ where
             )
             .await
         {
-            Ok(response) => local_count + response.sockets_count,
+            Ok(response) => (local_count + response.sockets_count, true),
             Err(e) => {
                 error!("Failed to get remote channel socket count: {}", e);
-                local_count
+                // Return local count but mark as unreliable
+                (local_count, false)
             }
         }
     }

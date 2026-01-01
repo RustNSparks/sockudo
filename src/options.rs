@@ -1102,6 +1102,7 @@ pub struct RedisQueueConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RateLimit {
+    pub enabled: bool,
     pub max_requests: u32,
     pub window_seconds: u64,
     pub identifier: Option<String>,
@@ -1468,6 +1469,7 @@ impl Default for RedisQueueConfig {
 impl Default for RateLimit {
     fn default() -> Self {
         Self {
+            enabled: true,
             max_requests: 60,
             window_seconds: 60,
             identifier: Some("default".to_string()),
@@ -1482,12 +1484,14 @@ impl Default for RateLimiterConfig {
             enabled: true,
             driver: CacheDriver::Memory, // Default Rate Limiter backend to Memory
             api_rate_limit: RateLimit {
+                enabled: true,
                 max_requests: 100,
                 window_seconds: 60,
                 identifier: Some("api".to_string()),
                 trust_hops: Some(0),
             },
             websocket_rate_limit: RateLimit {
+                enabled: true,
                 max_requests: 20,
                 window_seconds: 60,
                 identifier: Some("websocket_connect".to_string()),
@@ -1843,6 +1847,11 @@ impl ServerOptions {
         // --- Rate Limiter ---
         self.rate_limiter.enabled =
             parse_bool_env("RATE_LIMITER_ENABLED", self.rate_limiter.enabled);
+        // API rate limit settings
+        self.rate_limiter.api_rate_limit.enabled = parse_bool_env(
+            "RATE_LIMITER_API_ENABLED",
+            self.rate_limiter.api_rate_limit.enabled,
+        );
         self.rate_limiter.api_rate_limit.max_requests = parse_env::<u32>(
             "RATE_LIMITER_API_MAX_REQUESTS",
             self.rate_limiter.api_rate_limit.max_requests,
@@ -1854,6 +1863,11 @@ impl ServerOptions {
         if let Some(hops) = parse_env_optional::<u32>("RATE_LIMITER_API_TRUST_HOPS") {
             self.rate_limiter.api_rate_limit.trust_hops = Some(hops);
         }
+        // WebSocket rate limit settings
+        self.rate_limiter.websocket_rate_limit.enabled = parse_bool_env(
+            "RATE_LIMITER_WS_ENABLED",
+            self.rate_limiter.websocket_rate_limit.enabled,
+        );
         self.rate_limiter.websocket_rate_limit.max_requests = parse_env::<u32>(
             "RATE_LIMITER_WS_MAX_REQUESTS",
             self.rate_limiter.websocket_rate_limit.max_requests,
