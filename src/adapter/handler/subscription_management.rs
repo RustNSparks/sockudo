@@ -144,24 +144,21 @@ impl ConnectionHandler {
             }
         }
 
-        // Send webhooks after subscription success response (non-blocking for client)
+        // Send channel_occupied webhook synchronously to ensure proper ordering with channel_vacated
+        // This prevents race conditions where vacated could arrive before occupied
         if subscription_result.channel_connections == Some(1)
-            && let Some(webhook_integration) = self.webhook_integration.clone()
+            && let Some(webhook_integration) = &self.webhook_integration
         {
-            let app_config = app_config.clone();
-            let channel = request.channel.clone();
-            tokio::spawn(async move {
-                if let Err(e) = webhook_integration
-                    .send_channel_occupied(&app_config, &channel)
-                    .await
-                {
-                    tracing::warn!(
-                        "Failed to send channel_occupied webhook for {}: {}",
-                        channel,
-                        e
-                    );
-                }
-            });
+            if let Err(e) = webhook_integration
+                .send_channel_occupied(app_config, &request.channel)
+                .await
+            {
+                tracing::warn!(
+                    "Failed to send channel_occupied webhook for {}: {}",
+                    request.channel,
+                    e
+                );
+            }
         }
 
         // Send subscription count webhook for non-presence channels

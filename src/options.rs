@@ -530,6 +530,111 @@ pub struct RedisSentinel {
     pub port: u16,
 }
 
+impl RedisConnection {
+    /// Builds the appropriate Redis URL based on the configuration.
+    ///
+    /// Priority order:
+    /// 1. If sentinels are configured, builds a Sentinel URL
+    /// 2. Otherwise, builds a standard Redis URL from host:port
+    ///
+    /// Sentinel URL format: `redis+sentinel://[[username]:[password]@]host1:port1[,host2:port2,...]/service-name[/db][?sentinel_password=...]`
+    ///
+    /// Examples:
+    /// - Standard: `redis://127.0.0.1:6379/0`
+    /// - With auth: `redis://:password@127.0.0.1:6379/0`
+    /// - Sentinel: `redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster/0`
+    /// - Sentinel with auth: `redis+sentinel://:redis_password@sentinel1:26379,sentinel2:26379/mymaster/0?sentinel_password=sentinel_pass`
+    pub fn to_url(&self) -> String {
+        if !self.sentinels.is_empty() {
+            self.build_sentinel_url()
+        } else {
+            self.build_standard_url()
+        }
+    }
+
+    /// Builds a standard Redis URL from host and port.
+    fn build_standard_url(&self) -> String {
+        let auth = self.build_auth_string();
+        if auth.is_empty() {
+            format!("redis://{}:{}/{}", self.host, self.port, self.db)
+        } else {
+            format!("redis://{}@{}:{}/{}", auth, self.host, self.port, self.db)
+        }
+    }
+
+    /// Builds a Redis Sentinel URL.
+    ///
+    /// Format: `redis+sentinel://[auth@]sentinel1:port1,sentinel2:port2/master-name/db[?sentinel_password=...]`
+    fn build_sentinel_url(&self) -> String {
+        let sentinel_hosts: Vec<String> = self
+            .sentinels
+            .iter()
+            .map(|s| format!("{}:{}", s.host, s.port))
+            .collect();
+        let sentinel_hosts_str = sentinel_hosts.join(",");
+
+        let auth = self.build_auth_string();
+        let master_name = if self.name.is_empty() {
+            "mymaster"
+        } else {
+            &self.name
+        };
+
+        let mut url = if auth.is_empty() {
+            format!(
+                "redis+sentinel://{}/{}/{}",
+                sentinel_hosts_str, master_name, self.db
+            )
+        } else {
+            format!(
+                "redis+sentinel://{}@{}/{}/{}",
+                auth, sentinel_hosts_str, master_name, self.db
+            )
+        };
+
+        // Add sentinel password as query parameter if present
+        if let Some(ref sentinel_password) = self.sentinel_password {
+            if !sentinel_password.is_empty() {
+                url.push_str("?sentinel_password=");
+                url.push_str(&urlencoding::encode(sentinel_password));
+            }
+        }
+
+        url
+    }
+
+    /// Builds the authentication string for Redis URLs.
+    /// Returns empty string if no auth is configured.
+    fn build_auth_string(&self) -> String {
+        match (&self.username, &self.password) {
+            (Some(username), Some(password)) if !username.is_empty() && !password.is_empty() => {
+                format!(
+                    "{}:{}",
+                    urlencoding::encode(username),
+                    urlencoding::encode(password)
+                )
+            }
+            (None, Some(password)) if !password.is_empty() => {
+                format!(":{}", urlencoding::encode(password))
+            }
+            (Some(username), None) if !username.is_empty() => {
+                urlencoding::encode(username).to_string()
+            }
+            _ => String::new(),
+        }
+    }
+
+    /// Returns true if this connection is configured for Sentinel mode.
+    pub fn is_sentinel_mode(&self) -> bool {
+        !self.sentinels.is_empty()
+    }
+
+    /// Returns true if this connection is configured for Cluster mode.
+    pub fn is_cluster_mode(&self) -> bool {
+        !self.cluster_nodes.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ClusterNode {
@@ -703,6 +808,209 @@ mod cluster_node_tests {
             port: 6379,
         };
         assert_eq!(node.to_url(), "redis://[::1]:6379");
+    }
+}
+
+#[cfg(test)]
+mod redis_connection_tests {
+    use super::{RedisConnection, RedisSentinel};
+
+    #[test]
+    fn test_standard_url_basic() {
+        let conn = RedisConnection {
+            host: "127.0.0.1".to_string(),
+            port: 6379,
+            db: 0,
+            ..Default::default()
+        };
+        assert_eq!(conn.to_url(), "redis://127.0.0.1:6379/0");
+    }
+
+    #[test]
+    fn test_standard_url_with_password() {
+        let conn = RedisConnection {
+            host: "localhost".to_string(),
+            port: 6379,
+            db: 1,
+            password: Some("secret".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(conn.to_url(), "redis://:secret@localhost:6379/1");
+    }
+
+    #[test]
+    fn test_standard_url_with_username_and_password() {
+        let conn = RedisConnection {
+            host: "localhost".to_string(),
+            port: 6379,
+            db: 2,
+            username: Some("admin".to_string()),
+            password: Some("secret".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(conn.to_url(), "redis://admin:secret@localhost:6379/2");
+    }
+
+    #[test]
+    fn test_standard_url_with_special_chars_in_password() {
+        let conn = RedisConnection {
+            host: "localhost".to_string(),
+            port: 6379,
+            db: 0,
+            password: Some("p@ss:word/test".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            conn.to_url(),
+            "redis://:p%40ss%3Aword%2Ftest@localhost:6379/0"
+        );
+    }
+
+    #[test]
+    fn test_sentinel_url_basic() {
+        let conn = RedisConnection {
+            sentinels: vec![
+                RedisSentinel {
+                    host: "sentinel1".to_string(),
+                    port: 26379,
+                },
+                RedisSentinel {
+                    host: "sentinel2".to_string(),
+                    port: 26379,
+                },
+            ],
+            name: "mymaster".to_string(),
+            db: 0,
+            ..Default::default()
+        };
+        assert_eq!(
+            conn.to_url(),
+            "redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster/0"
+        );
+    }
+
+    #[test]
+    fn test_sentinel_url_with_redis_password() {
+        let conn = RedisConnection {
+            sentinels: vec![RedisSentinel {
+                host: "sentinel1".to_string(),
+                port: 26379,
+            }],
+            name: "master".to_string(),
+            db: 1,
+            password: Some("redis_pass".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            conn.to_url(),
+            "redis+sentinel://:redis_pass@sentinel1:26379/master/1"
+        );
+    }
+
+    #[test]
+    fn test_sentinel_url_with_sentinel_password() {
+        let conn = RedisConnection {
+            sentinels: vec![RedisSentinel {
+                host: "sentinel1".to_string(),
+                port: 26379,
+            }],
+            name: "mymaster".to_string(),
+            db: 0,
+            sentinel_password: Some("sentinel_secret".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            conn.to_url(),
+            "redis+sentinel://sentinel1:26379/mymaster/0?sentinel_password=sentinel_secret"
+        );
+    }
+
+    #[test]
+    fn test_sentinel_url_with_both_passwords() {
+        let conn = RedisConnection {
+            sentinels: vec![
+                RedisSentinel {
+                    host: "sentinel1".to_string(),
+                    port: 26379,
+                },
+                RedisSentinel {
+                    host: "sentinel2".to_string(),
+                    port: 26380,
+                },
+            ],
+            name: "mymaster".to_string(),
+            db: 2,
+            password: Some("redis_pass".to_string()),
+            sentinel_password: Some("sentinel_pass".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            conn.to_url(),
+            "redis+sentinel://:redis_pass@sentinel1:26379,sentinel2:26380/mymaster/2?sentinel_password=sentinel_pass"
+        );
+    }
+
+    #[test]
+    fn test_sentinel_url_special_chars_in_passwords() {
+        let conn = RedisConnection {
+            sentinels: vec![RedisSentinel {
+                host: "sentinel1".to_string(),
+                port: 26379,
+            }],
+            name: "mymaster".to_string(),
+            db: 0,
+            password: Some("p@ss:word".to_string()),
+            sentinel_password: Some("s3nt!nel/pass".to_string()),
+            ..Default::default()
+        };
+        let url = conn.to_url();
+        assert!(url.contains("p%40ss%3Aword"));
+        assert!(url.contains("sentinel_password=s3nt%21nel%2Fpass"));
+    }
+
+    #[test]
+    fn test_is_sentinel_mode() {
+        let conn_standard = RedisConnection::default();
+        assert!(!conn_standard.is_sentinel_mode());
+
+        let conn_sentinel = RedisConnection {
+            sentinels: vec![RedisSentinel {
+                host: "sentinel1".to_string(),
+                port: 26379,
+            }],
+            ..Default::default()
+        };
+        assert!(conn_sentinel.is_sentinel_mode());
+    }
+
+    #[test]
+    fn test_is_cluster_mode() {
+        let conn_standard = RedisConnection::default();
+        assert!(!conn_standard.is_cluster_mode());
+
+        let conn_cluster = RedisConnection {
+            cluster_nodes: vec![super::ClusterNode {
+                host: "node1".to_string(),
+                port: 7000,
+            }],
+            ..Default::default()
+        };
+        assert!(conn_cluster.is_cluster_mode());
+    }
+
+    #[test]
+    fn test_sentinel_url_with_empty_master_name() {
+        let conn = RedisConnection {
+            sentinels: vec![RedisSentinel {
+                host: "sentinel1".to_string(),
+                port: 26379,
+            }],
+            name: "".to_string(),
+            db: 0,
+            ..Default::default()
+        };
+        // Should fall back to "mymaster"
+        assert_eq!(conn.to_url(), "redis+sentinel://sentinel1:26379/mymaster/0");
     }
 }
 
@@ -1352,6 +1660,58 @@ impl ServerOptions {
         self.database.redis.db = parse_env::<u32>("DATABASE_REDIS_DB", self.database.redis.db);
         if let Ok(prefix) = std::env::var("DATABASE_REDIS_KEY_PREFIX") {
             self.database.redis.key_prefix = prefix;
+        }
+        if let Ok(username) = std::env::var("DATABASE_REDIS_USERNAME") {
+            self.database.redis.username = Some(username);
+        }
+
+        // --- Database: Redis Sentinel ---
+        // Format: "host1:port1,host2:port2,host3:port3" or "host1,host2,host3" (uses default port 26379)
+        if let Ok(sentinels_str) = std::env::var("DATABASE_REDIS_SENTINELS") {
+            let sentinels: Vec<RedisSentinel> = sentinels_str
+                .split(',')
+                .filter_map(|s| {
+                    let s = s.trim();
+                    if s.is_empty() {
+                        return None;
+                    }
+                    let parts: Vec<&str> = s.rsplitn(2, ':').collect();
+                    match parts.as_slice() {
+                        [port_str, host] => {
+                            if let Ok(port) = port_str.parse::<u16>() {
+                                Some(RedisSentinel {
+                                    host: host.to_string(),
+                                    port,
+                                })
+                            } else {
+                                // No valid port, treat whole thing as host with default port
+                                Some(RedisSentinel {
+                                    host: s.to_string(),
+                                    port: 26379,
+                                })
+                            }
+                        }
+                        [host] => Some(RedisSentinel {
+                            host: host.to_string(),
+                            port: 26379,
+                        }),
+                        _ => None,
+                    }
+                })
+                .collect();
+            if !sentinels.is_empty() {
+                self.database.redis.sentinels = sentinels;
+                info!(
+                    "Configured {} Redis Sentinel nodes from DATABASE_REDIS_SENTINELS",
+                    self.database.redis.sentinels.len()
+                );
+            }
+        }
+        if let Ok(sentinel_password) = std::env::var("DATABASE_REDIS_SENTINEL_PASSWORD") {
+            self.database.redis.sentinel_password = Some(sentinel_password);
+        }
+        if let Ok(master_name) = std::env::var("DATABASE_REDIS_SENTINEL_MASTER") {
+            self.database.redis.name = master_name;
         }
 
         // --- Database: MySQL ---

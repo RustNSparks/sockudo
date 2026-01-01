@@ -936,7 +936,8 @@ async fn check_system_health(handler: &Arc<ConnectionHandler>) -> HealthStatus {
         }
     }
 
-    // CRITICAL CHECK 2: Cache manager health - required for cache channels
+    // NON-CRITICAL CHECK: Cache manager health - cache failures should not cause service unavailability
+    // Cache is used for cache channels and can gracefully degrade to cache_miss events
     if handler.server_options().cache.driver != crate::options::CacheDriver::None {
         let cache_check = timeout(Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS), async {
             let cache_manager = handler.cache_manager.lock().await;
@@ -949,10 +950,12 @@ async fn check_system_health(handler: &Arc<ConnectionHandler>) -> HealthStatus {
                 // Cache manager is healthy
             }
             Ok(Err(e)) => {
-                critical_issues.push(format!("Cache: {e}"));
+                // Cache failures are non-critical - WebSocket connections continue to work
+                // Cache channels will receive cache_miss events instead
+                non_critical_issues.push(format!("Cache: {e}"));
             }
             Err(_) => {
-                critical_issues.push("Cache health check timeout".to_string());
+                non_critical_issues.push("Cache health check timeout".to_string());
             }
         }
     }

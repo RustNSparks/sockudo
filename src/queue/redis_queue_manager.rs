@@ -9,7 +9,7 @@ use serde::de::DeserializeOwned;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 pub struct RedisQueueManager {
     redis_client: redis::Client,
@@ -198,13 +198,38 @@ impl QueueInterface for RedisQueueManager {
 
     async fn disconnect(&self) -> crate::error::Result<()> {
         let mut conn = self.redis_connection.lock().await;
-        let keys: Vec<String> = conn
-            .keys(format!("{}:queue:*", self.prefix))
-            .await
-            .expect("Error fetching keys");
-        for key in keys {
-            conn.del::<_, ()>(&key).await.expect("Error deleting key");
+        let pattern = format!("{}:queue:*", self.prefix);
+
+        // Use SCAN instead of KEYS for Valkey Serverless compatibility
+        let mut cursor: u64 = 0;
+        let scan_count = 100;
+
+        loop {
+            let (new_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg(&pattern)
+                .arg("COUNT")
+                .arg(scan_count)
+                .query_async(&mut *conn)
+                .await
+                .map_err(|e| {
+                    crate::error::Error::Queue(format!("Redis SCAN error during disconnect: {e}"))
+                })?;
+
+            // Delete found keys
+            for key in keys {
+                if let Err(e) = conn.del::<_, ()>(&key).await {
+                    warn!("Failed to delete queue key '{}': {}", key, e);
+                }
+            }
+
+            cursor = new_cursor;
+            if cursor == 0 {
+                break;
+            }
         }
+
         Ok(())
     }
 

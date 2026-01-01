@@ -801,7 +801,12 @@ impl ConnectionHandler {
                 );
             }
             Err(e) => {
-                error!("Failed to get cache for channel {}: {}", channel, e);
+                // Cache failure is non-fatal - log warning and send cache_miss as fallback
+                // This allows WebSocket connections to continue even when cache is unavailable
+                warn!(
+                    "Cache retrieval failed for channel {}, treating as cache miss: {}",
+                    channel, e
+                );
 
                 // Send cache miss event as fallback
                 let cache_miss_message = PusherMessage::cache_miss_event(channel.to_string());
@@ -809,9 +814,7 @@ impl ConnectionHandler {
                 self.send_message_to_socket(app_id, socket_id, cache_miss_message)
                     .await?;
 
-                return Err(Error::Internal(format!(
-                    "Cache retrieval failed for channel {channel}: {e}"
-                )));
+                // Don't return error - cache failures should be gracefully degraded
             }
         }
 
