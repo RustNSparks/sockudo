@@ -1671,6 +1671,7 @@ impl ServerOptions {
 
         // --- Database: Redis Sentinel ---
         // Format: "host1:port1,host2:port2,host3:port3" or "host1,host2,host3" (uses default port 26379)
+        // IPv6 addresses must use bracket notation: "[::1]:26379" or "[2001:db8::1]:26379"
         if let Ok(sentinels_str) = std::env::var("DATABASE_REDIS_SENTINELS") {
             let sentinels: Vec<RedisSentinel> = sentinels_str
                 .split(',')
@@ -1679,28 +1680,55 @@ impl ServerOptions {
                     if s.is_empty() {
                         return None;
                     }
-                    let parts: Vec<&str> = s.rsplitn(2, ':').collect();
-                    match parts.as_slice() {
-                        [port_str, host] => {
-                            if let Ok(port) = port_str.parse::<u16>() {
-                                Some(RedisSentinel {
-                                    host: host.to_string(),
-                                    port,
-                                })
+
+                    // Handle IPv6 bracket notation: [::1]:port or [2001:db8::1]:port
+                    if s.starts_with('[') {
+                        if let Some(bracket_end) = s.find(']') {
+                            let host = &s[1..bracket_end];
+                            let remainder = &s[bracket_end + 1..];
+                            let port = if remainder.starts_with(':') {
+                                remainder[1..].parse::<u16>().unwrap_or(26379)
                             } else {
-                                // No valid port, treat whole thing as host with default port
-                                Some(RedisSentinel {
-                                    host: s.to_string(),
-                                    port: 26379,
-                                })
+                                26379
+                            };
+                            return Some(RedisSentinel {
+                                host: host.to_string(),
+                                port,
+                            });
+                        }
+                    }
+
+                    // Try parsing as SocketAddr first (handles both IPv4:port and [IPv6]:port)
+                    if let Ok(socket_addr) = s.parse::<std::net::SocketAddr>() {
+                        return Some(RedisSentinel {
+                            host: socket_addr.ip().to_string(),
+                            port: socket_addr.port(),
+                        });
+                    }
+
+                    // For hostname:port or IPv4:port, use rsplit to find the last colon
+                    // This works for hostnames and IPv4, but not bare IPv6 (which should use brackets)
+                    if let Some(last_colon) = s.rfind(':') {
+                        let host_part = &s[..last_colon];
+                        let port_part = &s[last_colon + 1..];
+
+                        // Only treat as host:port if port_part is a valid port number
+                        // and host_part doesn't contain colons (which would indicate IPv6)
+                        if !host_part.contains(':') {
+                            if let Ok(port) = port_part.parse::<u16>() {
+                                return Some(RedisSentinel {
+                                    host: host_part.to_string(),
+                                    port,
+                                });
                             }
                         }
-                        [host] => Some(RedisSentinel {
-                            host: host.to_string(),
-                            port: 26379,
-                        }),
-                        _ => None,
                     }
+
+                    // Fallback: treat entire string as host with default port
+                    Some(RedisSentinel {
+                        host: s.to_string(),
+                        port: 26379,
+                    })
                 })
                 .collect();
             if !sentinels.is_empty() {
