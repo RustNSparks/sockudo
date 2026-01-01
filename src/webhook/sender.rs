@@ -29,6 +29,17 @@ pub type JobProcessorFnAsync = Box<
 
 const MAX_CONCURRENT_WEBHOOKS: usize = 20;
 
+/// Parameters for creating a webhook task
+struct WebhookTaskParams {
+    webhook_config: Webhook,
+    permit: tokio::sync::OwnedSemaphorePermit,
+    app_id: String,
+    app_key: String,
+    signature: String,
+    body_to_send: String,
+    event_type: String,
+}
+
 /// Parameters for creating an HTTP webhook task
 struct HttpWebhookTaskParams {
     url: url::Url,
@@ -195,15 +206,15 @@ impl WebhookSender {
                     Error::Other(format!("Failed to acquire webhook semaphore permit: {e}"))
                 })?;
 
-            let task = self.create_webhook_task(
-                webhook_config,
+            let task = self.create_webhook_task(WebhookTaskParams {
+                webhook_config: webhook_config.clone(),
                 permit,
-                app_id.clone(),
-                app_key.clone(),
-                signature.clone(),
-                body_json_string.clone(),
-                event_type_str.clone(),
-            );
+                app_id: app_id.clone(),
+                app_key: app_key.clone(),
+                signature: signature.clone(),
+                body_to_send: body_json_string.clone(),
+                event_type: event_type_str.clone(),
+            });
             tasks.push(task);
         }
 
@@ -217,47 +228,45 @@ impl WebhookSender {
         Ok(())
     }
 
-    fn create_webhook_task(
-        &self,
-        webhook_config: &Webhook,
-        permit: tokio::sync::OwnedSemaphorePermit,
-        app_id: String,
-        app_key: String,
-        signature: String,
-        body_to_send: String,
-        event_type: String,
-    ) -> tokio::task::JoinHandle<()> {
-        if let Some(url) = &webhook_config.url {
-            let params = HttpWebhookTaskParams {
+    fn create_webhook_task(&self, params: WebhookTaskParams) -> tokio::task::JoinHandle<()> {
+        if let Some(url) = &params.webhook_config.url {
+            let http_params = HttpWebhookTaskParams {
                 url: url.clone(),
-                webhook_config: webhook_config.clone(),
-                permit,
-                app_key,
-                signature,
-                body_to_send,
+                webhook_config: params.webhook_config,
+                permit: params.permit,
+                app_key: params.app_key,
+                signature: params.signature,
+                body_to_send: params.body_to_send,
             };
 
-            self.create_http_webhook_task(params, app_id, event_type)
-        } else if webhook_config.lambda.is_some() || webhook_config.lambda_function.is_some() {
+            self.create_http_webhook_task(http_params, params.app_id, params.event_type)
+        } else if params.webhook_config.lambda.is_some()
+            || params.webhook_config.lambda_function.is_some()
+        {
             #[cfg(feature = "lambda")]
             {
-                self.create_lambda_webhook_task(webhook_config, permit, app_id, body_to_send)
+                self.create_lambda_webhook_task(
+                    &params.webhook_config,
+                    params.permit,
+                    params.app_id,
+                    params.body_to_send,
+                )
             }
             #[cfg(not(feature = "lambda"))]
             {
                 warn!(
                     "Lambda webhook configured for app {} but Lambda support not compiled in.",
-                    app_id
+                    params.app_id
                 );
-                drop(permit);
+                drop(params.permit);
                 tokio::spawn(async {})
             }
         } else {
             warn!(
                 "Webhook for app {} has neither URL nor Lambda config.",
-                app_id
+                params.app_id
             );
-            drop(permit);
+            drop(params.permit);
             tokio::spawn(async {})
         }
     }

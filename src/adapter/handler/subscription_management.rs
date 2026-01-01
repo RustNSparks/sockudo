@@ -148,17 +148,15 @@ impl ConnectionHandler {
         // This prevents race conditions where vacated could arrive before occupied
         if subscription_result.channel_connections == Some(1)
             && let Some(webhook_integration) = &self.webhook_integration
-        {
-            if let Err(e) = webhook_integration
+            && let Err(e) = webhook_integration
                 .send_channel_occupied(app_config, &request.channel)
                 .await
-            {
-                tracing::warn!(
-                    "Failed to send channel_occupied webhook for {}: {}",
-                    request.channel,
-                    e
-                );
-            }
+        {
+            tracing::warn!(
+                "Failed to send channel_occupied webhook for {}: {}",
+                request.channel,
+                e
+            );
         }
 
         // Send subscription count webhook for non-presence channels

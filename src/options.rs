@@ -593,11 +593,11 @@ impl RedisConnection {
         };
 
         // Add sentinel password as query parameter if present
-        if let Some(ref sentinel_password) = self.sentinel_password {
-            if !sentinel_password.is_empty() {
-                url.push_str("?sentinel_password=");
-                url.push_str(&urlencoding::encode(sentinel_password));
-            }
+        if let Some(ref sentinel_password) = self.sentinel_password
+            && !sentinel_password.is_empty()
+        {
+            url.push_str("?sentinel_password=");
+            url.push_str(&urlencoding::encode(sentinel_password));
         }
 
         url
@@ -1682,20 +1682,20 @@ impl ServerOptions {
                     }
 
                     // Handle IPv6 bracket notation: [::1]:port or [2001:db8::1]:port
-                    if s.starts_with('[') {
-                        if let Some(bracket_end) = s.find(']') {
-                            let host = &s[1..bracket_end];
-                            let remainder = &s[bracket_end + 1..];
-                            let port = if remainder.starts_with(':') {
-                                remainder[1..].parse::<u16>().unwrap_or(26379)
-                            } else {
-                                26379
-                            };
-                            return Some(RedisSentinel {
-                                host: host.to_string(),
-                                port,
-                            });
-                        }
+                    if s.starts_with('[')
+                        && let Some(bracket_end) = s.find(']')
+                    {
+                        let host = &s[1..bracket_end];
+                        let remainder = &s[bracket_end + 1..];
+                        let port = if let Some(port_str) = remainder.strip_prefix(':') {
+                            port_str.parse::<u16>().unwrap_or(26379)
+                        } else {
+                            26379
+                        };
+                        return Some(RedisSentinel {
+                            host: host.to_string(),
+                            port,
+                        });
                     }
 
                     // Try parsing as SocketAddr first (handles both IPv4:port and [IPv6]:port)
@@ -1714,13 +1714,13 @@ impl ServerOptions {
 
                         // Only treat as host:port if port_part is a valid port number
                         // and host_part doesn't contain colons (which would indicate IPv6)
-                        if !host_part.contains(':') {
-                            if let Ok(port) = port_part.parse::<u16>() {
-                                return Some(RedisSentinel {
-                                    host: host_part.to_string(),
-                                    port,
-                                });
-                            }
+                        if !host_part.contains(':')
+                            && let Ok(port) = port_part.parse::<u16>()
+                        {
+                            return Some(RedisSentinel {
+                                host: host_part.to_string(),
+                                port,
+                            });
                         }
                     }
 
