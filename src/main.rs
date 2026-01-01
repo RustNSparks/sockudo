@@ -1330,9 +1330,7 @@ impl SockudoServer {
                     .map(|(_app_id, ws_raw_obj)| {
                         async move {
                             let mut ws = ws_raw_obj.inner.lock().await; // Lock the WebSocketRef
-if let Err(e) = ws
-    .close(4009, "Server shutting down".to_string())
-    .await
+                            if let Err(e) = ws.close(4200, "Server shutting down".to_string()).await
                             {
                                 error!("Failed to close WebSocket: {:?}", e);
                             }
