@@ -55,6 +55,12 @@ pub struct PrometheusMetricsDriver {
     channel_unsubscriptions_total: CounterVec,
     active_channels: GaugeVec,
     broadcast_latency_ms: HistogramVec,
+    // Webhook metrics
+    webhook_sent_total: CounterVec,
+    webhook_failed_total: CounterVec,
+    webhook_latency_ms: HistogramVec,
+    webhook_retry_total: CounterVec,
+    webhook_queue_depth: GaugeVec,
 }
 
 impl PrometheusMetricsDriver {
@@ -272,9 +278,57 @@ impl PrometheusMetricsDriver {
         )
         .unwrap();
 
+        // Webhook metrics
+        let webhook_sent_total = register_counter_vec!(
+            Opts::new(
+                format!("{prefix}webhook_sent_total"),
+                "Total number of webhooks sent successfully"
+            ),
+            &["app_id", "port", "event_type"]
+        )
+        .unwrap();
+
+        let webhook_failed_total = register_counter_vec!(
+            Opts::new(
+                format!("{prefix}webhook_failed_total"),
+                "Total number of webhook delivery failures"
+            ),
+            &["app_id", "port", "event_type", "error_type"]
+        )
+        .unwrap();
+
+        let webhook_latency_ms = register_histogram_vec!(
+            histogram_opts!(
+                format!("{prefix}webhook_latency_ms"),
+                "Webhook delivery latency in milliseconds",
+                END_TO_END_LATENCY_HISTOGRAM_BUCKETS.to_vec()
+            ),
+            &["app_id", "port", "event_type"]
+        )
+        .unwrap();
+
+        let webhook_retry_total = register_counter_vec!(
+            Opts::new(
+                format!("{prefix}webhook_retry_total"),
+                "Total number of webhook retries"
+            ),
+            &["app_id", "port", "event_type"]
+        )
+        .unwrap();
+
+        let webhook_queue_depth = register_gauge_vec!(
+            Opts::new(
+                format!("{prefix}webhook_queue_depth"),
+                "Current depth of the webhook queue"
+            ),
+            &["queue_name"]
+        )
+        .unwrap();
+
         // Reset gauge metrics to 0 on startup - they represent current state, not historical
         connected_sockets.reset();
         active_channels.reset();
+        webhook_queue_depth.reset();
 
         Self {
             prefix,
@@ -302,6 +356,11 @@ impl PrometheusMetricsDriver {
             channel_unsubscriptions_total,
             active_channels,
             broadcast_latency_ms,
+            webhook_sent_total,
+            webhook_failed_total,
+            webhook_latency_ms,
+            webhook_retry_total,
+            webhook_queue_depth,
         }
     }
 
@@ -616,6 +675,73 @@ impl MetricsInterface for PrometheusMetricsDriver {
             "Metrics: Broadcast latency for app {}, channel: {} ({}), recipients: {} ({}), latency: {} ms",
             app_id, channel_name, channel_type, recipient_count, bucket, latency_ms
         );
+    }
+
+    fn mark_webhook_sent(&self, app_id: &str, event_type: &str) {
+        let tags = vec![
+            app_id.to_string(),
+            self.port.to_string(),
+            event_type.to_string(),
+        ];
+        self.webhook_sent_total.with_label_values(&tags).inc();
+
+        debug!(
+            "Metrics: Webhook sent for app {}, event type: {}",
+            app_id, event_type
+        );
+    }
+
+    fn mark_webhook_failed(&self, app_id: &str, event_type: &str, error_type: &str) {
+        let tags = vec![
+            app_id.to_string(),
+            self.port.to_string(),
+            event_type.to_string(),
+            error_type.to_string(),
+        ];
+        self.webhook_failed_total.with_label_values(&tags).inc();
+
+        debug!(
+            "Metrics: Webhook failed for app {}, event type: {}, error: {}",
+            app_id, event_type, error_type
+        );
+    }
+
+    fn track_webhook_latency(&self, app_id: &str, event_type: &str, latency_ms: f64) {
+        let tags = vec![
+            app_id.to_string(),
+            self.port.to_string(),
+            event_type.to_string(),
+        ];
+        self.webhook_latency_ms
+            .with_label_values(&tags)
+            .observe(latency_ms);
+
+        debug!(
+            "Metrics: Webhook latency for app {}, event type: {}, latency: {} ms",
+            app_id, event_type, latency_ms
+        );
+    }
+
+    fn mark_webhook_retry(&self, app_id: &str, event_type: &str) {
+        let tags = vec![
+            app_id.to_string(),
+            self.port.to_string(),
+            event_type.to_string(),
+        ];
+        self.webhook_retry_total.with_label_values(&tags).inc();
+
+        debug!(
+            "Metrics: Webhook retry for app {}, event type: {}",
+            app_id, event_type
+        );
+    }
+
+    fn update_webhook_queue_depth(&self, queue_name: &str, depth: i64) {
+        self.webhook_queue_depth
+            .with_label_values(&[queue_name])
+            .set(depth as f64);
+
+        debug!("Metrics: Webhook queue depth for {}: {}", queue_name, depth);
     }
 
     async fn get_metrics_as_plaintext(&self) -> String {

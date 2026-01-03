@@ -3,6 +3,7 @@
 use crate::app::config::App;
 use crate::app::manager::AppManager; // Keep for AppManager trait
 use crate::error::{Error, Result};
+use crate::metrics::MetricsInterface;
 
 #[cfg(feature = "lambda")]
 use crate::webhook::lambda_sender::LambdaWebhookSender;
@@ -18,8 +19,8 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::Semaphore;
+use std::time::{Duration, Instant};
+use tokio::sync::{Mutex, Semaphore};
 use tracing::{debug, error, info, warn};
 
 pub type JobProcessorFnAsync = Box<
@@ -27,6 +28,17 @@ pub type JobProcessorFnAsync = Box<
 >;
 
 const MAX_CONCURRENT_WEBHOOKS: usize = 20;
+
+/// Parameters for creating a webhook task
+struct WebhookTaskParams {
+    webhook_config: Webhook,
+    permit: tokio::sync::OwnedSemaphorePermit,
+    app_id: String,
+    app_key: String,
+    signature: String,
+    body_to_send: String,
+    event_type: String,
+}
 
 /// Parameters for creating an HTTP webhook task
 struct HttpWebhookTaskParams {
@@ -44,10 +56,18 @@ pub struct WebhookSender {
     #[cfg(feature = "lambda")]
     lambda_sender: LambdaWebhookSender,
     webhook_semaphore: Arc<Semaphore>,
+    metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
 }
 
 impl WebhookSender {
     pub fn new(app_manager: Arc<dyn AppManager + Send + Sync>) -> Self {
+        Self::with_metrics(app_manager, None)
+    }
+
+    pub fn with_metrics(
+        app_manager: Arc<dyn AppManager + Send + Sync>,
+        metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
+    ) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(10)) // Timeout for HTTP requests
             .build()
@@ -58,6 +78,7 @@ impl WebhookSender {
             #[cfg(feature = "lambda")]
             lambda_sender: LambdaWebhookSender::new(),
             webhook_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_WEBHOOKS)),
+            metrics,
         }
     }
 
@@ -160,6 +181,19 @@ impl WebhookSender {
 
         log_webhook_processing_pusher_format(&app_id, &pusher_payload);
 
+        // Extract event types for metrics
+        let event_types: Vec<String> = job
+            .payload
+            .events
+            .iter()
+            .filter_map(|e| e.get("name").and_then(Value::as_str).map(String::from))
+            .collect();
+        let event_type_str = if event_types.len() == 1 {
+            event_types[0].clone()
+        } else {
+            "batch".to_string()
+        };
+
         // Process webhooks
         let mut tasks = Vec::new();
         for (_endpoint_key, webhook_config) in relevant_webhooks {
@@ -172,14 +206,15 @@ impl WebhookSender {
                     Error::Other(format!("Failed to acquire webhook semaphore permit: {e}"))
                 })?;
 
-            let task = self.create_webhook_task(
-                webhook_config,
+            let task = self.create_webhook_task(WebhookTaskParams {
+                webhook_config: webhook_config.clone(),
                 permit,
-                app_id.clone(),
-                app_key.clone(),
-                signature.clone(),
-                body_json_string.clone(),
-            );
+                app_id: app_id.clone(),
+                app_key: app_key.clone(),
+                signature: signature.clone(),
+                body_to_send: body_json_string.clone(),
+                event_type: event_type_str.clone(),
+            });
             tasks.push(task);
         }
 
@@ -193,46 +228,45 @@ impl WebhookSender {
         Ok(())
     }
 
-    fn create_webhook_task(
-        &self,
-        webhook_config: &Webhook,
-        permit: tokio::sync::OwnedSemaphorePermit,
-        app_id: String,
-        app_key: String,
-        signature: String,
-        body_to_send: String,
-    ) -> tokio::task::JoinHandle<()> {
-        if let Some(url) = &webhook_config.url {
-            let params = HttpWebhookTaskParams {
+    fn create_webhook_task(&self, params: WebhookTaskParams) -> tokio::task::JoinHandle<()> {
+        if let Some(url) = &params.webhook_config.url {
+            let http_params = HttpWebhookTaskParams {
                 url: url.clone(),
-                webhook_config: webhook_config.clone(),
-                permit,
-                app_key,
-                signature,
-                body_to_send,
+                webhook_config: params.webhook_config,
+                permit: params.permit,
+                app_key: params.app_key,
+                signature: params.signature,
+                body_to_send: params.body_to_send,
             };
 
-            self.create_http_webhook_task(params)
-        } else if webhook_config.lambda.is_some() || webhook_config.lambda_function.is_some() {
+            self.create_http_webhook_task(http_params, params.app_id, params.event_type)
+        } else if params.webhook_config.lambda.is_some()
+            || params.webhook_config.lambda_function.is_some()
+        {
             #[cfg(feature = "lambda")]
             {
-                self.create_lambda_webhook_task(webhook_config, permit, app_id, body_to_send)
+                self.create_lambda_webhook_task(
+                    &params.webhook_config,
+                    params.permit,
+                    params.app_id,
+                    params.body_to_send,
+                )
             }
             #[cfg(not(feature = "lambda"))]
             {
                 warn!(
                     "Lambda webhook configured for app {} but Lambda support not compiled in.",
-                    app_id
+                    params.app_id
                 );
-                drop(permit);
+                drop(params.permit);
                 tokio::spawn(async {})
             }
         } else {
             warn!(
                 "Webhook for app {} has neither URL nor Lambda config.",
-                app_id
+                params.app_id
             );
-            drop(permit);
+            drop(params.permit);
             tokio::spawn(async {})
         }
     }
@@ -240,6 +274,8 @@ impl WebhookSender {
     fn create_http_webhook_task(
         &self,
         params: HttpWebhookTaskParams,
+        app_id: String,
+        event_type: String,
     ) -> tokio::task::JoinHandle<()> {
         let client = self.client.clone();
         let url_str = params.url.to_string();
@@ -249,10 +285,13 @@ impl WebhookSender {
             .as_ref()
             .map(|h| h.headers.clone())
             .unwrap_or_default();
+        let metrics = self.metrics.clone();
 
         tokio::spawn(async move {
             let _permit = params.permit;
-            if let Err(e) = send_pusher_webhook(
+            let start = Instant::now();
+
+            let result = send_pusher_webhook(
                 &client,
                 &url_str,
                 &params.app_key,
@@ -260,11 +299,26 @@ impl WebhookSender {
                 params.body_to_send,
                 custom_headers,
             )
-            .await
-            {
-                error!("Webhook send error to URL {}: {}", url_str, e);
-            } else {
-                debug!("Successfully sent Pusher webhook to URL: {}", url_str);
+            .await;
+
+            let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+            // Record metrics
+            if let Some(metrics_ref) = &metrics {
+                let m = metrics_ref.lock().await;
+                m.track_webhook_latency(&app_id, &event_type, latency_ms);
+                match &result {
+                    Ok(_) => m.mark_webhook_sent(&app_id, &event_type),
+                    Err(e) => {
+                        let error_type = categorize_webhook_error(e);
+                        m.mark_webhook_failed(&app_id, &event_type, error_type);
+                    }
+                }
+            }
+
+            match result {
+                Ok(_) => debug!("Successfully sent Pusher webhook to URL: {}", url_str),
+                Err(e) => error!("Webhook send error to URL {}: {}", url_str, e),
             }
         })
     }
@@ -303,7 +357,31 @@ impl Clone for WebhookSender {
             #[cfg(feature = "lambda")]
             lambda_sender: self.lambda_sender.clone(),
             webhook_semaphore: self.webhook_semaphore.clone(),
+            metrics: self.metrics.clone(),
         }
+    }
+}
+
+/// Categorize webhook errors for metrics
+fn categorize_webhook_error(error: &Error) -> &'static str {
+    match error {
+        Error::Internal(_) => "internal",
+        Error::InvalidAppKey => "invalid_app",
+        Error::Serialization(_) => "serialization",
+        Error::Other(msg) => {
+            if msg.contains("timeout") || msg.contains("Timeout") {
+                "timeout"
+            } else if msg.contains("connection") || msg.contains("Connection") {
+                "connection"
+            } else if msg.contains("status 4") {
+                "client_error"
+            } else if msg.contains("status 5") {
+                "server_error"
+            } else {
+                "unknown"
+            }
+        }
+        _ => "unknown",
     }
 }
 

@@ -75,6 +75,7 @@ async fn test_up_general_health_check_with_apps() {
         None,
         sockudo::options::ServerOptions::default(),
         None,
+        None,
     );
     let handler_arc = Arc::new(handler);
 
@@ -210,6 +211,7 @@ async fn test_up_general_health_check_app_manager_error() {
         None,
         sockudo::options::ServerOptions::default(),
         None,
+        None,
     );
     let handler_arc = Arc::new(handler);
 
@@ -237,6 +239,7 @@ async fn test_up_specific_app_manager_error() {
         ))),
         None,
         sockudo::options::ServerOptions::default(),
+        None,
         None,
     );
     let handler_arc = Arc::new(handler);
@@ -301,6 +304,7 @@ async fn test_up_general_health_check_timeout() {
         None,
         sockudo::options::ServerOptions::default(),
         None,
+        None,
     );
     let handler_arc = Arc::new(handler);
 
@@ -328,6 +332,7 @@ async fn test_up_specific_app_timeout() {
         ))),
         None,
         sockudo::options::ServerOptions::default(),
+        None,
         None,
     );
     let handler_arc = Arc::new(handler);
@@ -587,6 +592,7 @@ async fn test_up_adapter_health_check_failure() {
         None,
         sockudo::options::ServerOptions::default(),
         None,
+        None,
     );
     let handler_arc = Arc::new(handler);
 
@@ -618,16 +624,21 @@ async fn test_up_cache_health_check_failure() {
         None,
         server_options,
         None,
+        None,
     );
     let handler_arc = Arc::new(handler);
 
-    // Call the up endpoint - cache failure should return ERROR (critical component)
+    // Call the up endpoint - cache failure is non-critical and should return OK with DEGRADED status
+    // (cache failures shouldn't prevent WebSocket connections from working)
     let result = up(None, State(handler_arc)).await;
 
     assert!(result.is_ok());
     let response = result.unwrap().into_response();
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-    assert_eq!(response.headers().get("X-Health-Check").unwrap(), "ERROR");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("X-Health-Check").unwrap(),
+        "DEGRADED"
+    );
 }
 
 // Test that metrics are recorded (non-blocking)

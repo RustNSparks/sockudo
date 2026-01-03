@@ -2,6 +2,7 @@
 use crate::app::config::App;
 use crate::app::manager::AppManager;
 use crate::error::{Error, Result};
+use crate::metrics::MetricsInterface;
 
 use crate::queue::manager::QueueManager;
 use crate::webhook::sender::WebhookSender;
@@ -63,6 +64,7 @@ pub struct WebhookIntegration {
     batched_webhooks: Arc<Mutex<HashMap<String, Vec<JobData>>>>,
     queue_manager: Option<Arc<QueueManager>>,
     app_manager: Arc<dyn AppManager + Send + Sync>,
+    metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
 }
 
 impl WebhookIntegration {
@@ -71,11 +73,21 @@ impl WebhookIntegration {
         app_manager: Arc<dyn AppManager + Send + Sync>,
         queue_manager: Option<Arc<QueueManager>>,
     ) -> Result<Self> {
+        Self::with_metrics(config, app_manager, queue_manager, None).await
+    }
+
+    pub async fn with_metrics(
+        config: WebhookConfig,
+        app_manager: Arc<dyn AppManager + Send + Sync>,
+        queue_manager: Option<Arc<QueueManager>>,
+        metrics: Option<Arc<Mutex<dyn MetricsInterface + Send + Sync>>>,
+    ) -> Result<Self> {
         let mut integration = Self {
             config,
             batched_webhooks: Arc::new(Mutex::new(HashMap::new())),
             queue_manager: None,
             app_manager,
+            metrics,
         };
 
         // Initialize webhook processor if queue manager is provided and webhooks are enabled
@@ -98,7 +110,10 @@ impl WebhookIntegration {
     }
 
     async fn setup_webhook_processor(&mut self, queue_manager: Arc<QueueManager>) -> Result<()> {
-        let webhook_sender = Arc::new(WebhookSender::new(self.app_manager.clone()));
+        let webhook_sender = Arc::new(WebhookSender::with_metrics(
+            self.app_manager.clone(),
+            self.metrics.clone(),
+        ));
         let queue_name = "webhooks".to_string();
         let sender_clone = webhook_sender.clone();
 

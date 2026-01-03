@@ -66,12 +66,17 @@ impl CacheManagerFactory {
                     Ok(Arc::new(Mutex::new(manager)))
                 } else {
                     info!("{}", "Cache: Using standalone Redis driver.".to_string());
-                    let redis_url = config.redis.url_override.clone().unwrap_or_else(|| {
-                        format!(
-                            "redis://{}:{}",
-                            global_redis_conn_details.host, global_redis_conn_details.port
-                        )
-                    });
+                    let redis_url = config
+                        .redis
+                        .url_override
+                        .clone()
+                        .unwrap_or_else(|| global_redis_conn_details.to_url());
+                    if global_redis_conn_details.is_sentinel_mode() {
+                        info!(
+                            "Cache: Using Redis Sentinel mode with {} sentinel nodes",
+                            global_redis_conn_details.sentinels.len()
+                        );
+                    }
 
                     let prefix =
                         config.redis.prefix.clone().unwrap_or_else(|| {
