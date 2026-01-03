@@ -274,15 +274,34 @@ impl SockudoServer {
             debug_enabled
         );
 
+        let cache_manager = CacheManagerFactory::create(&config.cache, &config.database.redis)
+            .await
+            .unwrap_or_else(|e| {
+                warn!(
+                    "CacheManagerFactory creation failed: {}. Using a NoOp (Memory) Cache.",
+                    e
+                );
+                let fallback_cache_options = config.cache.memory.clone();
+                Arc::new(Mutex::new(MemoryCacheManager::new(
+                    "fallback_cache".to_string(),
+                    fallback_cache_options,
+                )))
+            });
+        info!(
+            "CacheManager initialized with driver: {:?}",
+            config.cache.driver
+        );
+
         let app_manager = AppManagerFactory::create(
             &config.app_manager,
             &config.database,
             &config.database_pooling,
+            cache_manager.clone(),
         )
         .await?;
         info!(
-            "AppManager initialized with driver: {:?}",
-            config.app_manager.driver
+            "AppManager initialized with driver: {:?} (cache: {})",
+            config.app_manager.driver, config.app_manager.cache.enabled
         );
 
         let connection_manager = AdapterFactory::create(&config.adapter, &config.database).await?;
@@ -314,24 +333,6 @@ impl SockudoServer {
             info!("Cluster health disabled, skipping dead node cleanup event bus setup");
             None
         };
-
-        let cache_manager = CacheManagerFactory::create(&config.cache, &config.database.redis)
-            .await
-            .unwrap_or_else(|e| {
-                warn!(
-                    "CacheManagerFactory creation failed: {}. Using a NoOp (Memory) Cache.",
-                    e
-                );
-                let fallback_cache_options = config.cache.memory.clone();
-                Arc::new(Mutex::new(MemoryCacheManager::new(
-                    "fallback_cache".to_string(),
-                    fallback_cache_options,
-                )))
-            });
-        info!(
-            "CacheManager initialized with driver: {:?}",
-            config.cache.driver
-        );
 
         let auth_validator = Arc::new(AuthValidator::new(app_manager.clone()));
 
