@@ -17,7 +17,7 @@ Welcome! 🎉 We're thrilled that you'd like to contribute to **Sockudo**, a hig
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/RustNSparks/sockudo
+git clone https://github.com/sockudo/sockudo
 cd sockudo
 ```
 

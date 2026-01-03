@@ -2,7 +2,7 @@
 name = "sockudo"
 version = "2.9.2"
 edition = "2024"
-repository = "https://github.com/RustNSparks/sockudo"
+repository = "https://github.com/sockudo/sockudo"
 license-file = "LICENSE"
 description = "A simple, fast, and secure WebSocket server for real-time applications."
 
@@ -103,7 +103,7 @@ codegen-units = 1
 lto = true
 
 [package.metadata.binstall]
-pkg-url = "https://github.com/RustNSparks/sockudo/releases/download/v{version}/sockudo-v{version}-{target}{archive-suffix}"
+pkg-url = "https://github.com/sockudo/sockudo/releases/download/v{version}/sockudo-v{version}-{target}{archive-suffix}"
 pkg-fmt = "tgz"
 supported-targets = [
     "x86_64-unknown-linux-gnu",
