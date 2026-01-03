@@ -7,10 +7,10 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "body-parser": "^1.20.2",
+    "body-parser": "^1.20.4",
     "crypto": "^1.0.1",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "express": "^4.22.1",
     "pusher": "^5.2.0"
   }
 }
