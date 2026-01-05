@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod cached_app_manager;
 pub mod config;
 #[cfg(feature = "dynamodb")]
 pub mod dynamodb_app_manager;
