@@ -39,5 +39,6 @@ pub trait QueueInterface: Send + Sync {
         callback: JobProcessorFnAsync,
     ) -> crate::error::Result<()>;
     async fn disconnect(&self) -> crate::error::Result<()>;
+    async fn queue_depth(&self, queue_name: &str) -> crate::error::Result<u64>;
     async fn check_health(&self) -> crate::error::Result<()>;
 }

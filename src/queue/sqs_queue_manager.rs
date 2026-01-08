@@ -461,6 +461,32 @@ impl QueueInterface for SqsQueueManager {
             .map_err(|e| crate::error::Error::Queue(format!("Queue SQS connection failed: {e}")))?;
         Ok(())
     }
+
+    async fn queue_depth(&self, queue_name: &str) -> crate::error::Result<u64> {
+        let queue_url = self.get_queue_url(queue_name).await?;
+        let attributes = self
+            .client
+            .get_queue_attributes()
+            .queue_url(queue_url)
+            .attribute_names(aws_sdk_sqs::types::QueueAttributeName::ApproximateNumberOfMessages)
+            .send()
+            .await
+            .map_err(|e| {
+                crate::error::Error::Queue(format!("Failed to get SQS queue attributes: {e}"))
+            })?;
+
+        if let Some(count_str) = attributes
+            .attributes()
+            .expect("attributes")
+            .get(&aws_sdk_sqs::types::QueueAttributeName::ApproximateNumberOfMessages)
+        {
+            count_str.parse::<u64>().map_err(|e| {
+                crate::error::Error::Queue(format!("Failed to parse queue depth: {e}"))
+            })
+        } else {
+            Ok(0)
+        }
+    }
 }
 
 impl Drop for SqsQueueManager {

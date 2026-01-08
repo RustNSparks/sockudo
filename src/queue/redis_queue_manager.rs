@@ -229,4 +229,15 @@ impl QueueInterface for RedisQueueManager {
             )))
         }
     }
+
+    async fn queue_depth(&self, queue_name: &str) -> crate::error::Result<u64> {
+        let queue_key = self.format_key(queue_name).await;
+        let mut conn = self.redis_connection.lock().await;
+
+        let len: u64 = conn.llen(&queue_key).await.map_err(|e| {
+            crate::error::Error::Queue(format!("Redis LLEN failed for queue {queue_name}: {e}"))
+        })?;
+
+        Ok(len)
+    }
 }

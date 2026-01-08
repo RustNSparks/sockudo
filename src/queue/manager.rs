@@ -159,4 +159,9 @@ impl QueueManager {
     pub async fn check_health(&self) -> Result<()> {
         self.driver.check_health().await
     }
+
+    /// Gets the current depth of the specified queue.
+    pub async fn queue_depth(&self, queue_name: &str) -> Result<u64> {
+        self.driver.queue_depth(queue_name).await
+    }
 }

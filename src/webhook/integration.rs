@@ -106,7 +106,30 @@ impl WebhookIntegration {
             integration.start_batching_task();
         }
 
+        if integration.config.enabled && integration.metrics.is_some() {
+            integration.start_metrics_task();
+        }
+
         Ok(integration)
+    }
+
+    fn start_metrics_task(&self) {
+        if let Some(qm) = self.queue_manager.clone() {
+            let metrics = self.metrics.clone();
+            tokio::spawn(async move {
+                let mut interval = interval(Duration::from_secs(5));
+                loop {
+                    interval.tick().await;
+                    if let Ok(depth) = qm.queue_depth("webhooks").await {
+                        if let Some(m) = &metrics {
+                            m.lock()
+                                .await
+                                .update_webhook_queue_depth("webhooks", depth as i64);
+                        }
+                    }
+                }
+            });
+        }
     }
 
     async fn setup_webhook_processor(&mut self, queue_manager: Arc<QueueManager>) -> Result<()> {
@@ -693,5 +716,50 @@ mod tests {
             .send_subscription_count_changed(&app, "test_channel", 5)
             .await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_webhook_queue_depth_reporting() {
+        let app_manager = Arc::new(MemoryAppManager::new());
+        // Create manual memory queue manager WITHOUT starting processing loop
+        // This ensures jobs stay in the queue so we can check depth
+        let memory_manager = crate::queue::memory_queue_manager::MemoryQueueManager::new();
+        let queue_manager = Arc::new(QueueManager::new(Box::new(memory_manager)));
+
+        // Pass metrics: None for simplicity, we are testing queue_depth method of manager mostly
+        // But verifying that integration.add_webhook adds to queue.
+        let config = WebhookConfig {
+            batching: BatchingConfig {
+                enabled: false,
+                duration: 50,
+            },
+            ..Default::default()
+        };
+
+        let integration = WebhookIntegration::new(config, app_manager, Some(queue_manager.clone()))
+            .await
+            .unwrap();
+
+        // Add a job
+        let app = App {
+            id: "test_app".to_string(),
+            key: "test_key".to_string(),
+            secret: "test_secret".to_string(),
+            webhooks: Some(vec![crate::webhook::types::Webhook {
+                url: Some(url::Url::parse("http://localhost").unwrap()),
+                event_types: vec!["channel_occupied".to_string()],
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+
+        integration
+            .send_channel_occupied(&app, "test_channel")
+            .await
+            .unwrap();
+
+        // Check depth
+        let depth = queue_manager.queue_depth("webhooks").await.unwrap();
+        assert_eq!(depth, 1);
     }
 }

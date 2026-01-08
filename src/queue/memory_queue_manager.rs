@@ -124,6 +124,14 @@ impl QueueInterface for MemoryQueueManager {
     async fn check_health(&self) -> crate::error::Result<()> {
         Ok(())
     }
+
+    async fn queue_depth(&self, queue_name: &str) -> crate::error::Result<u64> {
+        if let Some(queue) = self.queues.get(queue_name) {
+            Ok(queue.len() as u64)
+        } else {
+            Ok(0)
+        }
+    }
 }
 
 #[cfg(test)]
