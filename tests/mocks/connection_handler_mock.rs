@@ -376,6 +376,11 @@ impl MetricsInterface for MockMetricsInterface {
         _latency_ms: f64,
     ) {
     }
+    fn mark_webhook_sent(&self, _app_id: &str, _event_type: &str) {}
+    fn mark_webhook_failed(&self, _app_id: &str, _event_type: &str, _error_type: &str) {}
+    fn track_webhook_latency(&self, _app_id: &str, _event_type: &str, _latency_ms: f64) {}
+    fn mark_webhook_retry(&self, _app_id: &str, _event_type: &str) {}
+    fn update_webhook_queue_depth(&self, _queue_name: &str, _depth: i64) {}
     async fn get_metrics_as_plaintext(&self) -> String {
         String::new()
     }
@@ -398,6 +403,7 @@ pub fn create_test_connection_handler() -> (ConnectionHandler, MockAppManager) {
         None,
         ServerOptions::default(),
         None,
+        None,
     );
 
     (handler, app_manager)
@@ -413,6 +419,7 @@ pub fn create_test_connection_handler_with_app_manager(
         Some(Arc::new(Mutex::new(MockMetricsInterface::new()))),
         None,
         ServerOptions::default(),
+        None,
         None,
     )
 }

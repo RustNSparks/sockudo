@@ -522,6 +522,111 @@ pub struct RedisSentinel {
     pub port: u16,
 }
 
+impl RedisConnection {
+    /// Builds the appropriate Redis URL based on the configuration.
+    ///
+    /// Priority order:
+    /// 1. If sentinels are configured, builds a Sentinel URL
+    /// 2. Otherwise, builds a standard Redis URL from host:port
+    ///
+    /// Sentinel URL format: `redis+sentinel://[[username]:[password]@]host1:port1[,host2:port2,...]/service-name[/db][?sentinel_password=...]`
+    ///
+    /// Examples:
+    /// - Standard: `redis://127.0.0.1:6379/0`
+    /// - With auth: `redis://:password@127.0.0.1:6379/0`
+    /// - Sentinel: `redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster/0`
+    /// - Sentinel with auth: `redis+sentinel://:redis_password@sentinel1:26379,sentinel2:26379/mymaster/0?sentinel_password=sentinel_pass`
+    pub fn to_url(&self) -> String {
+        if !self.sentinels.is_empty() {
+            self.build_sentinel_url()
+        } else {
+            self.build_standard_url()
+        }
+    }
+
+    /// Builds a standard Redis URL from host and port.
+    fn build_standard_url(&self) -> String {
+        let auth = self.build_auth_string();
+        if auth.is_empty() {
+            format!("redis://{}:{}/{}", self.host, self.port, self.db)
+        } else {
+            format!("redis://{}@{}:{}/{}", auth, self.host, self.port, self.db)
+        }
+    }
+
+    /// Builds a Redis Sentinel URL.
+    ///
+    /// Format: `redis+sentinel://[auth@]sentinel1:port1,sentinel2:port2/master-name/db[?sentinel_password=...]`
+    fn build_sentinel_url(&self) -> String {
+        let sentinel_hosts: Vec<String> = self
+            .sentinels
+            .iter()
+            .map(|s| format!("{}:{}", s.host, s.port))
+            .collect();
+        let sentinel_hosts_str = sentinel_hosts.join(",");
+
+        let auth = self.build_auth_string();
+        let master_name = if self.name.is_empty() {
+            "mymaster"
+        } else {
+            &self.name
+        };
+
+        let mut url = if auth.is_empty() {
+            format!(
+                "redis+sentinel://{}/{}/{}",
+                sentinel_hosts_str, master_name, self.db
+            )
+        } else {
+            format!(
+                "redis+sentinel://{}@{}/{}/{}",
+                auth, sentinel_hosts_str, master_name, self.db
+            )
+        };
+
+        // Add sentinel password as query parameter if present
+        if let Some(ref sentinel_password) = self.sentinel_password
+            && !sentinel_password.is_empty()
+        {
+            url.push_str("?sentinel_password=");
+            url.push_str(&urlencoding::encode(sentinel_password));
+        }
+
+        url
+    }
+
+    /// Builds the authentication string for Redis URLs.
+    /// Returns empty string if no auth is configured.
+    fn build_auth_string(&self) -> String {
+        match (&self.username, &self.password) {
+            (Some(username), Some(password)) if !username.is_empty() && !password.is_empty() => {
+                format!(
+                    "{}:{}",
+                    urlencoding::encode(username),
+                    urlencoding::encode(password)
+                )
+            }
+            (None, Some(password)) if !password.is_empty() => {
+                format!(":{}", urlencoding::encode(password))
+            }
+            (Some(username), None) if !username.is_empty() => {
+                urlencoding::encode(username).to_string()
+            }
+            _ => String::new(),
+        }
+    }
+
+    /// Returns true if this connection is configured for Sentinel mode.
+    pub fn is_sentinel_mode(&self) -> bool {
+        !self.sentinels.is_empty()
+    }
+
+    /// Returns true if this connection is configured for Cluster mode.
+    pub fn is_cluster_mode(&self) -> bool {
+        !self.cluster_nodes.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ClusterNode {
@@ -698,6 +803,209 @@ mod cluster_node_tests {
     }
 }
 
+#[cfg(test)]
+mod redis_connection_tests {
+    use super::{RedisConnection, RedisSentinel};
+
+    #[test]
+    fn test_standard_url_basic() {
+        let conn = RedisConnection {
+            host: "127.0.0.1".to_string(),
+            port: 6379,
+            db: 0,
+            ..Default::default()
+        };
+        assert_eq!(conn.to_url(), "redis://127.0.0.1:6379/0");
+    }
+
+    #[test]
+    fn test_standard_url_with_password() {
+        let conn = RedisConnection {
+            host: "localhost".to_string(),
+            port: 6379,
+            db: 1,
+            password: Some("secret".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(conn.to_url(), "redis://:secret@localhost:6379/1");
+    }
+
+    #[test]
+    fn test_standard_url_with_username_and_password() {
+        let conn = RedisConnection {
+            host: "localhost".to_string(),
+            port: 6379,
+            db: 2,
+            username: Some("admin".to_string()),
+            password: Some("secret".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(conn.to_url(), "redis://admin:secret@localhost:6379/2");
+    }
+
+    #[test]
+    fn test_standard_url_with_special_chars_in_password() {
+        let conn = RedisConnection {
+            host: "localhost".to_string(),
+            port: 6379,
+            db: 0,
+            password: Some("p@ss:word/test".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            conn.to_url(),
+            "redis://:p%40ss%3Aword%2Ftest@localhost:6379/0"
+        );
+    }
+
+    #[test]
+    fn test_sentinel_url_basic() {
+        let conn = RedisConnection {
+            sentinels: vec![
+                RedisSentinel {
+                    host: "sentinel1".to_string(),
+                    port: 26379,
+                },
+                RedisSentinel {
+                    host: "sentinel2".to_string(),
+                    port: 26379,
+                },
+            ],
+            name: "mymaster".to_string(),
+            db: 0,
+            ..Default::default()
+        };
+        assert_eq!(
+            conn.to_url(),
+            "redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster/0"
+        );
+    }
+
+    #[test]
+    fn test_sentinel_url_with_redis_password() {
+        let conn = RedisConnection {
+            sentinels: vec![RedisSentinel {
+                host: "sentinel1".to_string(),
+                port: 26379,
+            }],
+            name: "master".to_string(),
+            db: 1,
+            password: Some("redis_pass".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            conn.to_url(),
+            "redis+sentinel://:redis_pass@sentinel1:26379/master/1"
+        );
+    }
+
+    #[test]
+    fn test_sentinel_url_with_sentinel_password() {
+        let conn = RedisConnection {
+            sentinels: vec![RedisSentinel {
+                host: "sentinel1".to_string(),
+                port: 26379,
+            }],
+            name: "mymaster".to_string(),
+            db: 0,
+            sentinel_password: Some("sentinel_secret".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            conn.to_url(),
+            "redis+sentinel://sentinel1:26379/mymaster/0?sentinel_password=sentinel_secret"
+        );
+    }
+
+    #[test]
+    fn test_sentinel_url_with_both_passwords() {
+        let conn = RedisConnection {
+            sentinels: vec![
+                RedisSentinel {
+                    host: "sentinel1".to_string(),
+                    port: 26379,
+                },
+                RedisSentinel {
+                    host: "sentinel2".to_string(),
+                    port: 26380,
+                },
+            ],
+            name: "mymaster".to_string(),
+            db: 2,
+            password: Some("redis_pass".to_string()),
+            sentinel_password: Some("sentinel_pass".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            conn.to_url(),
+            "redis+sentinel://:redis_pass@sentinel1:26379,sentinel2:26380/mymaster/2?sentinel_password=sentinel_pass"
+        );
+    }
+
+    #[test]
+    fn test_sentinel_url_special_chars_in_passwords() {
+        let conn = RedisConnection {
+            sentinels: vec![RedisSentinel {
+                host: "sentinel1".to_string(),
+                port: 26379,
+            }],
+            name: "mymaster".to_string(),
+            db: 0,
+            password: Some("p@ss:word".to_string()),
+            sentinel_password: Some("s3nt!nel/pass".to_string()),
+            ..Default::default()
+        };
+        let url = conn.to_url();
+        assert!(url.contains("p%40ss%3Aword"));
+        assert!(url.contains("sentinel_password=s3nt%21nel%2Fpass"));
+    }
+
+    #[test]
+    fn test_is_sentinel_mode() {
+        let conn_standard = RedisConnection::default();
+        assert!(!conn_standard.is_sentinel_mode());
+
+        let conn_sentinel = RedisConnection {
+            sentinels: vec![RedisSentinel {
+                host: "sentinel1".to_string(),
+                port: 26379,
+            }],
+            ..Default::default()
+        };
+        assert!(conn_sentinel.is_sentinel_mode());
+    }
+
+    #[test]
+    fn test_is_cluster_mode() {
+        let conn_standard = RedisConnection::default();
+        assert!(!conn_standard.is_cluster_mode());
+
+        let conn_cluster = RedisConnection {
+            cluster_nodes: vec![super::ClusterNode {
+                host: "node1".to_string(),
+                port: 7000,
+            }],
+            ..Default::default()
+        };
+        assert!(conn_cluster.is_cluster_mode());
+    }
+
+    #[test]
+    fn test_sentinel_url_with_empty_master_name() {
+        let conn = RedisConnection {
+            sentinels: vec![RedisSentinel {
+                host: "sentinel1".to_string(),
+                port: 26379,
+            }],
+            name: "".to_string(),
+            db: 0,
+            ..Default::default()
+        };
+        // Should fall back to "mymaster"
+        assert_eq!(conn.to_url(), "redis+sentinel://sentinel1:26379/mymaster/0");
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DatabasePooling {
@@ -786,6 +1094,7 @@ pub struct RedisQueueConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RateLimit {
+    pub enabled: bool,
     pub max_requests: u32,
     pub window_seconds: u64,
     pub identifier: Option<String>,
@@ -1152,6 +1461,7 @@ impl Default for RedisQueueConfig {
 impl Default for RateLimit {
     fn default() -> Self {
         Self {
+            enabled: true,
             max_requests: 60,
             window_seconds: 60,
             identifier: Some("default".to_string()),
@@ -1166,12 +1476,14 @@ impl Default for RateLimiterConfig {
             enabled: true,
             driver: CacheDriver::Memory, // Default Rate Limiter backend to Memory
             api_rate_limit: RateLimit {
+                enabled: true,
                 max_requests: 100,
                 window_seconds: 60,
                 identifier: Some("api".to_string()),
                 trust_hops: Some(0),
             },
             websocket_rate_limit: RateLimit {
+                enabled: true,
                 max_requests: 20,
                 window_seconds: 60,
                 identifier: Some("websocket_connect".to_string()),
@@ -1345,6 +1657,86 @@ impl ServerOptions {
         if let Ok(prefix) = std::env::var("DATABASE_REDIS_KEY_PREFIX") {
             self.database.redis.key_prefix = prefix;
         }
+        if let Ok(username) = std::env::var("DATABASE_REDIS_USERNAME") {
+            self.database.redis.username = Some(username);
+        }
+
+        // --- Database: Redis Sentinel ---
+        // Format: "host1:port1,host2:port2,host3:port3" or "host1,host2,host3" (uses default port 26379)
+        // IPv6 addresses must use bracket notation: "[::1]:26379" or "[2001:db8::1]:26379"
+        if let Ok(sentinels_str) = std::env::var("DATABASE_REDIS_SENTINELS") {
+            let sentinels: Vec<RedisSentinel> = sentinels_str
+                .split(',')
+                .filter_map(|s| {
+                    let s = s.trim();
+                    if s.is_empty() {
+                        return None;
+                    }
+
+                    // Handle IPv6 bracket notation: [::1]:port or [2001:db8::1]:port
+                    if s.starts_with('[')
+                        && let Some(bracket_end) = s.find(']')
+                    {
+                        let host = &s[1..bracket_end];
+                        let remainder = &s[bracket_end + 1..];
+                        let port = if let Some(port_str) = remainder.strip_prefix(':') {
+                            port_str.parse::<u16>().unwrap_or(26379)
+                        } else {
+                            26379
+                        };
+                        return Some(RedisSentinel {
+                            host: host.to_string(),
+                            port,
+                        });
+                    }
+
+                    // Try parsing as SocketAddr first (handles both IPv4:port and [IPv6]:port)
+                    if let Ok(socket_addr) = s.parse::<std::net::SocketAddr>() {
+                        return Some(RedisSentinel {
+                            host: socket_addr.ip().to_string(),
+                            port: socket_addr.port(),
+                        });
+                    }
+
+                    // For hostname:port or IPv4:port, use rsplit to find the last colon
+                    // This works for hostnames and IPv4, but not bare IPv6 (which should use brackets)
+                    if let Some(last_colon) = s.rfind(':') {
+                        let host_part = &s[..last_colon];
+                        let port_part = &s[last_colon + 1..];
+
+                        // Only treat as host:port if port_part is a valid port number
+                        // and host_part doesn't contain colons (which would indicate IPv6)
+                        if !host_part.contains(':')
+                            && let Ok(port) = port_part.parse::<u16>()
+                        {
+                            return Some(RedisSentinel {
+                                host: host_part.to_string(),
+                                port,
+                            });
+                        }
+                    }
+
+                    // Fallback: treat entire string as host with default port
+                    Some(RedisSentinel {
+                        host: s.to_string(),
+                        port: 26379,
+                    })
+                })
+                .collect();
+            if !sentinels.is_empty() {
+                self.database.redis.sentinels = sentinels;
+                info!(
+                    "Configured {} Redis Sentinel nodes from DATABASE_REDIS_SENTINELS",
+                    self.database.redis.sentinels.len()
+                );
+            }
+        }
+        if let Ok(sentinel_password) = std::env::var("DATABASE_REDIS_SENTINEL_PASSWORD") {
+            self.database.redis.sentinel_password = Some(sentinel_password);
+        }
+        if let Ok(master_name) = std::env::var("DATABASE_REDIS_SENTINEL_MASTER") {
+            self.database.redis.name = master_name;
+        }
 
         // --- Database: MySQL ---
         if let Ok(host) = std::env::var("DATABASE_MYSQL_HOST") {
@@ -1475,6 +1867,11 @@ impl ServerOptions {
         // --- Rate Limiter ---
         self.rate_limiter.enabled =
             parse_bool_env("RATE_LIMITER_ENABLED", self.rate_limiter.enabled);
+        // API rate limit settings
+        self.rate_limiter.api_rate_limit.enabled = parse_bool_env(
+            "RATE_LIMITER_API_ENABLED",
+            self.rate_limiter.api_rate_limit.enabled,
+        );
         self.rate_limiter.api_rate_limit.max_requests = parse_env::<u32>(
             "RATE_LIMITER_API_MAX_REQUESTS",
             self.rate_limiter.api_rate_limit.max_requests,
@@ -1486,6 +1883,11 @@ impl ServerOptions {
         if let Some(hops) = parse_env_optional::<u32>("RATE_LIMITER_API_TRUST_HOPS") {
             self.rate_limiter.api_rate_limit.trust_hops = Some(hops);
         }
+        // WebSocket rate limit settings
+        self.rate_limiter.websocket_rate_limit.enabled = parse_bool_env(
+            "RATE_LIMITER_WS_ENABLED",
+            self.rate_limiter.websocket_rate_limit.enabled,
+        );
         self.rate_limiter.websocket_rate_limit.max_requests = parse_env::<u32>(
             "RATE_LIMITER_WS_MAX_REQUESTS",
             self.rate_limiter.websocket_rate_limit.max_requests,

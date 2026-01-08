@@ -383,20 +383,26 @@ impl SockudoServer {
             config.rate_limiter.enabled, config.rate_limiter.driver
         );
 
-        let owned_default_queue_redis_url: String;
-        let queue_redis_url_arg: Option<&str>;
-
-        if let Some(url_override) = config.queue.redis.url_override.as_ref() {
-            queue_redis_url_arg = Some(url_override.as_str());
-        } else {
-            owned_default_queue_redis_url = format!(
-                "redis://{}:{}",
-                config.database.redis.host, config.database.redis.port
-            );
-            queue_redis_url_arg = Some(&owned_default_queue_redis_url);
-        }
-
-        // In the SockudoServer::new method, replace the queue manager initialization:
+        // Create WebSocket connection rate limiter
+        let websocket_rate_limiter: Option<Arc<dyn rate_limiter::RateLimiter + Send + Sync>> =
+            if config.rate_limiter.enabled && config.rate_limiter.websocket_rate_limit.enabled {
+                let ws_config = &config.rate_limiter.websocket_rate_limit;
+                info!(
+                    "WebSocket rate limiter enabled: {} requests per {} seconds",
+                    ws_config.max_requests, ws_config.window_seconds
+                );
+                // Use memory rate limiter for WebSocket connections (per-IP limiting)
+                // This is typically sufficient as WebSocket connections are long-lived
+                Some(Arc::new(
+                    rate_limiter::memory_limiter::MemoryRateLimiter::new(
+                        ws_config.max_requests,
+                        ws_config.window_seconds,
+                    ),
+                ))
+            } else {
+                info!("WebSocket rate limiting is disabled");
+                None
+            };
 
         let queue_manager_opt = match config.queue.driver {
             QueueDriver::Sqs => {
@@ -422,21 +428,22 @@ impl SockudoServer {
                 let (queue_redis_url_or_nodes, queue_prefix, queue_concurrency) =
                     match config.queue.driver {
                         QueueDriver::Redis => {
-                            let owned_default_queue_redis_url: String;
-                            let queue_redis_url_arg: Option<&str>;
-
-                            if let Some(url_override) = config.queue.redis.url_override.as_ref() {
-                                queue_redis_url_arg = Some(url_override.as_str());
+                            let queue_redis_url = if let Some(url_override) =
+                                config.queue.redis.url_override.as_ref()
+                            {
+                                url_override.clone()
                             } else {
-                                owned_default_queue_redis_url = format!(
-                                    "redis://{}:{}",
-                                    config.database.redis.host, config.database.redis.port
+                                config.database.redis.to_url()
+                            };
+                            if config.database.redis.is_sentinel_mode() {
+                                info!(
+                                    "Queue: Using Redis Sentinel mode with {} sentinel nodes",
+                                    config.database.redis.sentinels.len()
                                 );
-                                queue_redis_url_arg = Some(&owned_default_queue_redis_url);
                             }
 
                             (
-                                queue_redis_url_arg.map(|s| s.to_string()),
+                                Some(queue_redis_url),
                                 config
                                     .queue
                                     .redis
@@ -473,7 +480,7 @@ impl SockudoServer {
                                 config.queue.redis_cluster.concurrency as usize,
                             )
                         }
-                        _ => (None, "sockudo_queue:", 5), // Default fallback
+                        _ => (None, "sockudo_queue:", 5), // Default fallback for Memory
                     };
 
                 match QueueManagerFactory::create(
@@ -512,10 +519,11 @@ impl SockudoServer {
             debug: config.debug,
         };
 
-        let webhook_integration = match WebhookIntegration::new(
+        let webhook_integration = match WebhookIntegration::with_metrics(
             webhook_config_for_integration,
             app_manager.clone(),
             queue_manager_opt.clone(),
+            metrics.clone(),
         )
         .await
         {
@@ -540,7 +548,15 @@ impl SockudoServer {
                     ..Default::default() // Use default for other fields
                 };
                 // Pass None for queue_manager since it's disabled
-                Arc::new(WebhookIntegration::new(disabled_config, app_manager.clone(), None).await?)
+                Arc::new(
+                    WebhookIntegration::with_metrics(
+                        disabled_config,
+                        app_manager.clone(),
+                        None,
+                        metrics.clone(),
+                    )
+                    .await?,
+                )
             }
         };
 
@@ -606,6 +622,7 @@ impl SockudoServer {
             Some(webhook_integration), // Pass the (potentially disabled) webhook_integration
             config.clone(),
             state.cleanup_queue.clone(),
+            websocket_rate_limiter,
         ));
 
         // Start dead node cleanup event processing loop (only runs if cluster health is enabled)
@@ -841,7 +858,9 @@ impl SockudoServer {
 
         let cors = cors_builder;
 
-        let rate_limiter_middleware_layer = if self.config.rate_limiter.enabled {
+        let rate_limiter_middleware_layer = if self.config.rate_limiter.enabled
+            && self.config.rate_limiter.api_rate_limit.enabled
+        {
             if let Some(rate_limiter_instance) = &self.state.http_api_rate_limiter {
                 let options = crate::rate_limiter::middleware::RateLimitOptions {
                     include_headers: true,                // Include X-RateLimit-* headers

@@ -10,7 +10,7 @@ use serde::de::DeserializeOwned;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 pub struct RedisClusterQueueManager {
     redis_client: ClusterClient,
@@ -196,20 +196,40 @@ impl QueueInterface for RedisClusterQueueManager {
 
     async fn disconnect(&self) -> crate::error::Result<()> {
         let mut conn = self.redis_connection.lock().await;
-        let keys: Vec<String> = conn
-            .keys(format!("{}:queue:*", self.prefix))
-            .await
-            .map_err(|e| {
-                crate::error::Error::Queue(format!(
-                    "Redis cluster disconnect error fetching keys: {e}"
-                ))
-            })?;
+        let pattern = format!("{}:queue:*", self.prefix);
 
-        for key in keys {
-            if let Err(e) = conn.del::<_, ()>(&key).await {
-                error!("Error deleting key {} during disconnect: {}", key, e);
+        // Use SCAN instead of KEYS for Valkey Serverless compatibility
+        let mut cursor: u64 = 0;
+        let scan_count = 100;
+
+        loop {
+            let (new_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg(&pattern)
+                .arg("COUNT")
+                .arg(scan_count)
+                .query_async(&mut *conn)
+                .await
+                .map_err(|e| {
+                    crate::error::Error::Queue(format!(
+                        "Redis cluster SCAN error during disconnect: {e}"
+                    ))
+                })?;
+
+            // Delete found keys
+            for key in keys {
+                if let Err(e) = conn.del::<_, ()>(&key).await {
+                    warn!("Failed to delete cluster queue key '{}': {}", key, e);
+                }
+            }
+
+            cursor = new_cursor;
+            if cursor == 0 {
+                break;
             }
         }
+
         Ok(())
     }
 

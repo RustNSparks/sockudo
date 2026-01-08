@@ -265,16 +265,19 @@ impl CleanupWorker {
 
         // Check if channels are now empty for channel_vacated events
         // IMPORTANT: Acquire and release lock for each channel to minimize lock contention
+        // We use get_channel_socket_count_reliable to ensure we have counts from all nodes
+        // in multi-instance setups before sending channel_vacated webhooks
         for channel in &task.subscribed_channels {
             // Acquire lock for minimal duration - just for this single channel check
-            let socket_count = {
+            let (socket_count, count_is_reliable) = {
                 let mut connection_manager = self.connection_manager.lock().await;
                 connection_manager
-                    .get_channel_socket_count(&task.app_id, channel)
+                    .get_channel_socket_count_reliable(&task.app_id, channel)
                     .await
             }; // Lock released here immediately after getting the count
 
-            if socket_count == 0 {
+            // Only send channel_vacated if count is 0 AND we have reliable count from all nodes
+            if socket_count == 0 && count_is_reliable {
                 events.push(WebhookEvent {
                     event_type: "channel_vacated".to_string(),
                     app_id: task.app_id.clone(),
@@ -284,6 +287,11 @@ impl CleanupWorker {
                         "channel": channel
                     }),
                 });
+            } else if socket_count == 0 && !count_is_reliable {
+                warn!(
+                    "Skipping channel_vacated for {} - could not verify count across all nodes",
+                    channel
+                );
             }
         }
 
