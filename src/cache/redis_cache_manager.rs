@@ -145,12 +145,22 @@ impl CacheManager for RedisCacheManager {
             .get(self.prefixed_key(key))
             .await
             .map_err(|e| Error::Cache(format!("Redis get error: {e}")))?;
+
+        // Add logging for cache hits/misses
+        if value.is_some() {
+            tracing::debug!("Cache HIT for key: {}", key);
+        } else {
+            tracing::debug!("Cache MISS for key: {}", key);
+        }
+
         Ok(value)
     }
 
     /// Set or overwrite the value in the cache
     async fn set(&mut self, key: &str, value: &str, ttl_seconds: u64) -> Result<()> {
         let prefixed_key = self.prefixed_key(key);
+
+        tracing::debug!("Setting cache key: {} with TTL: {}", key, ttl_seconds);
 
         if ttl_seconds > 0 {
             // Set with expiration
@@ -184,18 +194,12 @@ impl CacheManager for RedisCacheManager {
 
     /// Disconnect the manager's made connections
     async fn disconnect(&mut self) -> Result<()> {
-        // Clean up all keys with the current prefix using SCAN (Valkey Serverless compatible)
-        let pattern = format!("{}:*", self.prefix);
-        let keys = self.scan_keys(&pattern).await?;
+        // NOTE: We do NOT wipe data on disconnect anymore.
+        // Persistence is desired. The connection manager handles closing the connection.
+        tracing::info!("Disconnecting Redis Cache Manager (persisting data)");
 
-        if !keys.is_empty() {
-            // Delete keys in batches to avoid blocking
-            for chunk in keys.chunks(100) {
-                if let Err(e) = self.connection.del::<_, i32>(chunk.to_vec()).await {
-                    warn!("Failed to delete cache keys during disconnect: {}", e);
-                }
-            }
-        }
+        // No explicit connection close needed for redis::aio::ConnectionManager as it handles it on drop,
+        // but we can log that we are shutting down.
 
         Ok(())
     }

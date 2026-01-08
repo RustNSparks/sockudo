@@ -80,8 +80,43 @@ impl ConnectionHandler {
             .await?;
 
         // Handle post-subscription logic
-        self.handle_post_subscription(socket_id, app_config, &request, &subscription_result)
-            .await?;
+        if let Err(e) = self
+            .handle_post_subscription(socket_id, app_config, &request, &subscription_result)
+            .await
+        {
+            // ROLLBACK: If post-subscription fails (e.g., webhook buffer full, serialization error),
+            // we MUST unsubscribe the socket to prevent "occupied with no subscriber" (zombie) channels.
+            tracing::warn!(
+                "Post-subscription failed for socket {} on channel {}: {}. Rolling back subscription.",
+                socket_id,
+                request.channel,
+                e
+            );
+
+            // Attempt to unsubscribe using the connection manager directly since we are handling an error
+            // within the subscription flow.
+            // Attempt to unsubscribe using the connection manager directly since we are handling an error
+            // within the subscription flow.
+            use crate::channel::ChannelManager;
+            // DO NOT lock connection_manager here, ChannelManager::unsubscribe handles locking internally.
+            if let Err(unsubscribe_err) = ChannelManager::unsubscribe(
+                &self.connection_manager,
+                &socket_id.0,
+                &request.channel,
+                &app_config.id,
+                None, // We don't have user_id readily available here without lookups, and for rollback None is acceptable (skips member info retrieval)
+            )
+            .await
+            {
+                tracing::error!(
+                    "Failed to rollback subscription for socket {} on channel {}: {}",
+                    socket_id,
+                    request.channel,
+                    unsubscribe_err
+                );
+            }
+            return Err(e);
+        }
 
         Ok(())
     }

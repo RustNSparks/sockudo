@@ -24,9 +24,12 @@ pub fn is_cache_channel(channel: &str) -> bool {
     // Use the pre-compiled regexes
     for regex in CACHING_CHANNEL_REGEXES.iter() {
         if regex.is_match(channel) {
+            tracing::trace!("Channel '{}' matched cache regex: {}", channel, regex);
             return true;
         }
     }
+    // Only log at trace level for misses if you really need deep debug
+    // tracing::trace!("Channel '{}' did NOT match any cache regex", channel);
     false
 }
 
