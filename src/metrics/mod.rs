@@ -97,23 +97,6 @@ pub trait MetricsInterface: Send + Sync {
         latency_ms: f64,
     );
 
-    // Webhook metrics
-
-    /// Track a webhook being sent successfully
-    fn mark_webhook_sent(&self, app_id: &str, event_type: &str);
-
-    /// Track a webhook failure
-    fn mark_webhook_failed(&self, app_id: &str, event_type: &str, error_type: &str);
-
-    /// Track webhook processing latency
-    fn track_webhook_latency(&self, app_id: &str, event_type: &str, latency_ms: f64);
-
-    /// Track webhook retry
-    fn mark_webhook_retry(&self, app_id: &str, event_type: &str);
-
-    /// Update webhook queue depth
-    fn update_webhook_queue_depth(&self, queue_name: &str, depth: i64);
-
     /// Get the stored metrics as plain text, if possible
     async fn get_metrics_as_plaintext(&self) -> String;
 

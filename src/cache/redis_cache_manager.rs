@@ -5,7 +5,6 @@ use crate::error::{Error, Result};
 use async_trait::async_trait;
 use redis::{AsyncCommands, Client, aio::ConnectionManager};
 use std::time::Duration;
-use tracing::warn;
 
 /// Configuration for the Redis cache manager
 #[derive(Clone, Debug)]
@@ -93,36 +92,6 @@ impl RedisCacheManager {
     fn prefixed_key(&self, key: &str) -> String {
         format!("{}:{}", self.prefix, key)
     }
-
-    /// Scan for keys matching a pattern using SCAN command.
-    /// This is more efficient and production-safe than KEYS command.
-    /// Compatible with AWS Valkey Serverless which doesn't support KEYS.
-    async fn scan_keys(&mut self, pattern: &str) -> Result<Vec<String>> {
-        let mut keys = Vec::new();
-        let mut cursor: u64 = 0;
-        let scan_count = 100; // Number of keys to fetch per iteration
-
-        loop {
-            let (new_cursor, batch): (u64, Vec<String>) = redis::cmd("SCAN")
-                .arg(cursor)
-                .arg("MATCH")
-                .arg(pattern)
-                .arg("COUNT")
-                .arg(scan_count)
-                .query_async(&mut self.connection)
-                .await
-                .map_err(|e| Error::Cache(format!("Redis SCAN error: {e}")))?;
-
-            keys.extend(batch);
-            cursor = new_cursor;
-
-            if cursor == 0 {
-                break;
-            }
-        }
-
-        Ok(keys)
-    }
 }
 
 #[async_trait]
@@ -184,18 +153,13 @@ impl CacheManager for RedisCacheManager {
 
     /// Disconnect the manager's made connections
     async fn disconnect(&mut self) -> Result<()> {
-        // Clean up all keys with the current prefix using SCAN (Valkey Serverless compatible)
+        // delete all keys with the current prefix
         let pattern = format!("{}:*", self.prefix);
-        let keys = self.scan_keys(&pattern).await?;
-
-        if !keys.is_empty() {
-            // Delete keys in batches to avoid blocking
-            for chunk in keys.chunks(100) {
-                if let Err(e) = self.connection.del::<_, i32>(chunk.to_vec()).await {
-                    warn!("Failed to delete cache keys during disconnect: {}", e);
-                }
-            }
-        }
+        let _keys: Vec<String> = self
+            .connection
+            .keys(pattern)
+            .await
+            .map_err(|e| Error::Cache(format!("Redis keys error: {e}")))?;
 
         Ok(())
     }
@@ -248,29 +212,28 @@ impl RedisCacheManager {
     }
 
     /// Clear all keys with the current prefix
-    /// Uses SCAN instead of KEYS for Valkey Serverless compatibility
     pub async fn clear_prefix(&mut self) -> Result<usize> {
         let pattern = format!("{}:*", self.prefix);
 
-        // Use SCAN to find keys (Valkey Serverless compatible)
-        let keys = self.scan_keys(&pattern).await?;
+        // First get the keys
+        let keys: Vec<String> = self
+            .connection
+            .keys(pattern)
+            .await
+            .map_err(|e| Error::Cache(format!("Redis keys error: {e}")))?;
 
         if keys.is_empty() {
             return Ok(0);
         }
 
-        // Delete keys in batches to avoid blocking
-        let mut total_deleted: usize = 0;
-        for chunk in keys.chunks(100) {
-            let deleted: i32 = self
-                .connection
-                .del(chunk.to_vec())
-                .await
-                .map_err(|e| Error::Cache(format!("Redis delete error: {e}")))?;
-            total_deleted += deleted as usize;
-        }
+        // Then delete them
+        let deleted: i32 = self
+            .connection
+            .del(keys)
+            .await
+            .map_err(|e| Error::Cache(format!("Redis delete error: {e}")))?;
 
-        Ok(total_deleted)
+        Ok(deleted as usize)
     }
 
     /// Set multiple key-value pairs at once

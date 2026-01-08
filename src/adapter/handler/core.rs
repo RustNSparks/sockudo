@@ -70,13 +70,12 @@ impl ConnectionHandler {
         self.update_connection_unsubscribe_state(socket_id, app_config, &channel_name)
             .await?;
 
-        // Get current subscription count after unsubscribe with reliability info
-        // This is important for multi-node setups to avoid false channel_vacated webhooks
-        let (current_sub_count, count_is_reliable) = self
+        // Get current subscription count after unsubscribe
+        let current_sub_count = self
             .connection_manager
             .lock()
             .await
-            .get_channel_socket_count_reliable(&app_config.id, &channel_name)
+            .get_channel_socket_count(&app_config.id, &channel_name)
             .await;
 
         // Track unsubscription metrics
@@ -91,8 +90,7 @@ impl ConnectionHandler {
             }
 
             // Update active channel count if this was the last connection to the channel
-            // Only do this if we have a reliable count from all nodes
-            if current_sub_count == 0 && count_is_reliable {
+            if current_sub_count == 0 {
                 // Channel became inactive - decrement the count for this channel type
                 // Pass the Arc directly to avoid holding any locks
                 self.decrement_active_channel_count(
@@ -128,21 +126,14 @@ impl ConnectionHandler {
             }
         }
 
-        // Send channel_vacated webhook only if no subscribers left AND we have reliable count
-        // In multi-node setups, if we couldn't reach other nodes, we don't send vacated
-        // to avoid false positives when other nodes might still have connections
-        if current_sub_count == 0 && count_is_reliable {
-            if let Some(webhook_integration) = &self.webhook_integration {
-                webhook_integration
-                    .send_channel_vacated(app_config, &channel_name)
-                    .await
-                    .ok();
-            }
-        } else if current_sub_count == 0 && !count_is_reliable {
-            tracing::warn!(
-                "Skipping channel_vacated webhook for {} - could not verify count across all nodes",
-                channel_name
-            );
+        // Send channel_vacated webhook if no subscribers left
+        if current_sub_count == 0
+            && let Some(webhook_integration) = &self.webhook_integration
+        {
+            webhook_integration
+                .send_channel_vacated(app_config, &channel_name)
+                .await
+                .ok();
         }
 
         Ok(())
@@ -573,7 +564,7 @@ impl ConnectionHandler {
         app_config: &App,
         channel_str: &str,
         user_id: &Option<String>,
-        local_sub_count: usize,
+        current_sub_count: usize,
         socket_id: &SocketId,
     ) -> Result<()> {
         if channel_str.starts_with("presence-") {
@@ -594,35 +585,20 @@ impl ConnectionHandler {
             // Send subscription count webhook for non-presence channels
             if let Some(webhook_integration) = &self.webhook_integration {
                 webhook_integration
-                    .send_subscription_count_changed(app_config, channel_str, local_sub_count)
+                    .send_subscription_count_changed(app_config, channel_str, current_sub_count)
                     .await
                     .ok();
             }
         }
 
         // Send channel_vacated webhook if no subscribers left
-        // Use reliable count to ensure accuracy across all nodes in multi-node setups
-        if local_sub_count == 0 {
-            let (current_sub_count, count_is_reliable) = self
-                .connection_manager
-                .lock()
+        if current_sub_count == 0
+            && let Some(webhook_integration) = &self.webhook_integration
+        {
+            webhook_integration
+                .send_channel_vacated(app_config, channel_str)
                 .await
-                .get_channel_socket_count_reliable(&app_config.id, channel_str)
-                .await;
-
-            if current_sub_count == 0 && count_is_reliable {
-                if let Some(webhook_integration) = &self.webhook_integration {
-                    webhook_integration
-                        .send_channel_vacated(app_config, channel_str)
-                        .await
-                        .ok();
-                }
-            } else if current_sub_count == 0 && !count_is_reliable {
-                tracing::warn!(
-                    "Skipping channel_vacated webhook for {} - could not verify count across all nodes",
-                    channel_str
-                );
-            }
+                .ok();
         }
 
         Ok(())
@@ -825,12 +801,7 @@ impl ConnectionHandler {
                 );
             }
             Err(e) => {
-                // Cache failure is non-fatal - log warning and send cache_miss as fallback
-                // This allows WebSocket connections to continue even when cache is unavailable
-                warn!(
-                    "Cache retrieval failed for channel {}, treating as cache miss: {}",
-                    channel, e
-                );
+                error!("Failed to get cache for channel {}: {}", channel, e);
 
                 // Send cache miss event as fallback
                 let cache_miss_message = PusherMessage::cache_miss_event(channel.to_string());
@@ -838,7 +809,9 @@ impl ConnectionHandler {
                 self.send_message_to_socket(app_id, socket_id, cache_miss_message)
                     .await?;
 
-                // Don't return error - cache failures should be gracefully degraded
+                return Err(Error::Internal(format!(
+                    "Cache retrieval failed for channel {channel}: {e}"
+                )));
             }
         }
 
