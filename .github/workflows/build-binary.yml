@@ -6,49 +6,49 @@ on:
       target_name:
         required: true
         type: string
-        description: 'Human-readable target name'
+        description: "Human-readable target name"
       target_triple:
         required: true
         type: string
-        description: 'Rust target triple'
+        description: "Rust target triple"
       runner_os:
         required: true
         type: string
-        description: 'Runner OS to use'
+        description: "Runner OS to use"
       archive_ext:
         required: true
         type: string
-        description: 'Archive extension (tgz, zip)'
+        description: "Archive extension (tgz, zip)"
       binary_name:
         required: true
         type: string
-        description: 'Binary filename'
+        description: "Binary filename"
       cross_compile:
         required: false
         type: boolean
         default: false
-        description: 'Whether this is a cross-compilation build'
+        description: "Whether this is a cross-compilation build"
       version:
         required: false
         type: string
-        default: 'dev'
-        description: 'Version for the archive name'
+        default: "dev"
+        description: "Version for the archive name"
       upload_artifact:
         required: false
         type: boolean
         default: true
-        description: 'Whether to upload the artifact'
+        description: "Whether to upload the artifact"
       artifact_retention_days:
         required: false
         type: number
         default: 1
-        description: 'Number of days to retain artifacts'
+        description: "Number of days to retain artifacts"
 
 jobs:
   build:
     name: Build ${{ inputs.target_name }}
     runs-on: ${{ inputs.runner_os }}
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -58,28 +58,49 @@ jobs:
         with:
           targets: ${{ inputs.target_triple }}
 
-      - name: Install system dependencies (Linux x86_64)
-        if: runner.os == 'Linux' && runner.arch == 'X64'
+      - name: Install system dependencies (Linux x86_64 GNU)
+        if: runner.os == 'Linux' && runner.arch == 'X64' && !contains(inputs.target_triple, 'musl')
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libpq-dev libmariadb-dev cmake
           sudo apt-get install -y libssl-dev curl
-          # Add musl tools for x86_64
-          if [[ "${{ inputs.target_triple }}" == *"musl"* ]]; then
-            sudo apt-get install -y musl-tools musl-dev
-          fi
-          
-          
-      - name: Install system dependencies (Linux ARM64)
-        if: runner.os == 'Linux' && runner.arch == 'ARM64'
+
+      - name: Build musl binary (Linux x86_64)
+        if: runner.os == 'Linux' && runner.arch == 'X64' && contains(inputs.target_triple, 'musl')
+        run: |
+          docker run --rm \
+            -v "$PWD":/src \
+            -v "$HOME/.cargo/registry":/root/.cargo/registry \
+            -v "$HOME/.cargo/git":/root/.cargo/git \
+            -w /src \
+            alpine:3.22 \
+            sh -c "
+              apk add --no-cache rust cargo musl-dev pkgconf \
+                postgresql-dev mariadb-dev cmake make gcc g++ openssl-dev perl
+              cargo build --release --features full --target x86_64-unknown-linux-musl
+            "
+
+      - name: Install system dependencies (Linux ARM64 GNU)
+        if: runner.os == 'Linux' && runner.arch == 'ARM64' && !contains(inputs.target_triple, 'musl')
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libpq-dev libmariadb-dev cmake
           sudo apt-get install -y libssl-dev curl
-          # Add musl tools for ARM64
-          if [[ "${{ inputs.target_triple }}" == *"musl"* ]]; then
-            sudo apt-get install -y musl-tools musl-dev
-          fi
+
+      - name: Build musl binary (Linux ARM64)
+        if: runner.os == 'Linux' && runner.arch == 'ARM64' && contains(inputs.target_triple, 'musl')
+        run: |
+          docker run --rm \
+            -v "$PWD":/src \
+            -v "$HOME/.cargo/registry":/root/.cargo/registry \
+            -v "$HOME/.cargo/git":/root/.cargo/git \
+            -w /src \
+            alpine:3.22 \
+            sh -c "
+              apk add --no-cache rust cargo musl-dev pkgconf \
+                postgresql-dev mariadb-dev cmake make gcc g++ openssl-dev perl
+              cargo build --release --features full --target aarch64-unknown-linux-musl
+            "
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -91,6 +112,7 @@ jobs:
           key: ${{ runner.os }}-cargo-release-${{ inputs.target_triple }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build release binary
+        if: "!contains(inputs.target_triple, 'musl')"
         shell: bash
         run: |
           cargo build --release --features full --target ${{ inputs.target_triple }}
@@ -103,21 +125,21 @@ jobs:
           TARGET_TRIPLE="${{ inputs.target_triple }}"
           ARCHIVE_EXT="${{ inputs.archive_ext }}"
           BINARY_NAME="${{ inputs.binary_name }}"
-          
+
           SOURCE_PATH="./target/${TARGET_TRIPLE}/release/${BINARY_NAME}"
-          
+
           # Use different naming for release vs manual builds
           if [[ "$VERSION" == "dev" ]]; then
             ARCHIVE_NAME="sockudo-${TARGET_TRIPLE}.${ARCHIVE_EXT}"
           else
             ARCHIVE_NAME="sockudo-v${VERSION}-${TARGET_TRIPLE}.${ARCHIVE_EXT}"
           fi
-          
+
           # Strip binary on Unix systems
           if [[ "$RUNNER_OS" == "Linux" || "$RUNNER_OS" == "macOS" ]]; then
             strip "${SOURCE_PATH}" || echo "Strip failed, continuing..."
           fi
-          
+
           # Create archive
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             powershell Compress-Archive -Path "${SOURCE_PATH}" -DestinationPath "${ARCHIVE_NAME}"
@@ -125,7 +147,7 @@ jobs:
             cd $(dirname "${SOURCE_PATH}")
             tar -czf "${GITHUB_WORKSPACE}/${ARCHIVE_NAME}" "${BINARY_NAME}"
           fi
-          
+
           echo "archive_name=${ARCHIVE_NAME}" >> $GITHUB_OUTPUT
 
       - name: Upload artifact
