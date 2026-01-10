@@ -73,17 +73,12 @@ impl RateLimiterFactory {
     ) -> Result<Arc<dyn RateLimiter + Send + Sync>> {
         info!("RateLimiter: Using standalone Redis backend.");
 
-        let redis_url = config
-            .redis
-            .url_override
-            .clone()
-            .unwrap_or_else(|| global_redis_conn_details.to_url());
-        if global_redis_conn_details.is_sentinel_mode() {
-            info!(
-                "RateLimiter: Using Redis Sentinel mode with {} sentinel nodes",
-                global_redis_conn_details.sentinels.len()
-            );
-        }
+        let redis_url = config.redis.url_override.clone().unwrap_or_else(|| {
+            format!(
+                "redis://{}:{}",
+                global_redis_conn_details.host, global_redis_conn_details.port
+            )
+        });
 
         let prefix = config
             .redis

@@ -3,14 +3,13 @@
 
 use crate::adapter::ConnectionHandler;
 
-use axum::extract::{ConnectInfo, Path, Query, State};
+use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::response::IntoResponse;
 use fastwebsockets::upgrade;
 use serde::Deserialize;
-use std::net::SocketAddr;
 use std::sync::Arc;
-use tracing::{error, warn};
+use tracing::log::error;
 
 #[derive(Debug, Deserialize)]
 pub struct ConnectionQuery {
@@ -19,76 +18,14 @@ pub struct ConnectionQuery {
     version: Option<String>,
 }
 
-/// Extract client IP from headers or connection info.
-/// Respects X-Forwarded-For and X-Real-IP headers for proxy setups.
-fn extract_client_ip(headers: &HeaderMap, connect_info: Option<SocketAddr>) -> Option<String> {
-    // Try X-Forwarded-For first (may contain multiple IPs, take the first one)
-    if let Some(xff) = headers.get("x-forwarded-for")
-        && let Ok(xff_str) = xff.to_str()
-        && let Some(first_ip) = xff_str.split(',').next()
-    {
-        let ip = first_ip.trim();
-        if !ip.is_empty() {
-            return Some(ip.to_string());
-        }
-    }
-
-    // Try X-Real-IP
-    if let Some(real_ip) = headers.get("x-real-ip")
-        && let Ok(ip) = real_ip.to_str()
-    {
-        let ip = ip.trim();
-        if !ip.is_empty() {
-            return Some(ip.to_string());
-        }
-    }
-
-    // Fall back to connection info
-    connect_info.map(|addr| addr.ip().to_string())
-}
-
 // WebSocket upgrade handler
 pub async fn handle_ws_upgrade(
-    State(handler): State<Arc<ConnectionHandler>>,
-    connect_info: ConnectInfo<SocketAddr>,
     Path(app_key): Path<String>,
     Query(_params): Query<ConnectionQuery>,
     headers: HeaderMap,
     ws: upgrade::IncomingUpgrade,
+    State(handler): State<Arc<ConnectionHandler>>,
 ) -> impl IntoResponse {
-    // Extract client IP for rate limiting (from headers or direct connection)
-    let client_ip = extract_client_ip(&headers, Some(connect_info.0));
-
-    // Check WebSocket connection rate limit before upgrading
-    // Uses increment() to both check and count the connection attempt
-    if let Some(rate_limiter) = handler.websocket_rate_limiter()
-        && let Some(ref ip) = client_ip
-    {
-        match rate_limiter.increment(ip).await {
-            Ok(result) => {
-                if !result.allowed {
-                    warn!(
-                        "WebSocket connection rate limit exceeded for IP: {} (limit: {}, remaining: {})",
-                        ip, result.limit, result.remaining
-                    );
-                    if let Some(ref metrics) = handler.metrics {
-                        let metrics_locked = metrics.lock().await;
-                        metrics_locked.mark_connection_error(&app_key, "ws_rate_limit_exceeded");
-                    }
-                    return (
-                        http::StatusCode::TOO_MANY_REQUESTS,
-                        "Too many WebSocket connection attempts. Please try again later.",
-                    )
-                        .into_response();
-                }
-            }
-            Err(e) => {
-                // Log error but allow connection (fail-open for rate limiting)
-                warn!("WebSocket rate limiter error for IP {}: {}", ip, e);
-            }
-        }
-    }
-
     let (response, fut) = match ws.upgrade() {
         Ok((response, fut)) => (response, fut),
         Err(e) => {

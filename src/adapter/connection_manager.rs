@@ -98,17 +98,6 @@ pub trait ConnectionManager: Send + Sync {
     async fn terminate_connection(&mut self, app_id: &str, user_id: &str) -> Result<()>;
     async fn add_channel_to_sockets(&mut self, app_id: &str, channel: &str, socket_id: &SocketId);
     async fn get_channel_socket_count(&mut self, app_id: &str, channel: &str) -> usize;
-    /// Returns the channel socket count along with a flag indicating if the count is reliable
-    /// (i.e., includes counts from all nodes in a distributed setup).
-    /// Returns (count, is_reliable) where is_reliable is false if remote nodes couldn't be queried.
-    async fn get_channel_socket_count_reliable(
-        &mut self,
-        app_id: &str,
-        channel: &str,
-    ) -> (usize, bool) {
-        // Default implementation: count is always reliable (single node)
-        (self.get_channel_socket_count(app_id, channel).await, true)
-    }
     async fn add_to_channel(
         &mut self,
         app_id: &str,

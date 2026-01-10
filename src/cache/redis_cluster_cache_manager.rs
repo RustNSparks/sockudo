@@ -5,7 +5,6 @@ use redis::AsyncCommands;
 use redis::cluster::{ClusterClient, ClusterClientBuilder};
 use redis::cluster_async::ClusterConnection;
 use std::time::Duration;
-use tracing::warn;
 
 /// Configuration for the Redis Cluster cache manager
 #[derive(Clone, Debug)]
@@ -204,14 +203,18 @@ impl RedisClusterCacheManager {
     }
 
     /// Clear all keys with the current prefix
-    /// Uses SCAN instead of KEYS for Valkey Serverless compatibility and production safety.
-    /// In Redis Cluster, SCAN is routed to all nodes automatically by the cluster client.
     pub async fn clear_prefix(&mut self) -> Result<usize> {
+        // Note: KEYS command is not directly supported in Redis Cluster across slots
+        // This is a simplified implementation that may not be efficient for large datasets
         let pattern = format!("{}:*", self.prefix);
 
-        // Use SCAN to find keys (Valkey Serverless compatible)
-        // Redis Cluster client handles routing SCAN to appropriate nodes
-        let keys = self.scan_keys(&pattern).await?;
+        // First get the keys
+        // Warning: This may not work as expected in large clusters due to slot distribution
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg(&pattern)
+            .query_async(&mut self.connection)
+            .await
+            .map_err(|e| Error::Cache(format!("Redis Cluster keys error: {e}")))?;
 
         if keys.is_empty() {
             return Ok(0);
@@ -220,46 +223,15 @@ impl RedisClusterCacheManager {
         // Delete keys one by one to handle cluster slot distribution
         let mut deleted_count = 0;
         for key in keys {
-            match self.connection.del::<_, i32>(&key).await {
-                Ok(deleted) => deleted_count += deleted as usize,
-                Err(e) => {
-                    warn!("Failed to delete key '{}' in cluster: {}", key, e);
-                }
-            }
+            let deleted: i32 = self
+                .connection
+                .del(&key)
+                .await
+                .map_err(|e| Error::Cache(format!("Redis Cluster delete error: {e}")))?;
+            deleted_count += deleted as usize;
         }
 
         Ok(deleted_count)
-    }
-
-    /// Scan for keys matching a pattern using SCAN command.
-    /// This is more efficient and production-safe than KEYS command.
-    /// Compatible with AWS Valkey Serverless which doesn't support KEYS.
-    /// In Redis Cluster, the client routes SCAN to appropriate nodes.
-    async fn scan_keys(&mut self, pattern: &str) -> Result<Vec<String>> {
-        let mut keys = Vec::new();
-        let mut cursor: u64 = 0;
-        let scan_count = 100; // Number of keys to fetch per iteration
-
-        loop {
-            let (new_cursor, batch): (u64, Vec<String>) = redis::cmd("SCAN")
-                .arg(cursor)
-                .arg("MATCH")
-                .arg(pattern)
-                .arg("COUNT")
-                .arg(scan_count)
-                .query_async(&mut self.connection)
-                .await
-                .map_err(|e| Error::Cache(format!("Redis Cluster SCAN error: {e}")))?;
-
-            keys.extend(batch);
-            cursor = new_cursor;
-
-            if cursor == 0 {
-                break;
-            }
-        }
-
-        Ok(keys)
     }
 
     /// Set multiple key-value pairs at once

@@ -43,13 +43,9 @@ impl AdapterFactory {
                     .get("url")
                     .and_then(|v| v.as_str())
                     .map(String::from)
-                    .unwrap_or_else(|| db_config.redis.to_url());
-                if db_config.redis.is_sentinel_mode() {
-                    info!(
-                        "Adapter: Using Redis Sentinel mode with {} sentinel nodes",
-                        db_config.redis.sentinels.len()
-                    );
-                }
+                    .unwrap_or_else(|| {
+                        format!("redis://{}:{}", db_config.redis.host, db_config.redis.port)
+                    });
 
                 let adapter_options = RedisAdapterOptions {
                     url: redis_url,
