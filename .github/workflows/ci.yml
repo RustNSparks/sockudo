@@ -194,7 +194,7 @@ jobs:
           # MySQL configurations (matching docker-compose.test.yml)
           DATABASE_MYSQL_HOST: localhost
           DATABASE_MYSQL_PORT: 13306
-          DATABASE_MYSQL_USER: root
+          DATABASE_MYSQL_USERNAME: root
           DATABASE_MYSQL_PASSWORD: root123
           DATABASE_MYSQL_DATABASE: sockudo
 
@@ -205,7 +205,7 @@ jobs:
           # PostgreSQL configurations (matching docker-compose.test.yml)
           DATABASE_POSTGRES_HOST: localhost
           DATABASE_POSTGRES_PORT: 15432
-          DATABASE_POSTGRES_USER: postgres
+          DATABASE_POSTGRES_USERNAME: postgres
           DATABASE_POSTGRES_PASSWORD: postgres123
           DATABASE_POSTGRES_DATABASE: sockudo_test
 

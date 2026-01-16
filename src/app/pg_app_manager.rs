@@ -566,24 +566,17 @@ impl Clone for PgSQLAppManager {
 mod tests {
     use super::*;
 
-    // Helper to create test database config
-    fn get_test_db_config(table_name: &str) -> DatabaseConnection {
-        DatabaseConnection {
-            host: std::env::var("DATABASE_POSTGRES_HOST")
-                .unwrap_or_else(|_| "localhost".to_string()),
-            port: std::env::var("DATABASE_POSTGRES_PORT")
-                .ok()
-                .and_then(|p| p.parse().ok())
-                .unwrap_or(15432),
-            username: std::env::var("DATABASE_POSTGRES_USER")
-                .unwrap_or_else(|_| "postgres".to_string()),
-            password: std::env::var("DATABASE_POSTGRES_PASSWORD")
-                .unwrap_or_else(|_| "postgres123".to_string()),
-            database: std::env::var("DATABASE_POSTGRES_DATABASE")
-                .unwrap_or_else(|_| "sockudo_test".to_string()),
-            table_name: table_name.to_string(),
-            ..Default::default()
-        }
+    // Helper to create test database config using centralized config system
+    async fn get_test_db_config(table_name: &str) -> DatabaseConnection {
+        let mut config = crate::options::ServerOptions::default();
+        config
+            .override_from_env()
+            .await
+            .expect("Failed to load config from env");
+
+        let mut db_config = config.database.postgres.clone();
+        db_config.table_name = table_name.to_string();
+        db_config
     }
 
     // Helper to create a test app
@@ -615,7 +608,7 @@ mod tests {
     #[tokio::test]
     async fn test_pgsql_app_manager() {
         // Setup test database
-        let config = get_test_db_config("apps_test");
+        let config = get_test_db_config("apps_test").await;
 
         // Create manager
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
@@ -661,7 +654,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_webhooks_serialization() {
-        let config = get_test_db_config("apps_webhooks_test");
+        let config = get_test_db_config("apps_webhooks_test").await;
 
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
             .await
@@ -699,7 +692,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_webhooks() {
-        let config = get_test_db_config("apps_multi_webhooks_test");
+        let config = get_test_db_config("apps_multi_webhooks_test").await;
 
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
             .await
@@ -744,7 +737,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_watchlist_events() {
-        let config = get_test_db_config("apps_watchlist_test");
+        let config = get_test_db_config("apps_watchlist_test").await;
 
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
             .await
@@ -789,7 +782,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_allowed_origins() {
-        let config = get_test_db_config("apps_origins_test");
+        let config = get_test_db_config("apps_origins_test").await;
 
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
             .await
@@ -818,7 +811,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_webhooks() {
-        let config = get_test_db_config("apps_update_webhooks_test");
+        let config = get_test_db_config("apps_update_webhooks_test").await;
 
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
             .await
@@ -859,7 +852,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_find_by_key_with_webhooks() {
-        let config = get_test_db_config("apps_key_webhooks_test");
+        let config = get_test_db_config("apps_key_webhooks_test").await;
 
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
             .await
@@ -891,7 +884,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_all_apps_with_webhooks() {
-        let config = get_test_db_config("apps_all_webhooks_test");
+        let config = get_test_db_config("apps_all_webhooks_test").await;
 
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
             .await
@@ -939,7 +932,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check() {
-        let config = get_test_db_config("apps_health_test");
+        let config = get_test_db_config("apps_health_test").await;
 
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
             .await
@@ -952,7 +945,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_nonexistent_app() {
-        let config = get_test_db_config("apps_delete_test");
+        let config = get_test_db_config("apps_delete_test").await;
 
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
             .await
@@ -965,7 +958,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_nonexistent_app() {
-        let config = get_test_db_config("apps_update_fail_test");
+        let config = get_test_db_config("apps_update_fail_test").await;
 
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
             .await
@@ -979,7 +972,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_null_values() {
-        let config = get_test_db_config("apps_null_test");
+        let config = get_test_db_config("apps_null_test").await;
 
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
             .await
@@ -1009,7 +1002,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_empty_webhooks_array() {
-        let config = get_test_db_config("apps_empty_webhooks_test");
+        let config = get_test_db_config("apps_empty_webhooks_test").await;
 
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
             .await
@@ -1031,7 +1024,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_webhook_with_lambda_config() {
-        let config = get_test_db_config("apps_lambda_test");
+        let config = get_test_db_config("apps_lambda_test").await;
 
         let manager = PgSQLAppManager::new(config, DatabasePooling::default())
             .await
