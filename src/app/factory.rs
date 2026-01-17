@@ -165,7 +165,7 @@ impl AppManagerFactory {
                 inner,
                 cache_manager,
                 config.cache.clone(),
-            )))
+            )) as Arc<dyn AppManager + Send + Sync>)
         } else {
             Ok(inner)
         }

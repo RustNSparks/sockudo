@@ -676,18 +676,24 @@ mod tests {
     }
 
     async fn is_mysql_available() -> bool {
-        let config = DatabaseConnection {
-            username: "sockudo".to_string(),
-            password: "sockudo123".to_string(),
-            database: "sockudo".to_string(),
-            table_name: "applications".to_string(),
-            port: 13306,
-            ..Default::default()
-        };
+        let config = get_test_db_config("applications").await;
 
         MySQLAppManager::new(config, DatabasePooling::default())
             .await
             .is_ok()
+    }
+
+    // Helper to create test database config using centralized config system
+    async fn get_test_db_config(table_name: &str) -> DatabaseConnection {
+        let mut config = crate::options::ServerOptions::default();
+        config
+            .override_from_env()
+            .await
+            .expect("Failed to load config from env");
+
+        let mut db_config = config.database.mysql.clone();
+        db_config.table_name = table_name.to_string();
+        db_config
     }
 
     #[tokio::test]
@@ -698,15 +704,8 @@ mod tests {
             return;
         }
 
-        // Setup test database with proper credentials for Docker MySQL dev environment
-        let config = DatabaseConnection {
-            username: "sockudo".to_string(),
-            password: "sockudo123".to_string(),
-            database: "sockudo".to_string(),
-            table_name: "applications".to_string(),
-            port: 13306,
-            ..Default::default()
-        };
+        // Setup test database using centralized config system
+        let config = get_test_db_config("applications").await;
 
         // Create manager
         let manager = MySQLAppManager::new(config, DatabasePooling::default())
